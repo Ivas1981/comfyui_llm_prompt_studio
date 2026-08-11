@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Environments
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Test caches
+.pytest_cache/
+__pycache__/
+
+# Runtime cache (persisted model list for the model combo)
+lmstudio_models_cache.json

@@ -1,0 +1,12 @@
+[project]
+name = "comfyui-llm-prompt-studio"
+version = "0.7.0"
+description = "SDXL prompt generation and critique via local LLMs (LM Studio / any local OpenAI-compatible server)"
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = ["requests", "numpy", "pillow"]
+# authors = [{ name = "Ivas81" }]
+# urls = { Repository = "https://github.com/you/comfyui_llm_prompt_studio" }
+
+[tool.comfy]
+DisplayName = "ComfyUI LLM Prompt Studio"
