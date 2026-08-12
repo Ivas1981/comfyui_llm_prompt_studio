@@ -77,7 +77,7 @@ comfyui_llm_prompt_studio/
 ├── library.py                # prompt library, path guard, atomic writes
 ├── imaging.py                # image tensor → base64 JPEG
 ├── model_meta.py             # generation metadata, safetensors, family detection
-   ├── server_routes.py          # /llm_prompt_studio/* routes used by the JS bridge
+├── server_routes.py          # /llm_prompt_studio/* routes used by the JS bridge
 ├── prompts.json              # default system prompts (edit without touching code)
 ├── nodes/
 │   ├── __init__.py           # node mappings
@@ -192,4 +192,136 @@ Two-stage scene construction from an image.
 
 ### LLM Prompt Studio Smart Loader
 
-I will now call the tool to update README with the recommended environment var guidance in the Security section. This will be committed to main. Proceeding to write the change. If you want it in a separate branch instead, tell me now.
+Loads a checkpoint and handles distillation LoRA automatically.
+- **Inputs:** `ckpt_name`, `family_override`, `lora_name`, `apply_lora`,
+  `strength_model`, `vae_user`.
+- **Outputs:** `MODEL`, `CLIP`, `VAE_MODEL`, `VAE_USER`, `detected_family`.
+- Detects the checkpoint family from the filename + safetensors metadata:
+  `base`, `dmd`, `lcm`, `turbo`, `hyper`, `lightning`, `flash`. `family_override`
+  forces it.
+- `apply_lora`: **`auto`** applies the LoRA only for `base` (non-distilled) models,
+  **`always`** forces it, **`never`** skips it.
+- `VAE_USER` falls back to the checkpoint's built-in VAE when `vae_user = [none]`.
+  Use `VAE_USER` downstream so the output is never empty.
+- The node title shows the detected family.
+
+### LLM Prompt Studio Multi-CLIP SDXL
+
+Encodes up to four SDXL prompt pairs with one CLIP and shared size settings.
+- **Inputs:** `clip`, `width`, `height`, `crop_w`, `crop_h`, and optional
+  `target_width`, `target_height`, `positive1_g/l`, `negative1_g/l`,
+  `positive2_g/l`, `negative2_g/l`.
+- **Outputs:** `clip` (pass-through), `positive1`, `negative1`, `positive2`,
+  `negative2` (CONDITIONING).
+- Each `*_l` falls back to its `*_g` when empty; `target_*` falls back to
+  `width`/`height` when empty; an empty pair encodes an empty string.
+- Replaces multiple `CLIPTextEncodeSDXL` nodes: `positive1/negative1` → main KSampler,
+  `positive2/negative2` → FaceDetailer.
+
+---
+
+## Prompt templates (`prompts.json`)
+
+All default system prompts live in **`prompts.json`** at the package root — edit them
+without touching Python. Keys:
+
+| Key | Used by |
+|-----|---------|
+| `reasoning_hint` | appended to writer/critic/composer (clear it to disable) |
+| `writer_system` | Prompt Writer |
+| `face_instruction` | Prompt Writer (face prompts) |
+| `critic_system` | Image Critic |
+| `describe` | Scene Builder (stage 1) |
+| `composer` | Scene Builder (stage 2) |
+
+Changes take effect after restarting ComfyUI (templates are loaded at startup). Every
+node also exposes its prompt as an editable widget, so you can override per-node.
+
+---
+
+## Prompt library
+
+Approved prompts can be stored in a JSON library (default
+`output/llm_prompt_studio_library.json`). Each entry keeps `prompt`, `negative_prompt`,
+`face_positive` and `face_negative`. Duplicates (same positive) are skipped. Load them
+back with **Library Loader**. Writes are atomic (`.tmp` + rename) to avoid corruption.
+
+---
+
+## Auto-revision loop
+
+With `auto_loop` enabled on the Critic, the pack closes the revision loop automatically:
+
+1. Writer generates a prompt → image is rendered → Critic scores it.
+2. If rejected, the Critic's `revision_notes` are injected into the Writer's
+   `revision_notes` widget and the workflow is re-queued.
+3. The Writer regenerates a corrected prompt, the image re-renders, the Critic re-scores.
+4. Repeats until `approved` or `max_retries` is reached (counter resets on approval).
+
+Requirements: `reuse_last_prompt` OFF on the Writer, and `revision_notes` NOT wired as a
+graph edge from Critic to Writer (the feedback is injected via the widget to avoid a
+cycle in the execution graph).
+
+---
+
+## Security
+
+External input is validated to reduce SSRF and path-traversal risk. Both guards are
+strict by default and can be relaxed with a flag if you need remote servers or paths
+outside the output folder.
+
+- **`server_url` (SSRF guard)** — only `http`/`https` and local/private hosts
+  (`localhost`, loopback, RFC-1918, link-local) are allowed. To use a remote/public
+  LM Studio server, set `ALLOW_PUBLIC_SERVER_URLS = True` in `lm_http.py`.
+- **`library_path` / `save_dir` (path-traversal guard)** — confined to the ComfyUI
+  output directory. To allow paths outside it, set `RESTRICT_PATHS_TO_OUTPUT = False`
+  in `library.py`.
+- The prompt library is written atomically (`.tmp` then rename) to avoid corruption.
+
+---
+
+## Tests
+
+Golden tests cover JSON parsing, the salvage logic, `slugify` and checkpoint-family
+detection:
+
+    pip install pytest
+    python -m pytest tests/ -v
+
+The ComfyUI-specific `folder_paths` module is stubbed in `tests/conftest.py`, so tests
+run without ComfyUI (but need `requests`, `numpy`, `pillow`).
+
+---
+
+## Typical workflow
+
+1. **Writer** generates a prompt from your idea.
+2. Prompt → your SDXL sampling graph (use **Smart Loader** + **Multi-CLIP SDXL**).
+3. Rendered image → **Critic** (vision model scores it).
+4. `approved` → **Smart Save** (saves only good images).
+5. Enable **`auto_loop`** on the Critic to refine automatically, or wire
+   `revision_notes` manually for hands-on control.
+6. Optionally save the prompt to the **library** and reload it later.
+
+---
+
+## Notes & troubleshooting
+
+- **No model in the combo?** Click **🔄 Refresh models** on the Writer/Critic, and make
+  sure the LM Studio server is running at `server_url`.
+- **Critic says the model is not vision-capable?** Pick a VL model or uncheck
+  `vision_check`.
+- **Reasoning text leaking into results?** The pack falls back to a model's
+  `reasoning_content` when the normal `content` field is empty, so thinking output can
+  end up in results. Disable thinking/reasoning for that model in LM Studio to get clean
+  output.
+- **Placeholders** like `— server unavailable —` mean the server could not be reached.
+- **Model forgets to generate some JSON fields?** Writer and Scene Builder (stage 2) detect
+  missing required fields (`positive`, `negative`, `scene_name`, and face fields when
+  requested) and automatically re-ask the model up to `max_field_retries` times for a
+  complete answer. If `scene_name` is still missing it falls back to a slug of `positive`;
+  if `positive`/`negative` are still missing the node raises an error. If your model keeps
+  omitting fields, increase `max_field_retries` or switch to a model with better instruction
+  following (the `writer_system` / `composer` prompts already require all fields).
+- Logs use Python `logging` under the `llm_prompt_studio` logger with a `[LLMPromptStudio]`
+  prefix. Lower that logger's level to DEBUG to see LLM call timings and cache activity.
