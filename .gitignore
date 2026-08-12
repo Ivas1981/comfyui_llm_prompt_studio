@@ -24,4 +24,4 @@ Thumbs.db
 __pycache__/
 
 # Runtime cache (persisted model list for the model combo)
-lmstudio_models_cache.json
+llm_prompt_studio_models_cache.json

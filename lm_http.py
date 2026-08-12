@@ -20,6 +20,7 @@ __all__ = [
     "cache_models",
     "get_cached_models",
     "cached_model_list",
+    "remember_model",
     "looks_like_vision",
     "maybe_unload_old",
     "load_model",
@@ -79,11 +80,27 @@ def _read_disk_models():
 def _persist_models(models):
     if not models or models in ([PLACEHOLDER], [PLACEHOLDER_EMPTY]):
         return
+    # Merge with the on-disk list so the cache accumulates every model that has ever
+    # been available. This keeps a saved workflow's model selectable (and valid) even
+    # when the server is offline and only a stale list is on disk.
+    existing = _read_disk_models() or []
+    merged = list(dict.fromkeys(list(existing) + list(models)))
     try:
         with open(_model_cache_path(), "w", encoding="utf-8") as f:
-            json.dump(list(models), f)
+            json.dump(merged, f)
     except OSError:
         pass
+
+
+def remember_model(model: str):
+    """Persist a single model id so it stays valid/selectable offline.
+
+    Called whenever a node actually uses a model, so a workflow reloaded after the
+    server went away still validates its previously-run model instead of ComfyUI
+    rejecting it with 'Value not in list'."""
+    if not model or model.startswith("—"):
+        return
+    _persist_models([model])
 
 
 def _load_disk_cache():
@@ -295,6 +312,9 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     not recorded as "loaded", so the next run will retry."""
     if not model or model.startswith("—"):
         return
+    # Remember this model so a saved workflow that uses it stays valid (and selectable)
+    # even when the server is offline later and the combo would otherwise be the placeholder.
+    remember_model(model)
     if _last_loaded.get(slot) == model:
         return  # already loaded for this slot — avoid a needless reload
     maybe_unload_old(slot, server_url, model)  # unloads the previous model
