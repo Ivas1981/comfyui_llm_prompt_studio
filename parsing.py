@@ -2,6 +2,12 @@
 import json
 import re
 
+__all__ = [
+    "slugify",
+    "parse_prompt_json",
+    "parse_critic_json",
+]
+
 
 def slugify(text: str, max_words: int = 6) -> str:
     words = re.findall(r"[a-zA-Z0-9]+", text.lower())

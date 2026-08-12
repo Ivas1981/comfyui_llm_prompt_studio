@@ -10,6 +10,45 @@ import {
 // ---------------------------------------------------------------------------
 // Button handlers
 // ---------------------------------------------------------------------------
+
+// Apply the refreshed model list into a cached node definition. ComfyUI stores the
+// combo values in different shapes across versions, so we try each known one and
+// update whichever holds the list. Returns true if something was patched.
+function patchDefModelList(def, models) {
+    if (!def) return false;
+    const input = def.input || def.inputs;
+    if (!input) return false;
+    const required = input.required || input.input_required || {};
+    const optional = input.optional || {};
+    const slot = required.model || optional.model;
+    if (!slot) return false;
+
+    let patched = false;
+    // Shape A (older ComfyUI): slot === [valuesArray, ...]
+    if (Array.isArray(slot[0])) {
+        slot[0] = models;
+        patched = true;
+    }
+    // Shape B (newer ComfyUI): slot === ["COMBO", { options: { values: [...] } }]
+    if (Array.isArray(slot) && slot.length > 1 && slot[1] && typeof slot[1] === "object") {
+        const cfg = slot[1];
+        if (cfg.options && Array.isArray(cfg.options.values)) {
+            cfg.options.values = models;
+            patched = true;
+        }
+        if (Array.isArray(cfg.values)) {
+            cfg.values = models;
+            patched = true;
+        }
+    }
+    // Fallback: a plain combo object exposing .values
+    if (slot.values && Array.isArray(slot.values)) {
+        slot.values = models;
+        patched = true;
+    }
+    return patched;
+}
+
 export async function refreshModels(node) {
     const server_url = getW(node, "server_url")?.value || "http://localhost:1234/v1";
     const api_key = getW(node, "api_key")?.value || "";
@@ -37,12 +76,14 @@ export async function refreshModels(node) {
     // 2) Update the cached node definitions (app.nodeDefs, fed by /object_info at page
     //    load). Without this, loading a SAVED workflow would still validate the model
     //    value against the stale placeholder list and throw "Value not in list".
+    //    ComfyUI's nodeDefs shape has changed across versions, so try several known
+    //    layouts and bail out gracefully (never throw) if none match.
     const modelNodes = ["LLMPromptStudioWriter", "LLMPromptStudioCritic", "LLMPromptStudioSceneBuilder"];
     for (const t of modelNodes) {
-        const def = app.nodeDefs && app.nodeDefs[t];
-        const slot = def && def.input && def.input.required && def.input.required.model;
-        if (slot && Array.isArray(slot[0])) {
-            slot[0] = models;
+        try {
+            patchDefModelList(app && app.nodeDefs && app.nodeDefs[t], models);
+        } catch (e) {
+            console.warn("[LLMPromptStudio] Could not refresh cached model list for", t, e);
         }
     }
 

@@ -12,6 +12,21 @@ from .constants import PLACEHOLDER, PLACEHOLDER_EMPTY
 
 logger = logging.getLogger("llm_prompt_studio")
 
+__all__ = [
+    "ALLOW_PUBLIC_SERVER_URLS",
+    "DEFAULT_SERVER",
+    "validate_server_url",
+    "fetch_models",
+    "cache_models",
+    "get_cached_models",
+    "cached_model_list",
+    "looks_like_vision",
+    "maybe_unload_old",
+    "load_model",
+    "ensure_model_loaded",
+    "chat_completion",
+]
+
 # Set to True only if you intentionally point server_url at public/remote hosts.
 ALLOW_PUBLIC_SERVER_URLS = False
 
@@ -210,13 +225,27 @@ def maybe_unload_old(slot: str, server_url: str, new_model: str):
     _last_loaded[slot] = new_model
 
 
+# HTTP status codes worth retrying: transient server hiccups / rate limits.
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def _is_transient(status, exc):
+    if exc is not None:
+        return True  # connection error / timeout — always worth a retry
+    return status in _RETRYABLE_STATUS
+
+
 def load_model(server_url: str, api_key: str, model: str,
-               context_length: int = 8192, gpu_offload: float = 1.0,
-               timeout: int = 300) -> bool:
+                context_length: int = 8192, gpu_offload: float = 1.0,
+                timeout: int = 300, retries: int = 3, backoff: float = 1.0) -> bool:
     """Load a model on the LM Studio server with the given context length / GPU offload.
 
     Returns True if the server confirmed the load (HTTP < 400). Falls back from the v1 to
-    the v0 load endpoint. GPU offload is a 0.0–1.0 fraction (1.0 = max)."""
+    the v0 load endpoint. GPU offload is a 0.0–1.0 fraction (1.0 = max).
+
+    Transient failures (HTTP 429/500/502/503/504, connection errors, timeouts) are retried
+    with exponential backoff: `retries` attempts per endpoint, pausing `backoff` seconds
+    before the 2nd try, `backoff * 2` before the 3rd, and so on."""
     server_url = validate_server_url(server_url)
     base = server_url.rstrip("/")
     body = {"contextLength": int(context_length), "gpuOffload": gpu_offload, "seed": -1}
@@ -224,16 +253,30 @@ def load_model(server_url: str, api_key: str, model: str,
     identifier = quote(model, safe="")
     last_err = None
     for path in (f"{base}/v1/models/{identifier}/load",
-                 f"{base}/api/v0/models/{identifier}/load"):
-        try:
-            resp = requests.post(path, json=body, headers=headers, timeout=timeout)
+                  f"{base}/api/v0/models/{identifier}/load"):
+        for attempt in range(retries):
+            started = time.time()
+            try:
+                resp = requests.post(path, json=body, headers=headers, timeout=timeout)
+            except requests.RequestException as e:
+                last_err = str(e)
+                if _is_transient(None, e) and attempt < retries - 1:
+                    logger.debug("Load attempt %d/%d for '%s' failed (%s); retrying",
+                                 attempt + 1, retries, model, e)
+                    time.sleep(backoff * (2 ** attempt))
+                    continue
+                break
             if resp.status_code < 400:
-                logger.info("Loaded model '%s' (context=%s, gpuOffload=%s)",
-                            model, context_length, gpu_offload)
+                logger.info("Loaded model '%s' (context=%s, gpuOffload=%s) in %.1fs",
+                            model, context_length, gpu_offload, time.time() - started)
                 return True
             last_err = f"HTTP {resp.status_code}: {resp.text[:300]}"
-        except requests.RequestException as e:
-            last_err = str(e)
+            if _is_transient(resp.status_code, None) and attempt < retries - 1:
+                logger.debug("Load attempt %d/%d for '%s' returned %d; retrying",
+                             attempt + 1, retries, model, resp.status_code)
+                time.sleep(backoff * (2 ** attempt))
+                continue
+            break  # non-retryable (e.g. 400/401/404) — try the next endpoint
     logger.warning("LM Studio could not load model '%s': %s", model, last_err)
     return False
 
@@ -252,6 +295,10 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     maybe_unload_old(slot, server_url, model)  # unloads the previous model
     if not load_model(server_url, api_key, model, context_length, gpu_offload):
         _last_loaded[slot] = None  # load failed: allow a retry on the next run
+        logger.warning(
+            "Model '%s' for slot '%s' was not loaded. The next LLM call will fail "
+            "until the model is available (check that LM Studio is running and the "
+            "model id is correct).", model, slot)
 
 
 def chat_completion(server_url, api_key, model, messages,

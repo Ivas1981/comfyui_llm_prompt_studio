@@ -15,6 +15,13 @@ FAMILY_MARKERS = {
     "flash":     ("flash",),
 }
 
+__all__ = [
+    "FAMILY_MARKERS",
+    "collect_generation_meta",
+    "read_safetensors_metadata",
+    "detect_checkpoint_family",
+]
+
 
 def collect_generation_meta(prompt, start_id):
     ckpt = ""

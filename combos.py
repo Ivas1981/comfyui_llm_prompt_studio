@@ -3,6 +3,13 @@ import folder_paths
 
 from .lm_http import cached_model_list, get_cached_models
 
+__all__ = [
+    "combo_models",
+    "combo_checkpoints",
+    "combo_loras",
+    "combo_vae",
+]
+
 
 def combo_models():
     # Non-blocking: prefer the disk-persisted model list (populated by "Refresh models"

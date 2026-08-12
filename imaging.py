@@ -5,6 +5,8 @@ import io
 import numpy as np
 from PIL import Image
 
+__all__ = ["image_to_base64"]
+
 
 def image_to_base64(image_tensor, max_size: int = 1024) -> str:
     arr = image_tensor[0].cpu().numpy()

@@ -11,6 +11,14 @@ from .parsing import slugify
 
 logger = logging.getLogger("llm_prompt_studio")
 
+__all__ = [
+    "safe_path_in_output",
+    "resolve_library_path",
+    "load_library",
+    "library_scenes",
+    "save_prompt_to_library",
+]
+
 # Set to False to allow library/save paths outside the ComfyUI output directory.
 RESTRICT_PATHS_TO_OUTPUT = True
 
