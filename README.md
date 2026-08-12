@@ -137,15 +137,17 @@ A vision model scores how well the image matches the prompt.
 - The node title shows the live score and approval status.
 
 ### LLM Prompt Studio Smart Save
-Saves approved images as JPEG with metadata in EXIF.
+Saves approved images as JPEG, optionally with metadata in EXIF.
 - **Inputs:** `image`, `approved`, `filename_prefix`, `save_dir`, `jpeg_quality`,
-  `auto_save_to_library`, `library_path`, plus optional `positive`, `negative`,
-  `scene_name`, `face_positive`, `face_negative`.
+  `auto_save_to_library`, `save_metadata_to_exif`, `library_path`, plus optional
+  `positive`, `negative`, `scene_name`, `face_positive`, `face_negative`.
 - **Outputs:** none (output node).
 - Only saves when `approved` is true. Filename:
   `[prefix_]checkpoint[_lora1_lora2...]_NNNNN.jpg` (`NNNNN` auto-increments).
-- EXIF stores prompts, face prompts, checkpoint, LoRA and sampler params (both ASCII and
-  Unicode tags).
+- EXIF (written when `save_metadata_to_exif` is on, default) stores prompts, face prompts,
+  checkpoint, LoRA and sampler params (both ASCII and Unicode tags).
+- Turn **`save_metadata_to_exif` off** to write JPEGs without any metadata — smaller files
+  and better privacy (e.g. when sharing images publicly).
 - Button **💾 Save prompt to library** writes the last saved prompt into the library.
 
 ### LLM Prompt Studio Library Loader

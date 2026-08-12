@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.0] — 2026-08-12
+
+### Added
+- **Smart Save `save_metadata_to_exif` toggle** (default `True`). When off, approved
+  images are saved as JPEG **without** any EXIF metadata (prompts, model, LoRA, params) —
+  smaller files and better privacy when sharing images. EXIF is still written by default.
+
+---
+
 ## [0.7.3] — 2026-08-10
 
 ### Added

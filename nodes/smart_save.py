@@ -16,8 +16,10 @@ def _slug_part(name, max_len=40):
 
 
 class LLMPromptStudioSmartSave:
-    """JPEG q95 + EXIF (prompts, face prompts, model, LoRA, params) + preview.
-    Filename: [prefix_]checkpoint[_lora1_lora2...]_NNNNN.jpg. Prompt to library via button."""
+    """JPEG q95 + optional EXIF (prompts, face prompts, model, LoRA, params) + preview.
+    Filename: [prefix_]checkpoint[_lora1_lora2...]_NNNNN.jpg. Prompt to library via button.
+    Set `save_metadata_to_exif=False` to write JPEGs without metadata (smaller files,
+    better privacy)."""
     CATEGORY = "LLM Prompt Studio"
     FUNCTION = "save"
     OUTPUT_NODE = True
@@ -33,6 +35,7 @@ class LLMPromptStudioSmartSave:
                 "save_dir": ("STRING", {"default": ""}),
                 "jpeg_quality": ("INT", {"default": 95, "min": 1, "max": 100}),
                 "auto_save_to_library": ("BOOLEAN", {"default": False}),
+                "save_metadata_to_exif": ("BOOLEAN", {"default": True}),
                 "library_path": ("STRING", {"default": "llm_prompt_studio_library.json"}),
             },
             "optional": {
@@ -46,7 +49,7 @@ class LLMPromptStudioSmartSave:
         }
 
     def save(self, image, approved, filename_prefix, save_dir, jpeg_quality,
-             auto_save_to_library, library_path,
+             auto_save_to_library, save_metadata_to_exif=True, library_path,
              positive="", negative="", scene_name="",
              face_positive="", face_negative="",
              unique_id=None, prompt=None):
@@ -83,7 +86,7 @@ class LLMPromptStudioSmartSave:
         if gen:
             lines.append("Params: " + ", ".join(f"{k}={v}" for k, v in gen.items()))
         exif = None
-        if lines:
+        if save_metadata_to_exif and lines:
             text = "\n".join(lines)
             exif = Image.Exif()
             exif[0x010E] = text.encode("ascii", "replace").decode("ascii")
