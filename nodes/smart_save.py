@@ -49,7 +49,7 @@ class LLMPromptStudioSmartSave:
         }
 
     def save(self, image, approved, filename_prefix, save_dir, jpeg_quality,
-             auto_save_to_library, save_metadata_to_exif=True, library_path,
+             auto_save_to_library, library_path, save_metadata_to_exif=True,
              positive="", negative="", scene_name="",
              face_positive="", face_negative="",
              unique_id=None, prompt=None):
