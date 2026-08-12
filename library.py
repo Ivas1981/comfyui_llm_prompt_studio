@@ -60,10 +60,13 @@ def library_scenes(library_path: str = "") -> list:
 
 
 def save_prompt_to_library(library_path: str, scene_name: str,
-                           positive: str, negative: str,
-                           face_positive: str = "", face_negative: str = ""):
+                            positive: str, negative: str,
+                            face_positive: str = "", face_negative: str = ""):
     """Appends a prompt to the JSON library with duplicate check.
     Returns (name, added): added=False if the same positive already exists."""
+    # Defense in depth: the callers already resolve via resolve_library_path(), but this
+    # function must never write outside the output directory on its own.
+    library_path = safe_path_in_output(library_path)
     parent = os.path.dirname(library_path)
     if parent:
         os.makedirs(parent, exist_ok=True)

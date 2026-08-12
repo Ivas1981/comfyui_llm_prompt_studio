@@ -19,7 +19,11 @@ def _ok_response(status=200, text="{}"):
     resp = MagicMock()
     resp.status_code = status
     resp.text = text
-    resp.json.return_value = json.loads(text) if text.strip() else {}
+    try:
+        resp.json.return_value = json.loads(text) if text.strip() else {}
+    except ValueError:
+        # Mirror a real requests.Response: .json() raises when the body isn't JSON.
+        resp.json.side_effect = ValueError("No JSON could be decoded")
     resp.headers = {"Content-Type": "application/json"}
     resp.ok = status < 400
     resp.status = status
@@ -168,3 +172,14 @@ def test_ensure_model_loaded_nulls_state_on_failure(caplog):
     # Failure leaves state as None so the next run will retry; warning is logged.
     assert lm_http._last_loaded["s"] is None
     assert "was not loaded" in caplog.text
+
+
+def test_get_cached_models_fetches_when_empty():
+    # When the cache is empty and fetching is allowed, a running server populates the list
+    # (so a saved workflow validates without a manual Refresh). Uses a non-default key to
+    # avoid perturbing the default-server static-key state.
+    url = "http://127.0.0.1:9999/v1"
+    resp = _ok_response(text=json.dumps({"data": [{"id": "real-model"}]}))
+    with patch("requests.get", return_value=resp):
+        models = lm_http.get_cached_models(url, "", allow_fetch=True, timeout=1)
+    assert models == ["real-model"]

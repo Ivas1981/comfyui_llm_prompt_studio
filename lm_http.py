@@ -193,15 +193,16 @@ def cache_models(server_url: str, api_key: str, models: list):
     if models:
         key = (server_url, api_key)
         _store_model_cache(key, list(models))
-        # Only persist for the default-server key used by combo_models(); persisting a
-        # custom server's models under the default key would overwrite the real
-        # default-server list and poison INPUT_TYPES on the next start.
-        if key == (DEFAULT_SERVER, ""):
-            _persist_models(models)
-            _static_keys.add(key)
+        # Always persist to the default-server cache that combo_models() reads. combo_models()
+        # is keyed to DEFAULT_SERVER regardless of the node's server_url, so persisting the
+        # refreshed list here (even for a custom server_url) keeps the server-side INPUT_TYPES
+        # combo populated. This is what lets a queued prompt pass "Value not in list" validation
+        # without a ComfyUI restart after a Refresh.
+        _persist_models(models)
+        _static_keys.add((DEFAULT_SERVER, ""))
 
 
-def get_cached_models(server_url=DEFAULT_SERVER, api_key="", allow_fetch=True):
+def get_cached_models(server_url=DEFAULT_SERVER, api_key="", allow_fetch=True, timeout=5):
     key = (server_url, api_key)
     cached = _model_cache.get(key)
     # Fresh cache within TTL — return it
@@ -210,13 +211,18 @@ def get_cached_models(server_url=DEFAULT_SERVER, api_key="", allow_fetch=True):
     # Disk-backed / default list: never auto-refetch; Refresh is the source of truth.
     # This lets INPUT_TYPES return the previously known models without hitting the network.
     if key in _static_keys:
-        return list(cached[0]) if cached else [PLACEHOLDER]
+        if cached:
+            return list(cached[0])
+        # In-memory entry evicted (LRU) but the list is still "known": re-read disk
+        # instead of falling back to the unavailable placeholder.
+        disk = _read_disk_models()
+        return list(disk) if disk else [PLACEHOLDER]
     # Expired cache — try to re-fetch, fall back to stale only on error
     if cached:
         if not allow_fetch:
             return list(cached[0])
         try:
-            models = fetch_models(server_url, api_key) or [PLACEHOLDER_EMPTY]
+            models = fetch_models(server_url, api_key, timeout=timeout) or [PLACEHOLDER_EMPTY]
             _store_model_cache(key, models)
             if key == (DEFAULT_SERVER, ""):
                 _persist_models(models)
@@ -227,13 +233,16 @@ def get_cached_models(server_url=DEFAULT_SERVER, api_key="", allow_fetch=True):
     # No cache at all — fetch or signal unavailable
     if allow_fetch:
         try:
-            models = fetch_models(server_url, api_key) or [PLACEHOLDER_EMPTY]
+            models = fetch_models(server_url, api_key, timeout=timeout) or [PLACEHOLDER_EMPTY]
             _store_model_cache(key, models)
             if key == (DEFAULT_SERVER, ""):
                 _persist_models(models)
                 _static_keys.add(key)
             return models
         except Exception:
+            # Negative-cache the failure so we don't block on every INPUT_TYPES call while
+            # the server is down; it expires with CACHE_TTL and a manual Refresh still works.
+            _store_model_cache(key, [PLACEHOLDER])
             return [PLACEHOLDER]
     return [PLACEHOLDER]
 

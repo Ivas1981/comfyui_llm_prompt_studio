@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.1] — 2026-08-13
+
+### Fixed
+- **Pack loaded zero nodes**: `nodes/writer.py` and `nodes/scene_builder.py` had been
+  committed as unified-diff text instead of Python, so the package import failed and every
+  node silently disappeared. Restored the real sources and re-applied the intended
+  merge-user-messages helper.
+- **Scene Builder no-negative mode**: stage 2 always switched to the no-negative composer
+  whenever the composer widget was left at its default, even in `standard` mode — producing
+  an empty `negative` that then failed `require_negative` validation. It now mirrors the
+  Writer and only uses the no-negative composer in no-negative mode.
+- **Server-side "Value not in list" on queue**: `combo_models()` now fetches the model list
+  when the cache is empty, and `cache_models()` always persists the refreshed list to the
+  default on-disk cache that `combo_models()` reads, so a queued prompt validates without a
+  manual Refresh first. (The cache could otherwise stay empty or get polluted, e.g. `['m']`.)
+- **Model-cache persistence**: `cache_models()` only persisted when the refresh used the
+  exact default `server_url`; a custom `server_url` left the combo empty. It now always
+  persists to the default cache.
+- **Tests**: `conftest.py` no longer writes the on-disk model cache (stubbed), so test runs
+  can't poison the real cache file.
+
+### Changed
+- **`combo_models()`** no longer blocks the UI while building a node; when the on-disk model
+  cache is empty it does a best-effort fetch (short timeout) so a running LM Studio populates
+  the combo automatically, and the **🔄 Refresh models** button remains the explicit
+  population path.
+
+---
+
 ## [0.9.0] — 2026-08-12
 
 ### Added
@@ -30,13 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   parameters (defaults preserve prior behavior). Face fields are no longer treated as
   "missing" (the prompts allow empty `face_positive`/`face_negative` when no face is
   present), eliminating needless field-retries.
-- **`combo_models()`** no longer performs a network request while building a node
-  (`allow_fetch=False`); the **Refresh models** button remains the population path.
-- **`cache_models()`** only persists the default-server model list, fixing cache
-  contamination when a custom `server_url` was refreshed.
 - **Prompt library dedupe** now considers both `positive` and `negative`.
 - **Writer cache key** includes `prompt_mode` + `family`, so `reuse_last_prompt` never
   returns a result from a different mode.
+- **`combo_models()`** no longer blocks the UI while building a node; the **🔄 Refresh
+  models** button remains the explicit population path (see 0.9.1 for the on-empty-cache
+  fetch).
 
 ---
 
