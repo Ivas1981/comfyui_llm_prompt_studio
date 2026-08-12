@@ -27,14 +27,14 @@ __all__ = [
     "chat_completion",
 ]
 
-# Set to True only if you intentionally point server_url at public/remote hosts.
-ALLOW_PUBLIC_SERVER_URLS = False
+# Read allow-public flag from environment for runtime configuration.
+ALLOW_PUBLIC_SERVER_URLS = os.getenv("LLM_PROMPT_STUDIO_ALLOW_PUBLIC", "False").lower() in ("1", "true", "yes")
 
 # cache "last loaded model" to unload the old one on switch: {slot: model_id}
 _last_loaded = {}
 # cache of model lists: {(server_url, api_key): (models, timestamp)}
 _model_cache = {}
-CACHE_TTL = 10  # seconds
+CACHE_TTL = 60  # seconds (was 10)
 _MODEL_CACHE_MAX = 32
 
 DEFAULT_SERVER = "http://localhost:1234/v1"
@@ -59,7 +59,8 @@ def _read_disk_models():
         import folder_paths
         candidates.append(os.path.join(folder_paths.get_output_directory(),
                                         "llm_prompt_studio_models_cache.json"))
-    except Exception:
+    except ImportError:
+        # folder_paths not available outside ComfyUI — it's fine, we skip the old path.
         pass
     for path in candidates:
         try:
@@ -137,12 +138,13 @@ def validate_server_url(url: str) -> str:
     except ValueError:
         raise ValueError(
             f"server_url host '{host}' is not a local address. "
-            "Set ALLOW_PUBLIC_SERVER_URLS=True in lm_http.py to allow remote hosts.")
+            "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow remote hosts.")
     if ip.is_loopback or ip.is_private or ip.is_link_local:
         return url
     raise ValueError(
         f"server_url host '{host}' is public. "
-        "Set ALLOW_PUBLIC_SERVER_URLS=True in lm_http.py to allow it.")
+        "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow it."
+    )
 
 
 def fetch_models(server_url: str, api_key: str = "", timeout: int = 5) -> list:
@@ -301,10 +303,44 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
             "model id is correct).", model, slot)
 
 
+def _serialize_message_content(content):
+    """Convert message content that may be a list (multimodal parts) into a plain text string
+    acceptable to OpenAI-style chat/completions endpoints.
+
+    Strategy: join text parts; for image_url parts include the URL (data URL is preserved).
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        out = []
+        for part in content:
+            if not isinstance(part, dict):
+                out.append(str(part))
+                continue
+            typ = part.get("type")
+            if typ == "text":
+                out.append(part.get("text", ""))
+            elif typ == "image_url":
+                img = part.get("image_url", {})
+                url = img.get("url") if isinstance(img, dict) else None
+                out.append(f"[Image: {url}]")
+            else:
+                out.append(str(part))
+        return "\n".join([s for s in out if s])
+    return str(content)
+
+
 def chat_completion(server_url, api_key, model, messages,
                     temperature, max_tokens, timeout=600, seed=None) -> str:
     server_url = validate_server_url(server_url)
-    body = {"model": model, "messages": messages,
+    # Build a request body with serialized/fallback message contents where necessary
+    body_messages = []
+    for m in messages:
+        m_copy = dict(m)
+        m_copy["content"] = _serialize_message_content(m.get("content", ""))
+        body_messages.append(m_copy)
+
+    body = {"model": model, "messages": body_messages,
             "temperature": temperature, "max_tokens": max_tokens}
     if seed is not None:
         body["seed"] = seed
@@ -319,10 +355,12 @@ def chat_completion(server_url, api_key, model, messages,
         logger.error("Could not reach LM Studio (%s): %s", server_url, e)
         raise RuntimeError(f"Could not reach LM Studio ({server_url}): {e}")
     if resp.status_code >= 400:
-        logger.error("LM Studio HTTP %s for model '%s'", resp.status_code, model)
+        txt = resp.text or ""
+        snippet = txt[:1000] if len(txt) > 1000 else txt
+        logger.error("LM Studio HTTP %s for model '%s': %s", resp.status_code, snippet)
         raise RuntimeError(
             f"LM Studio returned HTTP {resp.status_code} for model '{model}': "
-            f"{resp.text[:1000]}")
+            f"{snippet}")
     msg = resp.json()["choices"][0]["message"]
     content = msg.get("content") or ""
     if not content.strip():
