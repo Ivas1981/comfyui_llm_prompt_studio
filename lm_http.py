@@ -333,14 +333,9 @@ def _serialize_message_content(content):
 def chat_completion(server_url, api_key, model, messages,
                     temperature, max_tokens, timeout=600, seed=None) -> str:
     server_url = validate_server_url(server_url)
-    # Build a request body with serialized/fallback message contents where necessary
-    body_messages = []
-    for m in messages:
-        m_copy = dict(m)
-        m_copy["content"] = _serialize_message_content(m.get("content", ""))
-        body_messages.append(m_copy)
-
-    body = {"model": model, "messages": body_messages,
+    # Send the messages exactly as given — including multimodal (image_url) content, which
+    # OpenAI-compatible servers expect in the request body. Serialize only for the debug log.
+    body = {"model": model, "messages": messages,
             "temperature": temperature, "max_tokens": max_tokens}
     if seed is not None:
         body["seed"] = seed
@@ -365,6 +360,8 @@ def chat_completion(server_url, api_key, model, messages,
     content = msg.get("content") or ""
     if not content.strip():
         content = msg.get("reasoning_content") or msg.get("reasoning") or ""
-    logger.debug("LLM call to '%s' completed in %.1fs (%d chars)",
-                 model, time.time() - started, len(content))
+    last = messages[-1].get("content", "") if messages else ""
+    logger.debug("LLM call to '%s' completed in %.1fs (%d chars): %s",
+                 model, time.time() - started, len(content),
+                 _serialize_message_content(last))
     return content

@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `slugify(positive)`, and empty `positive`/`negative` raise a clear error.
 - `parsing.find_missing_fields()` helper for detecting empty critical JSON fields.
 
+### Fixed
+- **Vision regression in `chat_completion`**: multimodal message content (the image sent to
+  Critic / Scene Builder) was being serialized into the request body, dropping the actual
+  image. Messages are now sent as-is; serialization is used only for the debug log.
+- **Dependency pins relaxed** in `requirements.txt` (`numpy`/`Pillow` no longer capped) so the
+  pack installs on Python 3.13/3.14 and modern ComfyUI (numpy 2.x). Package version bumped to
+  0.8.0 to match the changelog.
+
 ---
 
 ## [0.7.3] — 2026-08-10
