@@ -1,13 +1,21 @@
+import logging
+
 from ..combos import combo_models
 from ..imaging import image_to_base64
 from ..lm_http import chat_completion, ensure_model_loaded, looks_like_vision
-from ..parsing import parse_prompt_json
+from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ._defaults import DEFAULT_COMPOSER, DEFAULT_DESCRIBE
+
+logger = logging.getLogger("llm_prompt_studio")
 
 
 class LLMPromptStudioSceneBuilder:
     """Two-stage scene builder: image description, then prompt generation from it.
-    Stage is selected with the stage switch: '1 - describe' or '2 - compose'."""
+    Stage is selected with the stage switch: '1 - describe' or '2 - compose'.
+
+    In stage 2, if the model returns JSON missing required fields, the node re-asks it up
+    to `max_field_retries` times for a complete answer; an empty `scene_name` falls back to
+    `slugify(positive)`, and empty `positive`/`negative` raise an error."""
     CATEGORY = "LLM Prompt Studio"
     FUNCTION = "execute"
 
@@ -30,8 +38,9 @@ class LLMPromptStudioSceneBuilder:
                 "image_max_size": ("INT", {"default": 1024, "min": 256,
                                            "max": 2048, "step": 64}),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0,
-                                          "max": 2.0, "step": 0.05}),
+                                           "max": 2.0, "step": 0.05}),
                 "max_tokens": ("INT", {"default": 1024, "min": 64, "max": 8192}),
+                "max_field_retries": ("INT", {"default": 2, "min": 0, "max": 5}),
                 "vision_check": ("BOOLEAN", {"default": True}),
                 "description_view": ("STRING", {"multiline": True, "default": ""}),
             }
@@ -42,7 +51,7 @@ class LLMPromptStudioSceneBuilder:
 
     def execute(self, stage, image, server_url, api_key, model, context_length, gpu_offload,
                  describe_prompt, composer_prompt, user_changes, image_max_size, temperature,
-                 max_tokens, vision_check=True, description_view=""):
+                 max_tokens, max_field_retries=2, vision_check=True, description_view=""):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -92,8 +101,37 @@ class LLMPromptStudioSceneBuilder:
             {"role": "user", "content": user_text},
         ]
         raw = chat_completion(server_url, api_key, model, messages,
-                              temperature, max_tokens)
-        positive, negative, scene_name, _fp, _fn = parse_prompt_json(raw)
+                               temperature, max_tokens)
+        parsed = parse_prompt_json(raw)
+
+        # Field-retry: if the model omitted required JSON fields, re-ask it (up to
+        # max_field_retries times) for a complete answer before falling back.
+        attempt = 0
+        while attempt < max_field_retries:
+            missing = find_missing_fields(parsed, require_face=False)
+            if not missing:
+                break
+            attempt += 1
+            logger.info("Scene Builder field retry %d/%d: missing %s",
+                        attempt, max_field_retries, ", ".join(missing))
+            messages.append({"role": "user", "content":
+                f"You omitted the required JSON field(s): {', '.join(missing)}. "
+                f"Respond again with a COMPLETE JSON object containing ALL required fields."})
+            raw_new = chat_completion(server_url, api_key, model, messages,
+                                      temperature, max_tokens)
+            raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
+                   f"missing {', '.join(missing)}]\n{raw_new}")
+            parsed = parse_prompt_json(raw_new)
+
+        positive, negative, scene_name, _fp, _fn = parsed
+
+        if not positive.strip() or not negative.strip():
+            raise RuntimeError(
+                f"Model failed to produce a required positive/negative prompt after "
+                f"{max_field_retries} field-retry attempt(s). Try a model with better "
+                "instruction following, or lower max_field_retries and edit manually.")
+        if not scene_name.strip():
+            scene_name = slugify(positive)
 
         return {"ui": {"prompt_view": [positive]},
                 "result": (positive, negative, scene_name, positive, "")}

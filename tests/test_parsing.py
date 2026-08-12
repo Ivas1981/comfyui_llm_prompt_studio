@@ -1,7 +1,7 @@
 import json
 
-from parsing import (_iter_brace_objects, _salvage_partial_prompt, parse_critic_json,
-                      parse_prompt_json, slugify)
+from parsing import (_iter_brace_objects, _salvage_partial_prompt, find_missing_fields,
+                       parse_critic_json, parse_prompt_json, slugify)
 from model_meta import detect_checkpoint_family
 
 
@@ -103,3 +103,20 @@ def test_detect_family_from_name():
     assert detect_checkpoint_family("model_lcm.safetensors") == "lcm"
     assert detect_checkpoint_family("model_turbo_xl.safetensors") == "turbo"
     assert detect_checkpoint_family("plain_model.safetensors") == "base"
+
+
+def test_find_missing_fields_all_present():
+    parsed = ("a", "b", "scene", "fp", "fn")
+    assert find_missing_fields(parsed) == []
+    assert find_missing_fields(parsed, require_face=True) == []
+
+
+def test_find_missing_fields_empty_scene_name():
+    parsed = ("a", "b", "", "fp", "fn")
+    assert find_missing_fields(parsed) == ["scene_name"]
+
+
+def test_find_missing_fields_face_only_when_required():
+    parsed = ("a", "b", "scene", "", "")
+    assert find_missing_fields(parsed) == []
+    assert find_missing_fields(parsed, require_face=True) == ["face_positive", "face_negative"]

@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   fields (`positive`, `negative`, `scene_name`, and `face_positive`/`face_negative` when
   face prompts are requested), reducing the rate of incomplete answers from the model.
 
+### Added
+- **Field-retry mechanism for incomplete JSON answers** in the Writer and Scene Builder
+  (stage 2), via a new `max_field_retries` widget (default 2). If the model omits required
+  fields, the node re-asks for a complete answer; an empty `scene_name` falls back to
+  `slugify(positive)`, and empty `positive`/`negative` raise a clear error.
+- `parsing.find_missing_fields()` helper for detecting empty critical JSON fields.
+
 ---
 
 ## [0.7.3] — 2026-08-10

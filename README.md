@@ -108,7 +108,7 @@ All nodes live under the **`LLM Prompt Studio`** category.
 Generates an SDXL prompt from an idea.
   - **Inputs:** `server_url`, `api_key`, `model`, `context_length`, `gpu_offload`,
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
-    `reuse_last_prompt`, `generate_face_prompts`, `face_prompt_instruction`.
+    `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`, `face_prompt_instruction`.
   - Loads the selected model on the LM Studio server **on demand** (via the load API) using
     `context_length` (default 8192) and `gpu_offload` (1.0 = max GPU), and unloads the
     previously loaded model for this node type when you switch. You no longer need to pre-load
@@ -122,6 +122,10 @@ Generates an SDXL prompt from an idea.
   re-render without re-generating the prompt). Note: turn it OFF for the auto-revision
   loop to work.
 - **`seed`** is forwarded to the LLM request (for servers that honor it).
+- **`max_field_retries`** (default 2): if the model returns a JSON answer missing required
+  fields, the node re-asks it for a complete answer up to this many times. An empty
+  `scene_name` then falls back to a slug of `positive`; empty `positive`/`negative` raise
+  an error.
 - Button **🔄 Refresh models** re-reads the model list from the server.
 
 ### LLM Prompt Studio Image Critic
@@ -161,9 +165,12 @@ Two-stage scene construction from an image.
   - **Inputs:** `stage` (`1 - describe` / `2 - compose`), `image`, `server_url`,
     `api_key`, `model`, `context_length`, `gpu_offload`, `describe_prompt`,
     `composer_prompt`, `user_changes`, `image_max_size`, `temperature`, `max_tokens`,
-    `vision_check`, `description_view`.
+    `max_field_retries`, `vision_check`, `description_view`.
 - **Outputs:** `positive`, `negative`, `scene_name`, `prompt_view`, `description`.
   Stage 1 puts the vision description into `description`; stage 2 composes the prompt.
+- **`max_field_retries`** (default 2): in stage 2, if the model's JSON omits required
+  fields, the node re-asks for a complete answer; an empty `scene_name` falls back to a
+  slug of `positive`.
 - Button **→ Send to Writer** copies the description/prompt into a Writer's `idea`.
 
 ### LLM Prompt Studio Smart Loader
@@ -290,5 +297,12 @@ run without ComfyUI (but need `requests`, `numpy`, `pillow`).
     end up in results. Disable thinking/reasoning for that model in LM Studio to get clean
     output.
 - **Placeholders** like `— server unavailable —` mean the server could not be reached.
+- **Model forgets to generate some JSON fields?** Writer and Scene Builder (stage 2) detect
+  missing required fields (`positive`, `negative`, `scene_name`, and face fields when
+  requested) and automatically re-ask the model up to `max_field_retries` times for a
+  complete answer. If `scene_name` is still missing it falls back to a slug of `positive`;
+  if `positive`/`negative` are still missing the node raises an error. If your model keeps
+  omitting fields, increase `max_field_retries` or switch to a model with better instruction
+  following (the `writer_system` / `composer` prompts already require all fields).
 - Logs use Python `logging` under the `llm_prompt_studio` logger with a `[LLMPromptStudio]`
   prefix. Lower that logger's level to DEBUG to see LLM call timings and cache activity.

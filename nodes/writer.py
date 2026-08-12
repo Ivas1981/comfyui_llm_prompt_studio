@@ -1,7 +1,11 @@
+import logging
+
 from ..combos import combo_models
 from ..lm_http import chat_completion, ensure_model_loaded
-from ..parsing import parse_prompt_json
+from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ._defaults import DEFAULT_SYSTEM, FACE_PROMPT_INSTRUCTION
+
+logger = logging.getLogger("llm_prompt_studio")
 
 # Cache of the last generated prompt per node instance: {unique_id: result_tuple}
 _PROMPT_CACHE_MAX = 128
@@ -9,6 +13,12 @@ _prompt_cache = {}
 
 
 class LLMPromptStudioWriter:
+    """Generates an SDXL prompt from an idea.
+
+    If the model returns a JSON answer missing required fields, the node re-asks it up to
+    `max_field_retries` times for a complete answer. Empty `positive`/`negative` after
+    retries raise an error; an empty `scene_name` falls back to `slugify(positive)`; empty
+    face fields fall back to the main prompts."""
     CATEGORY = "LLM Prompt Studio"
 
     @classmethod
@@ -29,6 +39,7 @@ class LLMPromptStudioWriter:
                                  "control_after_generate": True}),
                 "reuse_last_prompt": ("BOOLEAN", {"default": False}),
                 "generate_face_prompts": ("BOOLEAN", {"default": False}),
+                "max_field_retries": ("INT", {"default": 2, "min": 0, "max": 5}),
                 "face_prompt_instruction": ("STRING", {"multiline": True,
                                                         "default": FACE_PROMPT_INSTRUCTION}),
             },
@@ -43,7 +54,7 @@ class LLMPromptStudioWriter:
     def execute(self, server_url, api_key, model, context_length, gpu_offload, system_prompt, idea,
                  revision_notes, temperature, max_tokens, seed,
                  reuse_last_prompt=False, generate_face_prompts=False,
-                 face_prompt_instruction="", unique_id=None):
+                 max_field_retries=2, face_prompt_instruction="", unique_id=None):
         # Reuse mode: return cached result without calling the LLM
         if reuse_last_prompt:
             cached = _prompt_cache.get(unique_id)
@@ -79,8 +90,37 @@ class LLMPromptStudioWriter:
             )})
 
         raw = chat_completion(server_url, api_key, model, messages,
-                              temperature, max_tokens, seed=seed)
-        positive, negative, scene_name, face_positive, face_negative = parse_prompt_json(raw)
+                               temperature, max_tokens, seed=seed)
+        parsed = parse_prompt_json(raw)
+
+        # Field-retry: if the model omitted required JSON fields, re-ask it (up to
+        # max_field_retries times) for a complete answer before falling back.
+        attempt = 0
+        while attempt < max_field_retries:
+            missing = find_missing_fields(parsed, require_face=generate_face_prompts)
+            if not missing:
+                break
+            attempt += 1
+            logger.info("Field retry %d/%d for node %s: missing %s",
+                        attempt, max_field_retries, unique_id, ", ".join(missing))
+            messages.append({"role": "user", "content":
+                f"You omitted the required JSON field(s): {', '.join(missing)}. "
+                f"Respond again with a COMPLETE JSON object containing ALL required fields."})
+            raw_new = chat_completion(server_url, api_key, model, messages,
+                                      temperature, max_tokens, seed=seed)
+            raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
+                   f"missing {', '.join(missing)}]\n{raw_new}")
+            parsed = parse_prompt_json(raw_new)
+
+        positive, negative, scene_name, face_positive, face_negative = parsed
+
+        if not positive.strip() or not negative.strip():
+            raise RuntimeError(
+                f"Model failed to produce a required positive/negative prompt after "
+                f"{max_field_retries} field-retry attempt(s). Try a model with better "
+                "instruction following, or lower max_field_retries and edit manually.")
+        if not scene_name.strip():
+            scene_name = slugify(positive)
 
         # Fallback: if face prompts were not generated, the regular prompts go to their outputs
         if not face_positive:
