@@ -374,8 +374,9 @@ def chat_completion(server_url, api_key, model, messages,
         raise RuntimeError(f"Could not reach LM Studio ({server_url}): {e}")
     if resp.status_code >= 400:
         txt = resp.text or ""
+        #...
         snippet = txt[:1000] if len(txt) > 1000 else txt
-        logger.error("LM Studio HTTP %s for model '%s': %s", resp.status_code, snippet)
+        logger.error("LM Studio HTTP %s for model '%s': %s", resp.status_code, model, snippet)
         raise RuntimeError(
             f"LM Studio returned HTTP {resp.status_code} for model '{model}': "
             f"{snippet}")
