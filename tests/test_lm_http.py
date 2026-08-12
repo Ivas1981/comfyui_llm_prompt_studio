@@ -19,10 +19,15 @@ def _ok_response(status=200, text="{}"):
     resp = MagicMock()
     resp.status_code = status
     resp.text = text
+    resp.json.return_value = json.loads(text) if text.strip() else {}
+    resp.headers = {"Content-Type": "application/json"}
+    resp.ok = status < 400
+    resp.status = status
     return resp
 
 
 import pytest  # noqa: E402
+import json  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -46,12 +51,39 @@ def test_validate_server_url_rejects_public():
 
 
 def test_fetch_models_returns_ids():
-    resp = _ok_response()
-    resp.json.return_value = {"data": [{"id": "a"}, {"id": "b"}]}
+    resp = _ok_response(text=json.dumps({"data": [{"id": "a"}, {"id": "b"}]}))
     with patch("requests.get", return_value=resp) as get:
         models = lm_http.fetch_models(LOCAL_V1)
     assert models == ["a", "b"]
     get.assert_called_once()
+
+
+def test_fetch_models_handles_nonjson():
+    resp = _ok_response(text="<html>error</html>")
+    resp.json.side_effect = ValueError("No JSON")
+    with patch("requests.get", return_value=resp):
+        with pytest.raises(RuntimeError):
+            lm_http.fetch_models(LOCAL_V1)
+
+
+def test_chat_completion_handles_nonjson_response():
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.text = "<html>something went wrong</html>"
+    resp.json.side_effect = ValueError("No JSON")
+    with patch("requests.post", return_value=resp):
+        with pytest.raises(RuntimeError):
+            lm_http.chat_completion(LOCAL_V1, "", "m", [], 0.7, 100)
+
+
+def test_chat_completion_handles_missing_choices():
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.text = json.dumps({"ok": True})
+    resp.json.return_value = {"ok": True}
+    with patch("requests.post", return_value=resp):
+        with pytest.raises(RuntimeError):
+            lm_http.chat_completion(LOCAL_V1, "", "m", [], 0.7, 100)
 
 
 def test_load_model_success_v1():
