@@ -67,7 +67,7 @@ class LLMPromptStudioCritic:
         raw = chat_completion(server_url, api_key, model, messages,
                               temperature, max_tokens)
         score, verdict, notes = parse_critic_json(raw)
-        approved = 0 <= score and score >= threshold
+        approved = score >= threshold
 
         return {
             "ui": {

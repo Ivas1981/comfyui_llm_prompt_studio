@@ -77,7 +77,9 @@ def save_prompt_to_library(library_path: str, scene_name: str,
         except (json.JSONDecodeError, OSError):
             entries = []
     for e in entries:
-        if isinstance(e, dict) and str(e.get("prompt", "")).strip() == positive.strip():
+        if isinstance(e, dict) and \
+                str(e.get("prompt", "")).strip() == positive.strip() and \
+                str(e.get("negative_prompt", "")).strip() == negative.strip():
             return str(e.get("name", "")), False
     max_idx = 0
     for e in entries:

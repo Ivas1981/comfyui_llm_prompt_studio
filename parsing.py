@@ -121,7 +121,7 @@ def parse_critic_json(text: str):
     obj = _extract_json_dict(text, "score")
     if obj:
         try:
-            score = int(obj.get("score", -1))
+            score = round(float(obj.get("score", -1)))
         except (TypeError, ValueError):
             score = -1
         return score, str(obj.get("verdict", "")), str(obj.get("revision_notes", ""))
@@ -131,21 +131,25 @@ def parse_critic_json(text: str):
     return -1, "", ""
 
 
-def find_missing_fields(parsed_tuple, require_face: bool = False):
+def find_missing_fields(parsed_tuple, require_face: bool = False,
+                        require_negative: bool = True,
+                        require_face_negative: bool = True):
     """Return the names of empty critical fields in a `parse_prompt_json` tuple.
 
     `parsed_tuple` is (positive, negative, scene_name, face_positive, face_negative).
-    `positive`, `negative` and `scene_name` are always critical; `face_positive` and
-    `face_negative` are added only when `require_face` is True."""
-    positive, negative, scene_name, face_positive, face_negative = parsed_tuple
-    critical = ["positive", "negative", "scene_name"]
-    if require_face:
-        critical += ["face_positive", "face_negative"]
+    `positive` and `scene_name` are always critical. `negative` is critical when
+    `require_negative` is True. `require_face`/`require_face_negative` are accepted for API
+    compatibility but face fields are intentionally NOT treated as missing: the prompts
+    explicitly allow empty `face_positive`/`face_negative` when no face is present, and
+    empty-vs-absent is indistinguishable after JSON parsing, so retrying on them is futile
+    (the Writer/Scene Builder fall back to the main prompts instead)."""
+    positive, negative, scene_name, _fp, _fn = parsed_tuple
+    critical = ["positive", "scene_name"]
+    if require_negative:
+        critical.append("negative")
     values = {
         "positive": positive,
         "negative": negative,
         "scene_name": scene_name,
-        "face_positive": face_positive,
-        "face_negative": face_negative,
     }
     return [name for name in critical if not str(values[name]).strip()]
