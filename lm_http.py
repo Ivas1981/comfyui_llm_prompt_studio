@@ -169,8 +169,18 @@ def fetch_models(server_url: str, api_key: str = "", timeout: int = 5) -> list:
     resp = requests.get(f"{server_url.rstrip('/')}/models",
                         headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
                         timeout=timeout)
-    resp.raise_for_status()
-    return [m["id"] for m in resp.json().get("data", [])]
+    try:
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        logger.error("Failed to fetch models from %s: %s", server_url, e)
+        raise
+    try:
+        data = resp.json()
+    except ValueError:
+        snippet = (resp.text or '')[:1000]
+        logger.error("Invalid JSON returned by %s: %s", server_url, snippet)
+        raise RuntimeError(f"Invalid JSON from model server {server_url}: {snippet}")
+    return [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
 
 
 def _store_model_cache(key, models):
@@ -239,7 +249,7 @@ def maybe_unload_old(slot: str, server_url: str, new_model: str):
         try:
             base = server_url.rstrip("/")
             if base.endswith("/v1"):
-                base = base[:-3]
+                base = base[:-3].rstrip("/")
             requests.post(f"{base}/api/v0/models/unload", json={"model": old}, timeout=5)
             logger.debug("Requested unload of previous model '%s'", old)
         except requests.RequestException as e:
@@ -380,7 +390,23 @@ def chat_completion(server_url, api_key, model, messages,
         raise RuntimeError(
             f"LM Studio returned HTTP {resp.status_code} for model '{model}': "
             f"{snippet}")
-    msg = resp.json()["choices"][0]["message"]
+    # Defensive JSON handling: avoid KeyError/IndexError when server returns unexpected body
+    try:
+        j = resp.json()
+    except ValueError:
+        snippet = (resp.text or '')[:1000]
+        logger.error("LM Studio returned non-JSON body for model '%s': %s", model, snippet)
+        raise RuntimeError(f"LM Studio returned non-JSON response: {snippet}")
+    choices = j.get("choices") if isinstance(j, dict) else None
+    if not choices or not isinstance(choices, list) or not choices:
+        snippet = (resp.text or '')[:1000]
+        logger.error("LM Studio reply missing choices for model '%s': %s", model, snippet)
+        raise RuntimeError(f"LM Studio returned unexpected response shape: {snippet}")
+    msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+    if not msg or not isinstance(msg, dict):
+        snippet = (resp.text or '')[:1000]
+        logger.error("LM Studio reply missing message for model '%s': %s", model, snippet)
+        raise RuntimeError(f"LM Studio returned unexpected response shape: {snippet}")
     content = msg.get("content") or ""
     if not content.strip():
         content = msg.get("reasoning_content") or msg.get("reasoning") or ""
