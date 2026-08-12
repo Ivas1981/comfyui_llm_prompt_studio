@@ -35,8 +35,8 @@ class LLMPromptStudioSmartSave:
                 "save_dir": ("STRING", {"default": ""}),
                 "jpeg_quality": ("INT", {"default": 95, "min": 1, "max": 100}),
                 "auto_save_to_library": ("BOOLEAN", {"default": False}),
-                "save_metadata_to_exif": ("BOOLEAN", {"default": True}),
                 "library_path": ("STRING", {"default": "llm_prompt_studio_library.json"}),
+                "save_metadata_to_exif": ("BOOLEAN", {"default": True}),
             },
             "optional": {
                 "positive": ("STRING", {"forceInput": True}),

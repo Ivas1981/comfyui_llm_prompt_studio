@@ -12,18 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Smart Save `save_metadata_to_exif` toggle** (default `True`). When off, approved
   images are saved as JPEG **without** any EXIF metadata (prompts, model, LoRA, params) —
   smaller files and better privacy when sharing images. EXIF is still written by default.
-
-### Changed
-- **Improved `writer_system` / `composer` system prompts** to require all mandatory JSON
-  fields (`positive`, `negative`, `scene_name`, and `face_positive`/`face_negative` when
-  face prompts are requested), reducing the rate of incomplete answers from the model.
-
-### Added
 - **Field-retry mechanism for incomplete JSON answers** in the Writer and Scene Builder
   (stage 2), via a new `max_field_retries` widget (default 2). If the model omits required
   fields, the node re-asks for a complete answer; an empty `scene_name` falls back to
   `slugify(positive)`, and empty `positive`/`negative` raise a clear error.
 - `parsing.find_missing_fields()` helper for detecting empty critical JSON fields.
+
+### Changed
+- **Improved `writer_system` / `composer` system prompts** to require all mandatory JSON
+  fields (`positive`, `negative`, `scene_name`, and `face_positive`/`face_negative` when
+  face prompts are requested), reducing the rate of incomplete answers from the model.
 
 ### Fixed
 - **Vision regression in `chat_completion`**: multimodal message content (the image sent to
