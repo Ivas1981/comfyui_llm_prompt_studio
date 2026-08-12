@@ -132,6 +132,28 @@ def test_scene_no_negative_forces_empty():
     assert result["result"][1] == ""
 
 
+def test_scene_standard_uses_standard_composer_when_default():
+    # Regression: in standard mode with the composer widget left at its default, the node
+    # must NOT switch to the no-negative composer (that produced an empty negative, which
+    # then failed require_negative validation). It should keep the plain standard composer.
+    captured = []
+    def spy(*a, **k):
+        captured.append(a[3])  # the messages list
+        return _json(positive="a cat", negative="blurry", scene_name="cat")
+    with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: None), \
+         patch.object(scene_builder, "chat_completion", side_effect=spy):
+        scene_builder.LLMPromptStudioSceneBuilder().execute(
+            stage="2 - compose", image=None, server_url="http://localhost:1234/v1", api_key="",
+            model="m", context_length=16384, gpu_offload=1.0, describe_prompt="D",
+            composer_prompt=scene_builder.DEFAULT_COMPOSER, user_changes="",
+            image_max_size=1024, temperature=0.7, max_tokens=1024, max_field_retries=2,
+            vision_check=False, description_view="a cat sitting",
+            prompt_mode="standard", family="")
+    sys_msg = captured[0][0]["content"]
+    assert sys_msg == scene_builder.DEFAULT_COMPOSER
+    assert sys_msg != scene_builder.DEFAULT_COMPOSER_NO_NEGATIVE
+
+
 # --- helpers ----------------------------------------------------------------
 def test_is_no_negative_family():
     assert is_no_negative_family("dmd") is True

@@ -22,18 +22,55 @@ function addButton(node, label, handler) {
 app.registerExtension({
     name: "llm_prompt_studio.bridge",
 
+    // Make loading a saved workflow robust: ComfyUI validates each widget's saved value
+    // against the combo options at load time, but the model list may not be populated yet
+    // (it is fetched asynchronously). Inject the saved model value into the combo's allowed
+    // options *before* ComfyUI validates, so a saved workflow never trips "Value not in list"
+    // even when the server list hasn't arrived.
+    beforeRegisterNodeDef(nodeType, nodeData, app) {
+        if (!["LLMPromptStudioWriter", "LLMPromptStudioCritic",
+              "LLMPromptStudioSceneBuilder"].includes(nodeData.name)) {
+            return;
+        }
+        const configure = nodeType.prototype.configure;
+        nodeType.prototype.configure = function (data) {
+            const vals = data && data.widgets_values;
+            if (this.widgets && Array.isArray(vals)) {
+                let vi = 0;
+                for (const w of this.widgets) {
+                    if (w.type === "button") continue;  // buttons aren't in widgets_values
+                    const v = vals[vi];
+                    vi++;
+                    if (w.name === "model" && w.options && Array.isArray(w.options.values)
+                            && v != null && !w.options.values.includes(v)) {
+                        w.options.values = w.options.values.concat(v);
+                    }
+                }
+            }
+            return configure.apply(this, arguments);
+        };
+    },
+
     nodeCreated(node) {
         if (isWriter(node) || isCritic(node)) {
             addButton(node, "🔄 Refresh models", () => refreshModels(node));
         }
         if (isScene(node)) {
             addButton(node, "→ Send to Writer", () => sendToWriter(node));
+            // Scene Builder also has a model combo, so give it the same manual refresh.
+            addButton(node, "🔄 Refresh models", () => refreshModels(node));
         }
         if (isSmartSave(node)) {
             addButton(node, "💾 Save prompt to library", () => saveToLibrary(node));
         }
         if (isLoader(node)) {
             addButton(node, "🔄 Refresh scene list", () => refreshScenes(node));
+        }
+        // Auto-populate the model list on creation so a saved workflow whose model is not
+        // yet in the combo validates without requiring a manual Refresh first. Deferred so it
+        // runs after the graph is fully built.
+        if (isWriter(node) || isCritic(node) || isScene(node)) {
+            setTimeout(() => refreshModels(node), 400);
         }
     },
 });

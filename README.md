@@ -189,6 +189,7 @@ Two-stage scene construction from an image.
   fields, the node re-asks for a complete answer; an empty `scene_name` falls back to a
   slug of `positive`.
 - Button **→ Send to Writer** copies the description/prompt into a Writer's `idea`.
+- Button **🔄 Refresh models** (same as on the Writer/Critic) re-reads the model list from the server.
 
 ### LLM Prompt Studio Smart Loader
 
@@ -233,6 +234,9 @@ without touching Python. Keys:
 | `critic_system` | Image Critic |
 | `describe` | Scene Builder (stage 1) |
 | `composer` | Scene Builder (stage 2) |
+| `writer_system_no_negative` | Prompt Writer (distilled/no-negative mode; falls back to `writer_system`) |
+| `composer_no_negative` | Scene Builder (distilled/no-negative mode; falls back to `composer`) |
+| `face_instruction_no_negative` | Prompt Writer face prompts (no-negative mode; falls back to `face_instruction`) |
 
 Changes take effect after restarting ComfyUI (templates are loaded at startup). Every
 node also exposes its prompt as an editable widget, so you can override per-node.
@@ -272,7 +276,8 @@ outside the output folder.
 
 - **`server_url` (SSRF guard)** — only `http`/`https` and local/private hosts
   (`localhost`, loopback, RFC-1918, link-local) are allowed. To use a remote/public
-  LM Studio server, set `ALLOW_PUBLIC_SERVER_URLS = True` in `lm_http.py`.
+  LM Studio server, set the environment variable `LLM_PROMPT_STUDIO_ALLOW_PUBLIC=true`
+  (or assign `ALLOW_PUBLIC_SERVER_URLS = True` directly in `lm_http.py`).
 - **`library_path` / `save_dir` (path-traversal guard)** — confined to the ComfyUI
   output directory. To allow paths outside it, set `RESTRICT_PATHS_TO_OUTPUT = False`
   in `library.py`.

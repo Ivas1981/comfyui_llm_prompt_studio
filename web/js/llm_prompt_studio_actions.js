@@ -64,12 +64,14 @@ export async function refreshModels(node) {
     if (!models.length) models = error ? [PH_DOWN] : [PH_EMPTY];
 
     // 1) Patch every live node's model widget.
-    for (const n of app.graph.nodes) {
-        const mw = getW(n, "model");
-        if (mw && (isWriter(n) || isCritic(n) || isScene(n))) {
-            mw.options = mw.options || {};
-            mw.options.values = models;
-            if (!models.includes(mw.value)) mw.value = models[0];
+    if (app.graph && app.graph.nodes) {
+        for (const n of app.graph.nodes) {
+            const mw = getW(n, "model");
+            if (mw && (isWriter(n) || isCritic(n) || isScene(n))) {
+                mw.options = mw.options || {};
+                mw.options.values = models;
+                if (!models.includes(mw.value)) mw.value = models[0];
+            }
         }
     }
 

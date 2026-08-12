@@ -12,17 +12,18 @@ __all__ = [
 
 
 def combo_models():
-    # Non-blocking: prefer the disk-persisted model list (populated by "Refresh models"
-    # and on the first successful fetch). Reading the file directly each call avoids any
-    # dependence on import-time seeding, so a saved workflow whose model is present in the
-    # cache always validates against a real list. Falls back to a single fetch only when the
-    # cache is empty.
+    # Prefer the disk-persisted model list (populated by "Refresh models" and on the first
+    # successful fetch). Reading the file directly each call avoids any dependence on
+    # import-time seeding, so a saved workflow whose model is present in the cache always
+    # validates against a real list.
     cached = cached_model_list()
     if cached:
         return cached
-    # Non-blocking: never hit the network while building a node. The "Refresh models"
-    # button remains the only way to populate the list when the cache is empty.
-    return get_cached_models(allow_fetch=False)
+    # Cache empty: do a best-effort fetch (short timeout) so a running LM Studio populates
+    # the combo at node-build time. This lets a saved workflow validate without requiring a
+    # manual Refresh first. When the server is down the call fails fast and we fall back to
+    # the placeholder; the failure is negative-cached so we don't block on every build.
+    return get_cached_models(allow_fetch=True, timeout=2.0)
 
 
 def combo_checkpoints():
