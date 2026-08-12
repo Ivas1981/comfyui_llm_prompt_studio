@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   images are saved as JPEG **without** any EXIF metadata (prompts, model, LoRA, params) —
   smaller files and better privacy when sharing images. EXIF is still written by default.
 
+### Changed
+- **Improved `writer_system` / `composer` system prompts** to require all mandatory JSON
+  fields (`positive`, `negative`, `scene_name`, and `face_positive`/`face_negative` when
+  face prompts are requested), reducing the rate of incomplete answers from the model.
+
 ---
 
 ## [0.7.3] — 2026-08-10
