@@ -5,8 +5,8 @@ description = "SDXL prompt generation and critique via local LLMs (LM Studio / a
 readme = "README.md"
 license = { text = "MIT" }
 dependencies = ["requests", "numpy", "pillow"]
-# authors = [{ name = "Ivas81" }]
-# urls = { Repository = "https://github.com/you/comfyui_llm_prompt_studio" }
+authors = [{ name = "Ivas1981" }]
+urls = { Repository = "https://github.com/Ivas1981/comfyui_llm_prompt_studio" }
 
 [tool.comfy]
 DisplayName = "ComfyUI LLM Prompt Studio"
