@@ -119,4 +119,7 @@ def test_find_missing_fields_empty_scene_name():
 def test_find_missing_fields_face_only_when_required():
     parsed = ("a", "b", "scene", "", "")
     assert find_missing_fields(parsed) == []
-    assert find_missing_fields(parsed, require_face=True) == ["face_positive", "face_negative"]
+    # Face fields are intentionally never treated as missing: the prompts allow empty
+    # face_positive/face_negative when no face is present, so retrying on them is futile.
+    assert find_missing_fields(parsed, require_face=True) == []
+    assert find_missing_fields(("a", "", "scene", "", "")) == ["negative"]

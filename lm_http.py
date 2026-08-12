@@ -164,11 +164,14 @@ def _store_model_cache(key, models):
 
 def cache_models(server_url: str, api_key: str, models: list):
     if models:
-        _store_model_cache((server_url, api_key), list(models))
-        # Persist for the default server key used by combo_models() so the list survives
-        # restarts and is available to INPUT_TYPES even if a custom server_url was used.
-        _persist_models(models)
-        _static_keys.add((DEFAULT_SERVER, ""))
+        key = (server_url, api_key)
+        _store_model_cache(key, list(models))
+        # Only persist for the default-server key used by combo_models(); persisting a
+        # custom server's models under the default key would overwrite the real
+        # default-server list and poison INPUT_TYPES on the next start.
+        if key == (DEFAULT_SERVER, ""):
+            _persist_models(models)
+            _static_keys.add(key)
 
 
 def get_cached_models(server_url=DEFAULT_SERVER, api_key="", allow_fetch=True):

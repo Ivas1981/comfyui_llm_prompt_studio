@@ -1,6 +1,7 @@
 """Generation metadata traversal, safetensors header reading and family detection."""
 import json
 import os
+import re
 import struct
 
 import folder_paths
@@ -15,8 +16,30 @@ FAMILY_MARKERS = {
     "flash":     ("flash",),
 }
 
+# Families for which the negative prompt is inert (they sample at CFG ~1). Derived from
+# FAMILY_MARKERS so the two definitions never drift apart; "base" is never included.
+NO_NEGATIVE_FAMILIES = set(FAMILY_MARKERS) - {"base"}
+
+# Whole-token match for each family marker: a marker must not be glued to other
+# alphanumerics, so "hyper" does not match "hypernetwork" and "lcm" does not match
+# "calcium". This replaces the old substring scan that mis-fired on tokens such as
+# "flash_attention".
+_FAMILY_TOKEN_RE = {
+    fam: re.compile(r"(?<![a-z0-9])" + re.escape(fam) + r"(?![a-z0-9])")
+    for fam in FAMILY_MARKERS
+}
+
+
+def is_no_negative_family(family):
+    """True for distilled families (dmd/lcm/turbo/hyper/lightning/flash) that ignore the
+    negative prompt at CFG~1. Empty string, 'base' and any unknown family return False."""
+    return str(family or "").strip().lower() in NO_NEGATIVE_FAMILIES
+
+
 __all__ = [
     "FAMILY_MARKERS",
+    "NO_NEGATIVE_FAMILIES",
+    "is_no_negative_family",
     "collect_generation_meta",
     "read_safetensors_metadata",
     "detect_checkpoint_family",
@@ -82,7 +105,12 @@ def detect_checkpoint_family(ckpt_name: str) -> str:
         meta = read_safetensors_metadata(full_path)
         if meta:
             haystack += " " + json.dumps(meta, ensure_ascii=False).lower()
-    for family, markers in FAMILY_MARKERS.items():
-        if any(m in haystack for m in markers):
+    for family, rx in _FAMILY_TOKEN_RE.items():
+        if rx.search(haystack):
+            # Guard: 'flash' routinely surfaces inside the token 'flash_attention', which is
+            # an attention mechanism, not a distilled Flash model family. Skip the match
+            # whenever that token is present (in either the filename or the metadata).
+            if family == "flash" and "flash_attention" in haystack:
+                continue
             return family
     return "base"

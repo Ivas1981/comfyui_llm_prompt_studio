@@ -6,6 +6,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.0] — 2026-08-12
+
+### Added
+- **No-negative mode (`prompt_mode`)** for the Writer and Scene Builder. Distilled SDXL
+  families (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the
+  negative prompt is mathematically ignored, so these nodes can automatically switch to a
+  positive-only system prompt that rephrases every constraint as a positive statement.
+  - `prompt_mode`: `auto` (default, switches on a detected distilled family), `standard`
+    (always emit a negative), `no_negative` (always empty negative).
+  - Optional `family` input on both nodes: wire the Smart Loader's `detected_family` output
+    into it to enable automatic detection. Unconnected → behaves as `standard`.
+  - Three new system prompts in `prompts.json`: `writer_system_no_negative`,
+    `composer_no_negative`, `face_instruction_no_negative`.
+
+### Changed
+- **Family detection hardened** (`model_meta.py`): whole-token matching replaces the old
+  substring scan, so `flash` no longer matches `flash_attention` and `hyper` no longer
+  matches `hypernetwork`. Added `is_no_negative_family()` for the new mode logic.
+- **Critic score parsing** now tolerates float/string scores (`round(float(...))`) instead
+  of crashing on `"8.5"`, which previously forced a score of `-1`.
+- **`parsing.find_missing_fields`** gained `require_negative` / `require_face_negative`
+  parameters (defaults preserve prior behavior). Face fields are no longer treated as
+  "missing" (the prompts allow empty `face_positive`/`face_negative` when no face is
+  present), eliminating needless field-retries.
+- **`combo_models()`** no longer performs a network request while building a node
+  (`allow_fetch=False`); the **Refresh models** button remains the population path.
+- **`cache_models()`** only persists the default-server model list, fixing cache
+  contamination when a custom `server_url` was refreshed.
+- **Prompt library dedupe** now considers both `positive` and `negative`.
+- **Writer cache key** includes `prompt_mode` + `family`, so `reuse_last_prompt` never
+  returns a result from a different mode.
+
+---
+
 ## [0.8.0] — 2026-08-12
 
 ### Added

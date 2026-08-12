@@ -108,7 +108,16 @@ All nodes live under the **`LLM Prompt Studio`** category.
 Generates an SDXL prompt from an idea.
   - **Inputs:** `server_url`, `api_key`, `model`, `context_length`, `gpu_offload`,
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
-    `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`, `face_prompt_instruction`.
+    `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
+    `face_prompt_instruction`, `prompt_mode`, `family`.
+  - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
+    to a no-negative system prompt when the checkpoint family is distilled (DMD / LCM /
+    Turbo / Hyper / Lightning / Flash); `standard` always emits a negative; `no_negative`
+    always emits an empty negative. Distilled models sample at CFG ~1, where a negative
+    prompt is mathematically ignored, so the no-negative prompt rephrases every constraint
+    as a positive statement instead.
+  - **`family`** (optional) — wire the Smart Loader's `detected_family` output here to let
+    `auto` detect the distilled family automatically. Leave unconnected to use `standard`.
   - Loads the selected model on the LM Studio server **on demand** (via the load API) using
     `context_length` (default 8192) and `gpu_offload` (1.0 = max GPU), and unloads the
     previously loaded model for this node type when you switch. You no longer need to pre-load
@@ -165,7 +174,10 @@ Two-stage scene construction from an image.
   - **Inputs:** `stage` (`1 - describe` / `2 - compose`), `image`, `server_url`,
     `api_key`, `model`, `context_length`, `gpu_offload`, `describe_prompt`,
     `composer_prompt`, `user_changes`, `image_max_size`, `temperature`, `max_tokens`,
-    `max_field_retries`, `vision_check`, `description_view`.
+    `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`, `family`.
+  - **`prompt_mode`** and **`family`** behave exactly as on the Writer: `auto` switches to a
+    no-negative composer prompt for distilled checkpoint families when `family` is wired from
+    the Smart Loader's `detected_family` output.
 - **Outputs:** `positive`, `negative`, `scene_name`, `prompt_view`, `description`.
   Stage 1 puts the vision description into `description`; stage 2 composes the prompt.
 - **`max_field_retries`** (default 2): in stage 2, if the model's JSON omits required
@@ -186,6 +198,8 @@ Loads a checkpoint and handles distillation LoRA automatically.
 - `VAE_USER` falls back to the checkpoint's built-in VAE when `vae_user = [none]`.
   Use `VAE_USER` downstream so the output is never empty.
 - The node title shows the detected family.
+- **Wire `detected_family` → the Writer's and Scene Builder's `family` input** to let their
+  `auto` `prompt_mode` switch to the no-negative prompt automatically for distilled models.
 
 ### LLM Prompt Studio Multi-CLIP SDXL
 Encodes up to four SDXL prompt pairs with one CLIP and shared size settings.
@@ -214,6 +228,9 @@ without touching Python. Keys:
 | `critic_system` | Image Critic |
 | `describe` | Scene Builder (stage 1) |
 | `composer` | Scene Builder (stage 2) |
+| `writer_system_no_negative` | Prompt Writer (`prompt_mode` = `no_negative` / `auto` on distilled) |
+| `composer_no_negative` | Scene Builder stage 2 (same conditions) |
+| `face_instruction_no_negative` | Prompt Writer face prompts (no-negative mode) |
 
 Changes take effect after restarting ComfyUI (templates are loaded at startup). Every
 node also exposes its prompt as an editable widget, so you can override per-node.
@@ -296,7 +313,13 @@ run without ComfyUI (but need `requests`, `numpy`, `pillow`).
     `reasoning_content` when the normal `content` field is empty, so thinking output can
     end up in results. Disable thinking/reasoning for that model in LM Studio to get clean
     output.
-- **Placeholders** like `— server unavailable —` mean the server could not be reached.
+- **Negative prompt ignored with distilled models?** DMD / LCM / Turbo / Hyper / Lightning /
+  Flash checkpoints sample at CFG ~1, where the negative prompt is mathematically ignored. Set
+  the Writer/Scene Builder `prompt_mode` to `no_negative` (or `auto` with the Smart Loader's
+  `detected_family` wired to `family`) so the node stops generating a useless negative and
+  rephrases constraints as positives. Note: feeding an empty negative into a KSampler with
+  CFG > 1 produces undefined results - keep `prompt_mode` consistent with your sampler.
+- **Placeholders** like `server unavailable` mean the server could not be reached.
 - **Model forgets to generate some JSON fields?** Writer and Scene Builder (stage 2) detect
   missing required fields (`positive`, `negative`, `scene_name`, and face fields when
   requested) and automatically re-ask the model up to `max_field_retries` times for a

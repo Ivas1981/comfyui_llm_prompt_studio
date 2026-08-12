@@ -3,8 +3,9 @@ import logging
 from ..combos import combo_models
 from ..imaging import image_to_base64
 from ..lm_http import chat_completion, ensure_model_loaded, looks_like_vision
+from ..model_meta import is_no_negative_family
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
-from ._defaults import DEFAULT_COMPOSER, DEFAULT_DESCRIBE
+from ._defaults import DEFAULT_COMPOSER, DEFAULT_COMPOSER_NO_NEGATIVE, DEFAULT_DESCRIBE
 
 logger = logging.getLogger("llm_prompt_studio")
 
@@ -43,7 +44,11 @@ class LLMPromptStudioSceneBuilder:
                 "max_field_retries": ("INT", {"default": 2, "min": 0, "max": 5}),
                 "vision_check": ("BOOLEAN", {"default": True}),
                 "description_view": ("STRING", {"multiline": True, "default": ""}),
-            }
+                "prompt_mode": (["auto", "standard", "no_negative"], {"default": "auto"}),
+            },
+            "optional": {
+                "family": ("STRING", {"default": ""}),
+            },
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
@@ -51,7 +56,8 @@ class LLMPromptStudioSceneBuilder:
 
     def execute(self, stage, image, server_url, api_key, model, context_length, gpu_offload,
                  describe_prompt, composer_prompt, user_changes, image_max_size, temperature,
-                 max_tokens, max_field_retries=2, vision_check=True, description_view=""):
+                 max_tokens, max_field_retries=2, vision_check=True, description_view="",
+                 prompt_mode="auto", family=""):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -88,6 +94,19 @@ class LLMPromptStudioSceneBuilder:
                 "The description field is empty — run stage 1 (Describe) "
                 "on this workflow first.")
 
+        # Resolve the effective mode (same semantics as the Writer).
+        if prompt_mode == "no_negative":
+            no_negative = True
+        elif prompt_mode == "standard":
+            no_negative = False
+        else:
+            no_negative = is_no_negative_family(family)
+        logger.info("Scene Builder prompt mode: %s (family=%r) -> no_negative=%s",
+                    prompt_mode, family, no_negative)
+
+        effective_composer = composer_prompt if composer_prompt != DEFAULT_COMPOSER \
+            else DEFAULT_COMPOSER_NO_NEGATIVE
+
         user_text = f"Scene description:\n{description_view.strip()}\n\n"
         if user_changes.strip():
             user_text += f"User's requested changes to the scene:\n{user_changes.strip()}\n\n"
@@ -97,18 +116,20 @@ class LLMPromptStudioSceneBuilder:
                       "respond strictly in the required JSON format.")
 
         messages = [
-            {"role": "system", "content": composer_prompt},
+            {"role": "system", "content": effective_composer},
             {"role": "user", "content": user_text},
         ]
         raw = chat_completion(server_url, api_key, model, messages,
-                               temperature, max_tokens)
+                                temperature, max_tokens)
         parsed = parse_prompt_json(raw)
 
         # Field-retry: if the model omitted required JSON fields, re-ask it (up to
-        # max_field_retries times) for a complete answer before falling back.
+        # max_field_retries times) for a complete answer before falling back. In no-negative
+        # mode the negative is intentionally empty, so it is not treated as missing.
         attempt = 0
         while attempt < max_field_retries:
-            missing = find_missing_fields(parsed, require_face=False)
+            missing = find_missing_fields(
+                parsed, require_face=False, require_negative=not no_negative)
             if not missing:
                 break
             attempt += 1
@@ -118,16 +139,25 @@ class LLMPromptStudioSceneBuilder:
                 f"You omitted the required JSON field(s): {', '.join(missing)}. "
                 f"Respond again with a COMPLETE JSON object containing ALL required fields."})
             raw_new = chat_completion(server_url, api_key, model, messages,
-                                      temperature, max_tokens)
+                                       temperature, max_tokens)
             raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                    f"missing {', '.join(missing)}]\n{raw_new}")
             parsed = parse_prompt_json(raw_new)
 
         positive, negative, scene_name, _fp, _fn = parsed
 
-        if not positive.strip() or not negative.strip():
+        # In no-negative mode the negative is forced empty (inert at CFG~1).
+        if no_negative:
+            negative = ""
+
+        if not positive.strip():
             raise RuntimeError(
-                f"Model failed to produce a required positive/negative prompt after "
+                f"Model failed to produce a required positive prompt after "
+                f"{max_field_retries} field-retry attempt(s). Try a model with better "
+                "instruction following, or lower max_field_retries and edit manually.")
+        if not no_negative and not negative.strip():
+            raise RuntimeError(
+                f"Model failed to produce a required negative prompt after "
                 f"{max_field_retries} field-retry attempt(s). Try a model with better "
                 "instruction following, or lower max_field_retries and edit manually.")
         if not scene_name.strip():

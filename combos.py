@@ -20,7 +20,9 @@ def combo_models():
     cached = cached_model_list()
     if cached:
         return cached
-    return get_cached_models(allow_fetch=True)
+    # Non-blocking: never hit the network while building a node. The "Refresh models"
+    # button remains the only way to populate the list when the cache is empty.
+    return get_cached_models(allow_fetch=False)
 
 
 def combo_checkpoints():

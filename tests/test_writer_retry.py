@@ -57,14 +57,18 @@ def test_retry_on_missing_scene_name():
 
 
 def test_retry_on_missing_face_fields_when_requested():
+    # Empty face fields are intentionally NOT treated as missing (the prompts allow empty
+    # face_positive/face_negative when no face is present), so the node no longer retries on
+    # them — it falls back to the main prompts instead.
     seq = [
         _json(positive="a cat", negative="b", scene_name="s"),
         _json(positive="a cat", negative="b", scene_name="s",
               face_positive="fp", face_negative="fn"),
     ]
     result, call = _run(seq, generate_face_prompts=True)
-    assert call.call_count == 2
-    assert result[4] == "fp"
+    assert call.call_count == 1
+    assert result[4] == "a cat"  # face_positive falls back to positive
+    assert result[5] == "b"      # face_negative falls back to negative
 
 
 def test_no_retry_on_face_fields_when_not_requested():
