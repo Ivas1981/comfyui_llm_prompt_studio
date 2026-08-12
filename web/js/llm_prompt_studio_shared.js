@@ -62,11 +62,36 @@ export async function postJSON(route, body) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body || {}),
     });
+    if (!res.ok) {
+        // Try to return JSON error when possible, otherwise text
+        const text = await res.text();
+        let parsed = null;
+        try { parsed = JSON.parse(text); } catch (_) { parsed = null; }
+        if (parsed && parsed.error) throw new Error(parsed.error);
+        throw new Error(`API ${route} returned HTTP ${res.status}: ${text}`);
+    }
+    const contentType = res.headers.get("Content-Type") || "";
+    if (!contentType.includes("application/json")) {
+        const txt = await res.text();
+        throw new Error(`API ${route} returned non-JSON response: ${txt}`);
+    }
     return res.json();
 }
 
 export async function getJSON(route) {
     const res = await api.fetchApi(route, { method: "GET" });
+    if (!res.ok) {
+        const text = await res.text();
+        let parsed = null;
+        try { parsed = JSON.parse(text); } catch (_) { parsed = null; }
+        if (parsed && parsed.error) throw new Error(parsed.error);
+        throw new Error(`API ${route} returned HTTP ${res.status}: ${text}`);
+    }
+    const contentType = res.headers.get("Content-Type") || "";
+    if (!contentType.includes("application/json")) {
+        const txt = await res.text();
+        throw new Error(`API ${route} returned non-JSON response: ${txt}`);
+    }
     return res.json();
 }
 
