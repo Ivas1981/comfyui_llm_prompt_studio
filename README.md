@@ -121,7 +121,7 @@ Generates an SDXL prompt from an idea.
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
     `face_prompt_instruction`, `prompt_mode`, `family`, `style_preset`, `stream`,
     `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`.
+    `top_k`, `top_p`, `min_p`, `generation_view`.
   - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
     to a no-negative system prompt when the checkpoint family is distilled (DMD / LCM /
     Turbo / Hyper / Lightning / Flash); `standard` always emits a negative; `no_negative`
@@ -165,7 +165,8 @@ Generates an SDXL prompt from an idea.
 A vision model scores how well the image matches the prompt.
   - **Inputs:** `image`, `prompt`, `server_url`, `api_key`, `model`, `context_length`,
     `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`, `temperature`,
-    `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`, `vision_check`.
+    `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`, `vision_check`,
+    `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`, `generation_view`.
 - **Outputs:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
 - `approved = score >= threshold`. Wire `approved` into Smart Save to gate saving.
 - **Auto-revision loop**: enable `auto_loop` to have the critic automatically feed its
@@ -201,7 +202,9 @@ Two-stage scene construction from an image.
   - **Inputs:** `stage` (`1 - describe` / `2 - compose`), `image`, `server_url`,
     `api_key`, `model`, `context_length`, `gpu_offload`, `describe_prompt`,
     `composer_prompt`, `user_changes`, `image_max_size`, `temperature`, `max_tokens`,
-    `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`, `family`.
+    `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`, `family`,
+    `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
+    `top_k`, `top_p`, `min_p`, `stream`, `generation_view`.
   - **`prompt_mode`** and **`family`** behave exactly as on the Writer: `auto` switches to a
     no-negative composer prompt for distilled checkpoint families when `family` is wired from
     the Smart Loader's `detected_family` output.
@@ -276,9 +279,10 @@ back with **Library Loader**. Writes are atomic (`.tmp` + rename) to avoid corru
 
 ## Style presets
 
-The Writer's `style_preset` combobox lists 14 built-in styles (Photorealism, Cinematic, Anime,
-3D Render, Digital Art, Oil Painting, Watercolor, Pixel Art, Comic, Fantasy, Cyberpunk,
-Steampunk, Ukiyo-e, Minimalist). Selecting one:
+The Writer's `style_preset` combobox lists 14 built-in styles (Photorealism, Cinematic,
+Anime / Manga, 3D Render, Digital Art / Concept Art, Oil Painting, Watercolor, Pixel Art,
+Comic / Graphic Novel, Fantasy Art, Cyberpunk, Steampunk, Ukiyo-e, Minimalist / Vector).
+Selecting one:
 
 - appends the preset's `style_tags_positive` / `style_tags_negative` to the generated
   `positive` / `negative` (skipped for `negative` in no-negative mode);

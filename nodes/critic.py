@@ -53,8 +53,8 @@ class LLMPromptStudioCritic:
     def execute(self, image, prompt, server_url, api_key, model, context_length, gpu_offload,
                  critic_prompt, threshold, image_max_size, temperature, max_tokens,
                  clear_notes_on_approve, auto_loop, max_retries,
-                 vision_check=True, revision_view="",
-                 flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None):
+                  vision_check=True, revision_view="", generation_view="",
+                  flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None):
         _t0 = time.time()
         log_node_enter("Critic", unique_id, {
             "server_url": server_url, "model": model, "threshold": threshold,

@@ -119,7 +119,7 @@ class LLMPromptStudioWriter:
                  prompt_mode="auto", family="", unique_id=None,
                  style_preset="— none —", flash_attention=None,
                  offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
-                 top_k=0, top_p=1.0, min_p=0.0, stream=False):
+                 top_k=0, top_p=1.0, min_p=0.0, stream=False, generation_view=""):
         _t0 = time.time()
         log_node_enter("Writer", unique_id, {
             "server_url": server_url, "model": model, "idea": idea,
