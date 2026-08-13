@@ -366,6 +366,13 @@ def _server_root(server_url: str) -> str:
     return base
 
 
+def _is_unrecognized_gpu_key(text: str) -> bool:
+    """True when the server rejects the gpu-offload key by name (casing differs across
+    LM Studio versions: some want `gpu_offload`, others `gpuOffload`)."""
+    low = (text or "").lower()
+    return "unrecognized key" in low and ("gpu_offload" in low or "gpuoffload" in low)
+
+
 def _try_post(path: str, body: dict, headers: dict, timeout: int, retries: int, backoff: float):
     """POST JSON and return (ok, last_error, response-or-None).
 
@@ -414,7 +421,10 @@ def load_model(server_url: str, api_key: str, model: str,
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     identifier = quote(model, safe="")
 
-    # Native v1 load body (snake_case per LM Studio docs). New options are only included when set.
+    # Native v1 load body. LM Studio versions disagree on the gpu-offload key casing: newer
+    # servers accept snake_case `gpu_offload`, older ones only `gpuOffload`. We try snake_case
+    # first and fall back to camelCase if the server rejects the key (see below). All other
+    # v1 keys are snake_case per the LM Studio docs. New options are only included when set.
     v1_body = {"model": model, "context_length": int(context_length), "gpu_offload": gpu_offload}
     if flash_attention is not None:
         v1_body["flash_attention"] = bool(flash_attention)
@@ -436,6 +446,19 @@ def load_model(server_url: str, api_key: str, model: str,
     if ok:
         _record_load_config(server_url, model, resp)
         return True
+
+    # Some LM Studio versions reject the snake_case gpu_offload key and only accept the
+    # camelCase gpuOffload. If the v1 route rejected precisely that key, retry once with the
+    # alternate casing before giving up on the v1 route.
+    if (resp is not None and resp.status_code == 400
+            and _is_unrecognized_gpu_key(resp.text or "")
+            and "gpu_offload" in v1_body):
+        v1_body["gpuOffload"] = v1_body.pop("gpu_offload")
+        ok, err, resp = _try_post(f"{base}/api/v1/models/load", v1_body, headers,
+                                  timeout, retries, backoff)
+        if ok:
+            _record_load_config(server_url, model, resp)
+            return True
 
     # A modern server's legacy route is a no-op that answers 200 ("Unexpected endpoint"),
     # which would mask the real v1 rejection. Only fall through to the legacy endpoints on

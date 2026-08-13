@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.4] — 2026-08-13
+
+### Fixed
+- **Model preload failed on LM Studio versions that reject the snake_case `gpu_offload`
+  key (HTTP 400 `Unrecognized key(s) in object: 'gpu_offload'`).** The 1.0.3 change switched
+  the native v1 load body to `gpu_offload`, but some LM Studio builds only accept the
+  camelCase `gpuOffload`. `load_model` now tries `gpu_offload` first and, if the server
+  rejects that specific key, retries the v1 load once with `gpuOffload` — so the model
+  preloads with the user's `context_length` / `gpu_offload` settings on either server
+  variant. A genuine rejection (non-gpu-key) still returns `False` without masking the
+  failure via the legacy route.
+
+---
+
 ## [1.0.3] — 2026-08-13
 
 ### Fixed
