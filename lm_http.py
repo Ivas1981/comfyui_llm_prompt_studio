@@ -27,6 +27,8 @@ __all__ = [
     "cached_model_list",
     "remember_model",
     "looks_like_vision",
+    "model_supports_vision",
+    "resolve_vision",
     "maybe_unload_old",
     "load_model",
     "ensure_model_loaded",
@@ -262,6 +264,77 @@ def looks_like_vision(model_id: str) -> bool:
     return any(h in low for h in VISION_NAME_HINTS)
 
 
+def _model_matches(entry: dict, model_id: str) -> bool:
+    """Case-insensitive match of a v1 /api/v1/models entry against `model_id`.
+
+    Tries the entry's `key`, `id`, any `loaded_instances[].id`, and `variants`."""
+    low = model_id.lower()
+    if not low:
+        return False
+    candidates = [entry.get("key"), entry.get("id")]
+    for inst in entry.get("loaded_instances") or []:
+        if isinstance(inst, dict):
+            candidates.append(inst.get("id"))
+        else:
+            candidates.append(inst)
+    candidates.extend(entry.get("variants") or [])
+    return any(str(c).lower() == low for c in candidates if c)
+
+
+def model_supports_vision(server_url: str, api_key: str, model_id: str,
+                          timeout: int = 5) -> Optional[bool]:
+    """Best-effort authoritative vision capability from LM Studio's native endpoint.
+
+    Queries ``GET {server}/api/v1/models`` and returns
+    ``entry["capabilities"]["vision"]`` (bool) when the model is present, else ``None``.
+
+    Never raises: network errors, parse errors, missing ``/api/v1/models`` and 404 all
+    return ``None`` so callers fall back to the name heuristic without regressing on
+    servers that lack the native endpoint."""
+    try:
+        base = _server_root(validate_server_url(server_url))
+        resp = requests.get(f"{base}/api/v1/models",
+                            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+                            timeout=timeout)
+    except requests.RequestException:
+        return None
+    if resp.status_code != 200:
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    models = data.get("data") if isinstance(data, dict) else None
+    if models is None:
+        models = data.get("models") if isinstance(data, dict) else None
+    if not isinstance(models, list):
+        return None
+    for entry in models:
+        if not isinstance(entry, dict):
+            continue
+        if _model_matches(entry, model_id):
+            caps = entry.get("capabilities") or {}
+            vision = caps.get("vision")
+            if isinstance(vision, bool):
+                return vision
+            # capabilities present but vision key absent -> unknown, keep looking
+            if caps:
+                return None
+    return None
+
+
+def resolve_vision(server_url: str, api_key: str, model_id: str) -> bool:
+    """Authoritative vision decision: the server probe wins in BOTH directions.
+
+    A server-reported bool (true or false) overrides the name heuristic; only when the
+    probe is unavailable (``None`` — old server, network error, 404) do we fall back to
+    ``looks_like_vision`` so behavior never regresses."""
+    server = model_supports_vision(server_url, api_key, model_id)
+    if server is not None:
+        return server
+    return looks_like_vision(model_id)
+
+
 def maybe_unload_old(slot: str, server_url: str, new_model: str):
     old = _last_loaded.get(slot)
     if old and old != new_model and not old.startswith("—"):
@@ -342,7 +415,7 @@ def load_model(server_url: str, api_key: str, model: str,
     identifier = quote(model, safe="")
 
     # Native v1 load body (snake_case per LM Studio docs). New options are only included when set.
-    v1_body = {"model": model, "context_length": int(context_length), "gpuOffload": gpu_offload}
+    v1_body = {"model": model, "context_length": int(context_length), "gpu_offload": gpu_offload}
     if flash_attention is not None:
         v1_body["flash_attention"] = bool(flash_attention)
     if offload_kv_cache_to_gpu is not None:
@@ -363,6 +436,16 @@ def load_model(server_url: str, api_key: str, model: str,
     if ok:
         _record_load_config(server_url, model, resp)
         return True
+
+    # A modern server's legacy route is a no-op that answers 200 ("Unexpected endpoint"),
+    # which would mask the real v1 rejection. Only fall through to the legacy endpoints on
+    # a connection error (resp is None) or 404 (an old server without the v1 load route).
+    v1_rejected = resp is not None and 400 <= resp.status_code < 500 and resp.status_code != 404
+    if v1_rejected:
+        logger.warning(
+            "LM Studio rejected loading model '%s' (HTTP %s): %s",
+            model, resp.status_code, (resp.text or "")[:300])
+        return False
 
     # 2) Legacy endpoints (honor gpuOffload; the new options are silently ignored).
     for path in (f"{base}/v1/models/{identifier}/load",
@@ -454,6 +537,28 @@ def _serialize_message_content(content):
     return str(content)
 
 
+def _enrich_http_error(model: str, status: int, text: str, has_images: bool) -> str:
+    """Turn a raw LM Studio HTTP error into an actionable message.
+
+    Surfaces the two most common user-facing failures with clear guidance:
+      * image/vision rejection ("does not support image inputs"), and
+      * model load failure ("exited before becoming healthy").
+    Falls back to the generic message otherwise. Best-effort: never raises."""
+    low = (text or "").lower()
+    if status >= 400 and has_images:
+        if (("image" in low or "vision" in low or "visual" in low)
+                and ("not support" in low or "input" in low)):
+            return (
+                f"Model '{model}' does not support image inputs. This node requires a "
+                f"vision-capable model (Qwen2.5-VL, LLaVA, Gemma-3/4, etc.). "
+                f"Pick a vision model or disable vision_check.")
+    if status >= 400 and ("failed to load model" in low or "exited before becoming healthy" in low):
+        return (
+            f"Model '{model}' failed to load on the server (check VRAM and the model "
+            f"file): {text[:300]}")
+    return None
+
+
 def chat_completion(server_url, api_key, model, messages,
                     temperature, max_tokens, timeout=600, seed=None,
                     stream=False, reasoning="off", repeat_penalty=1.0,
@@ -510,6 +615,9 @@ def chat_completion(server_url, api_key, model, messages,
         txt = resp.text or ""
         snippet = txt[:1000] if len(txt) > 1000 else txt
         logger.error("LM Studio HTTP %s for model '%s': %s", resp.status_code, model, snippet)
+        enriched = _enrich_http_error(model, resp.status_code, txt, has_images)
+        if enriched is not None:
+            raise RuntimeError(enriched)
         raise RuntimeError(
             f"LM Studio returned HTTP {resp.status_code} for model '{model}': "
             f"{snippet}")
@@ -586,6 +694,9 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
             raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
         if resp.status_code >= 400:
             snippet = (resp.text or "")[:1000]
+            enriched = _enrich_http_error(model, resp.status_code, resp.text or "", False)
+            if enriched is not None:
+                raise RuntimeError(enriched)
             raise RuntimeError(
                 f"LM Studio returned HTTP {resp.status_code} for model '{model}': {snippet}")
         try:
@@ -603,6 +714,9 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
         raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
     if resp.status_code >= 400:
         snippet = (resp.text or "")[:1000]
+        enriched = _enrich_http_error(model, resp.status_code, resp.text or "", False)
+        if enriched is not None:
+            raise RuntimeError(enriched)
         raise RuntimeError(
             f"LM Studio returned HTTP {resp.status_code} for model '{model}': {snippet}")
     return _consume_sse(resp, on_delta, started, url, headers)

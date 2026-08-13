@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.3] — 2026-08-13
+
+### Fixed
+- **Vision detection was wrong both ways (`vision_check` blocked good models and let
+  bad ones through).** The name-substring heuristic `looks_like_vision` rejected genuine
+  multimodal models like `gemma4-12b-uncensored-...` (Gemma-4 is multimodal) while
+  passing names like `qwen2.5-vl-...` that the server then rejected with
+  `HTTP 400 ... does not support image inputs`. Scene Builder and Critic now consult the
+  server's authoritative `capabilities.vision` flag via the new `resolve_vision()` helper
+  (which queries LM Studio's native `GET /api/v1/models`). The server answer is decisive
+  in both directions, falling back to the name heuristic only when the probe is
+  unavailable (old server, network error, 404) so behavior never regresses.
+- **Model preload was rejected with `400 Unrecognized key(s): 'gpuOffload'`.** The native
+  v1 `/api/v1/models/load` body used the camelCase key `gpuOffload` while every sibling
+  v1 key is snake_case; it now sends `gpu_offload` (matching the other v1 options). The
+  legacy load body keeps `gpuOffload` (camelCase) for genuinely old servers.
+- **`load_model` falsely reported success after a v1 rejection.** When the native v1 load
+  returned 400, the code still fell through to the legacy `/v1/models/{id}/load` endpoint,
+  which this server answers `200 anyway` ("Unexpected endpoint"), so a failed load looked
+  successful. `load_model` now returns `False` on a real client rejection (400–499) from
+  the v1 route and only tries the legacy endpoints on a connection error or 404. The node
+  still works via LM Studio JIT loading; the failure is logged clearly.
+- **Raw HTTP 400s from the server were unhelpful.** `chat_completion` now enriches
+  server errors via `_enrich_http_error()`: an image/vision rejection is explained as
+  "does not support image inputs … pick a vision model or disable vision_check", and a
+  model-load failure ("exited before becoming healthy") points at VRAM/the model file.
+
+---
+
 ## [1.0.2] — 2026-08-13
 
 ### Fixed
