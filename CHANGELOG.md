@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.1] — 2026-08-13
+
+### Fixed
+- **Runtime `TypeError` when running any node (Writer / Image Critic / Scene Builder).**
+  The `generation_view` widget was declared in each node's `INPUT_TYPES` (added for the
+  1.0.0 live-streaming feature) but the corresponding `execute` methods did not accept it,
+  so ComfyUI raised `execute() got an unexpected keyword argument 'generation_view'` on every
+  run. The parameter is now accepted on all three nodes (it is a display widget — streaming
+  pushes tokens to it via the websocket bridge keyed by `unique_id`), so the nodes execute
+  whether or not `stream` is enabled.
+- **Package version was out of sync with the changelog.** `pyproject.toml` still declared
+  `0.9.1` after the 1.0.0 release; it now tracks the changelog (`1.0.1`).
+
+---
+
 ## [1.0.0] — 2026-08-13
 
 ### Added
