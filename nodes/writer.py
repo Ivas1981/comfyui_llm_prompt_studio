@@ -146,7 +146,11 @@ class LLMPromptStudioWriter:
              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
              style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
              repeat_penalty, top_k, top_p, min_p, stream):
-        cache_key = (unique_id, prompt_mode, family)
+        # Reuse mode: return the cached prompt without calling the LLM. The key is the node
+        # id + prompt_mode so a mode switch still regenerates, but `family` is intentionally
+        # excluded: it is driven by the loaded checkpoint, and with reuse on we want the same
+        # prompts to carry over when the user swaps to a different checkpoint.
+        cache_key = (unique_id, prompt_mode)
         # Reuse mode: return cached result without calling the LLM
         if reuse_last_prompt:
             cached = _prompt_cache.get(cache_key)
