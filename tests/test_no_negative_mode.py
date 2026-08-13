@@ -98,6 +98,25 @@ def test_no_negative_face_negative_empty():
     assert result[5] == ""
 
 
+def test_generate_face_prompts_standard_returns_face_fields():
+    result = _run_writer(
+        [_json(positive="a cat", negative="blurry", scene_name="cat",
+               face_positive="fp", face_negative="fn")],
+        prompt_mode="standard", generate_face_prompts=True)
+    assert result[4] == "fp"
+    assert result[5] == "fn"
+
+
+def test_generate_face_prompts_fallback_when_model_omits():
+    # Empty face fields must fall back to the main positive/negative prompts.
+    result = _run_writer(
+        [_json(positive="a cat", negative="blurry", scene_name="cat",
+               face_positive="", face_negative="")],
+        prompt_mode="standard", generate_face_prompts=True)
+    assert result[4] == "a cat"
+    assert result[5] == "blurry"
+
+
 def test_no_negative_runtime_error_only_on_empty_positive():
     with pytest.raises(RuntimeError):
         # empty positive -> retries then raises; provide enough responses for the retries
@@ -188,3 +207,41 @@ def test_find_missing_fields_require_negative_false():
     assert find_missing_fields(parsed, require_negative=False) == []
     # default behaviour still requires the negative
     assert find_missing_fields(parsed) == ["negative"]
+
+
+def test_smart_loader_reports_distilled_family_from_lora(monkeypatch):
+    # A DMD (distillation) LoRA applied to a base checkpoint makes the effective model
+    # distilled, so the reported family must reflect the LoRA, letting the Writer switch to
+    # no-negative mode automatically.
+    import sys
+    import types as _t
+
+    import comfyui_llm_prompt_studio.nodes.smart_loader as sl
+
+    fake_sd = _t.ModuleType("comfy.sd")
+    fake_sd.load_checkpoint_guess_config = lambda *a, **k: (object(), object(), object())
+    fake_sd.load_lora_for_models = lambda m, c, l, s, z: (m, c)
+    fake_utils = _t.ModuleType("comfy.utils")
+    fake_utils.load_torch_file = lambda *a, **k: object()
+    comfy_mod = sys.modules.get("comfy") or _t.ModuleType("comfy")
+    comfy_mod.__path__ = getattr(comfy_mod, "__path__", [])
+    comfy_mod.sd = fake_sd
+    comfy_mod.utils = fake_utils
+    sys.modules["comfy"] = comfy_mod
+    sys.modules["comfy.sd"] = fake_sd
+    sys.modules["comfy.utils"] = fake_utils
+    monkeypatch.setattr(sl.folder_paths, "get_full_path", lambda category, name: "")
+
+    res = sl.LLMPromptStudioSmartLoader().load(
+        ckpt_name="sd_xl_base_1.0.safetensors", family_override="auto",
+        lora_name="dmd_style_lora.safetensors", apply_lora="auto",
+        strength_model=1.0, vae_user="[none]", unique_id="x")
+    assert res["result"][4] == "dmd"
+    assert res["ui"]["family"] == ["dmd"]
+
+    # A non-distillation style LoRA must NOT change the (base) family.
+    res2 = sl.LLMPromptStudioSmartLoader().load(
+        ckpt_name="sd_xl_base_1.0.safetensors", family_override="auto",
+        lora_name="cinematic_style.safetensors", apply_lora="auto",
+        strength_model=1.0, vae_user="[none]", unique_id="y")
+    assert res2["result"][4] == "base"

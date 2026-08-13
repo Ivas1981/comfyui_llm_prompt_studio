@@ -95,19 +95,20 @@ def test_load_model_success_v1():
     with patch("requests.post", return_value=resp) as post:
         ok = lm_http.load_model(LOCAL_V1, "", "m", backoff=0)
     assert ok is True
-    # First attempted endpoint is the v1 load route.
-    assert post.call_args_list[0][0][0].endswith("/v1/models/m/load")
+    # First attempted endpoint is the native v1 load route.
+    assert post.call_args_list[0][0][0].endswith("/api/v1/models/load")
 
 
 def test_load_model_fallback_to_v0():
-    v1 = _ok_response(status=404, text="not found")
+    native = _ok_response(status=404, text="not found")
+    legacy = _ok_response(status=404, text="not found")
     v0 = _ok_response(status=200)
-    with patch("requests.post", side_effect=[v1, v0]) as post:
+    with patch("requests.post", side_effect=[native, legacy, v0]) as post:
         ok = lm_http.load_model(LOCAL_V1, "", "m", retries=1, backoff=0)
     assert ok is True
-    # v1 (404, non-retryable) then v0.
-    assert post.call_count == 2
-    assert post.call_args_list[1][0][0].endswith("/api/v0/models/m/load")
+    # native 404, legacy /v1 404, then v0.
+    assert post.call_count == 3
+    assert post.call_args_list[2][0][0].endswith("/api/v0/models/m/load")
 
 
 def test_load_model_retries_transient_then_succeeds():
@@ -116,9 +117,9 @@ def test_load_model_retries_transient_then_succeeds():
     with patch("requests.post", side_effect=[resp503, resp200]) as post:
         ok = lm_http.load_model(LOCAL_V1, "", "m", retries=3, backoff=0)
     assert ok is True
-    # v1 tried twice (503 then 200); v0 never needed.
+    # native tried twice (503 then 200); legacy/v0 never needed.
     assert post.call_count == 2
-    assert post.call_args_list[0][0][0].endswith("/v1/models/m/load")
+    assert post.call_args_list[0][0][0].endswith("/api/v1/models/load")
 
 
 def test_load_model_fails_after_retries(caplog):

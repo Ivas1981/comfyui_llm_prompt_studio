@@ -158,8 +158,55 @@ export function sendToWriter(node) {
 }
 
 // ---------------------------------------------------------------------------
-// Re-queue helper for the auto-revision loop
+// Preset management (Writer style presets)
 // ---------------------------------------------------------------------------
+export async function reloadPresets(node) {
+    try {
+        const data = await getJSON("/llm_prompt_studio/presets");
+        const names = data.names || [];
+        const w = getW(node, "style_preset");
+        if (!w) return;
+        const opts = ["— none —", ...names];
+        w.options = w.options || {};
+        w.options.values = opts;
+        if (!opts.includes(w.value)) w.value = "— none —";
+        app.graph.setDirtyCanvas(true, true);
+    } catch (e) {
+        alert("Could not reload presets: " + e);
+    }
+}
+
+export async function resetPresets(node) {
+    if (typeof confirm === "function" &&
+        !confirm("Reset style presets to defaults? Your custom edits will be lost.")) {
+        return;
+    }
+    try {
+        const data = await postJSON("/llm_prompt_studio/presets/reset", {});
+        if (data.error) {
+            alert("Preset reset failed: " + data.error);
+            return;
+        }
+        await reloadPresets(node);
+        alert("Presets reset to defaults.");
+    } catch (e) {
+        alert("Preset reset failed: " + e);
+    }
+}
+
+export async function copyPresetsPath(node) {
+    try {
+        const data = await getJSON("/llm_prompt_studio/presets");
+        const path = data.path || "";
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+            navigator.clipboard.writeText(path).catch(() => {});
+        }
+        alert("Presets file path copied:\n" + path);
+    } catch (e) {
+        alert("Could not get presets path: " + e);
+    }
+}
+
 export function requeuePrompt() {
     try {
         if (typeof app.queuePrompt === "function") {

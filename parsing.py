@@ -102,18 +102,27 @@ def parse_prompt_json(text: str):
     """Returns (positive, negative, scene_name, face_positive, face_negative)."""
     obj = _extract_json_dict(text, "positive")
     if obj:
-        return (str(obj.get("positive", "")).strip(),
-                str(obj.get("negative", "")).strip(),
-                str(obj.get("scene_name", "")).strip(),
-                str(obj.get("face_positive", "")).strip(),
-                str(obj.get("face_negative", "")).strip())
-    salv = _salvage_partial_prompt(text)
-    if salv:
-        return salv
-    fallback = text.strip()
-    if fallback and len(fallback) <= 2000:
-        return fallback, "", "", "", ""
-    return "", "", "", "", ""
+        result = (str(obj.get("positive", "")).strip(),
+                  str(obj.get("negative", "")).strip(),
+                  str(obj.get("scene_name", "")).strip(),
+                  str(obj.get("face_positive", "")).strip(),
+                  str(obj.get("face_negative", "")).strip())
+    else:
+        salv = _salvage_partial_prompt(text)
+        if salv:
+            result = salv
+        else:
+            fallback = text.strip()
+            if fallback and len(fallback) <= 2000:
+                result = (fallback, "", "", "", "")
+            else:
+                result = ("", "", "", "", "")
+    try:
+        from .debug import log_parse_attempt  # package context
+    except ImportError:
+        from debug import log_parse_attempt  # type: ignore  # top-level (tests) context
+    log_parse_attempt(text, obj is not None, obj)
+    return result
 
 
 def parse_critic_json(text: str):

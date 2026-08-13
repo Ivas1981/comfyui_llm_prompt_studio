@@ -43,6 +43,29 @@ async def llm_prompt_studio_library_save(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
+@PromptServer.instance.routes.get("/llm_prompt_studio/presets")
+async def llm_prompt_studio_presets(request):
+    try:
+        from .presets import load_presets, get_user_presets_path
+        data = load_presets()
+        return web.json_response({
+            "names": [p["name"] for p in data.get("presets", [])],
+            "path": get_user_presets_path(),
+        })
+    except Exception as e:
+        return web.json_response({"names": [], "error": str(e)})
+
+
+@PromptServer.instance.routes.post("/llm_prompt_studio/presets/reset")
+async def llm_prompt_studio_presets_reset(request):
+    try:
+        from .presets import reset_to_defaults
+        reset_to_defaults()
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+
+
 @PromptServer.instance.routes.get("/llm_prompt_studio/library/scenes")
 async def llm_prompt_studio_library_scenes(request):
     library_path = request.query.get("library_path", "")

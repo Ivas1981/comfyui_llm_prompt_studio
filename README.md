@@ -28,6 +28,15 @@ No cloud, no API keys required — everything runs on your machine.
   (DMD / LCM / Turbo / Hyper / Lightning / Flash) and conditionally applies a distillation LoRA.
 - **Multi-CLIP SDXL** — encodes up to four SDXL prompt pairs with one CLIP and shared
   size settings.
+- **Style presets** — pick from 14 built-in styles (Photorealism, Cinematic, Anime, 3D Render,
+  …); a preset appends its style tags to the prompt and can override the system prompt.
+- **Live streaming** — with `stream` enabled, generated tokens appear in the node's
+  `generation_view` in real time over the ComfyUI websocket.
+- **Advanced LM Studio v1 options** — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
+  `repeat_penalty`, `top_k`, `top_p`, `min_p` are forwarded to LM Studio's native v1 API when
+  supported.
+- **Debug logging** — opt-in (`debug.py`, OFF by default) logs node/HTTP/parse activity with
+  API keys and image blobs masked.
 
 ---
 
@@ -110,7 +119,9 @@ Generates an SDXL prompt from an idea.
   - **Inputs:** `server_url`, `api_key`, `model`, `context_length`, `gpu_offload`,
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
-    `face_prompt_instruction`, `prompt_mode`, `family`.
+    `face_prompt_instruction`, `prompt_mode`, `family`, `style_preset`, `stream`,
+    `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
+    `top_k`, `top_p`, `min_p`.
   - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
     to a no-negative system prompt when the checkpoint family is distilled (DMD / LCM /
     Turbo / Hyper / Lightning / Flash); `standard` always emits a negative; `no_negative`
@@ -137,6 +148,17 @@ Generates an SDXL prompt from an idea.
   `scene_name` then falls back to a slug of `positive`; empty `positive`/`negative` raise
   an error.
 - Button **🔄 Refresh models** re-reads the model list from the server.
+- **Style presets** (`style_preset`): pick a built-in style to append its style tags to the
+  generated prompt (and override the system prompt when the system-prompt widget is left at
+  default). Presets that opt out of no-negative mode are skipped automatically in that mode.
+  Use "Reload presets" / "Reset to defaults" in the node menu to manage them.
+- **Live streaming** (`stream`): when enabled, generated tokens are pushed to `generation_view`
+  in real time over the ComfyUI websocket instead of appearing only at the end.
+- **Advanced options** (`reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
+  `repeat_penalty`, `top_k`, `top_p`, `min_p`): forwarded to LM Studio's native v1 API when the
+  server supports them (or when streaming is on). Leaving them at defaults keeps the old
+  OpenAI-compatible behavior. `reasoning` enables thinking-model reasoning; `flash_attention` /
+  `offload_kv_cache_to_gpu` are model-load options.
 
 ### LLM Prompt Studio Image Critic
 
@@ -252,6 +274,25 @@ back with **Library Loader**. Writes are atomic (`.tmp` + rename) to avoid corru
 
 ---
 
+## Style presets
+
+The Writer's `style_preset` combobox lists 14 built-in styles (Photorealism, Cinematic, Anime,
+3D Render, Digital Art, Oil Painting, Watercolor, Pixel Art, Comic, Fantasy, Cyberpunk,
+Steampunk, Ukiyo-e, Minimalist). Selecting one:
+
+- appends the preset's `style_tags_positive` / `style_tags_negative` to the generated
+  `positive` / `negative` (skipped for `negative` in no-negative mode);
+- overrides the system prompt with the preset's `system_prompt` **only when** the system-prompt
+  widget is left at its default.
+
+Presets are copied from `presets_default.json` to an editable `llm_prompt_studio_presets.json`
+in the ComfyUI output directory on first run. Use the node menu **"Reload presets"** to refresh
+the combo after editing that file, and **"Reset to defaults"** to restore the shipped set
+("Copy presets path" puts the file location on your clipboard). A preset with
+`disabled_in_no_negative_mode` set is automatically skipped in no-negative mode.
+
+---
+
 ## Auto-revision loop
 
 With `auto_loop` enabled on the Critic, the pack closes the revision loop automatically:
@@ -295,6 +336,35 @@ detection:
 
 The ComfyUI-specific `folder_paths` module is stubbed in `tests/conftest.py`, so tests
 run without ComfyUI (but need `requests`, `numpy`, `pillow`).
+
+---
+
+## Debug logging & advanced options
+
+### Debug logging
+
+Logging is OFF by default. To enable, edit `debug.py` at the package root and set `DEBUG_LEVEL`
+(requires a ComfyUI restart):
+
+- `MINIMAL` — logs node enter / exit / error.
+- `FULL` — adds HTTP request/response and JSON-parse attempts.
+
+The rotating log is written to `llm_prompt_studio.log` in the ComfyUI output directory only when
+logging is active. API keys (Bearer tokens, `api_key` fields) and base64 image blobs are masked
+or truncated and never written in full.
+
+### Live streaming & advanced LM Studio options
+
+Enable `stream` on the Writer / Critic / Scene Builder to push generated tokens to the node's
+`generation_view` widget in real time (over the ComfyUI websocket). Streaming failures degrade
+gracefully to a normal completion.
+
+The advanced widgets — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
+`repeat_penalty`, `top_k`, `top_p`, `min_p` — are forwarded to LM Studio's native v1 API
+(`/api/v1/chat` for sampling, `/api/v1/models/load` for `flash_attention` /
+`offload_kv_cache_to_gpu`). They only take effect when the server supports them (or when `stream`
+is on); defaults keep the OpenAI-compatible behavior. Multimodal (image) requests always use the
+OpenAI path, where these options are ignored.
 
 ---
 
