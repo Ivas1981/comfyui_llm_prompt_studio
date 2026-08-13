@@ -20,19 +20,51 @@ FAMILY_MARKERS = {
 # FAMILY_MARKERS so the two definitions never drift apart; "base" is never included.
 NO_NEGATIVE_FAMILIES = set(FAMILY_MARKERS) - {"base"}
 
-# Whole-token match for each family marker: a marker must not be glued to other
-# alphanumerics, so "hyper" does not match "hypernetwork" and "lcm" does not match
-# "calcium". This replaces the old substring scan that mis-fired on tokens such as
-# "flash_attention".
+# Family markers are matched case-insensitively in the checkpoint name (and a curated
+# subset of the safetensors metadata). Boundaries are checked on the ORIGINAL case so we
+# can tell a CamelCase continuation ("HyperSDXL", "SDXLLightning", "LCMXL") apart from a
+# marker glued into a longer lowercase word ("hypernetwork" -> hyper, "calcium" -> lcm,
+# "flash_attention" -> flash). An optional trailing digit is allowed so versioned variants
+# such as "dmd2" (DeepMind's 1-4 step distillation) still map to the "dmd" distilled family.
 _FAMILY_TOKEN_RE = {
-    fam: re.compile(r"(?<![a-z0-9])" + re.escape(fam) + r"(?![a-z0-9])")
+    fam: re.compile(re.escape(fam) + r"\d*", re.IGNORECASE)
     for fam in FAMILY_MARKERS
 }
 
+# Metadata keys whose values are free-text (descriptions, comments, prompts, …). Scanning
+# them for family markers produced false positives (e.g. a "hyper-realistic" description
+# flagging a base model as HyperSD), so they are excluded from detection.
+_FREE_TEXT_HINTS = ("description", "comment", "note", "prompt", "license", "artist", "tags")
+
+
+def _meta_text(meta: dict) -> str:
+    """Curated, structured-only text from safetensors metadata for family detection."""
+    if not isinstance(meta, dict):
+        return ""
+    chunks = []
+    for key, value in meta.items():
+        if any(h in str(key).lower() for h in _FREE_TEXT_HINTS):
+            continue
+        chunks.append(str(value))
+    return " ".join(chunks)
+
+
+def _boundary_ok(text: str, start: int, end: int) -> bool:
+    """True when the matched family token is a standalone word or a CamelCase/version
+    continuation, i.e. not glued into a longer lowercase word on either side."""
+    before = text[start - 1] if start > 0 else ""
+    after = text[end] if end < len(text) else ""
+    if before and (before.islower() or before.isdigit()):
+        return False
+    if after and (after.islower() or after.isdigit()):
+        return False
+    return True
+
 
 def is_no_negative_family(family):
-    """True for distilled families (dmd/lcm/turbo/hyper/lightning/flash) that ignore the
-    negative prompt at CFG~1. Empty string, 'base' and any unknown family return False."""
+    """True for distilled families (dmd/lcm/turbo/hyper/lightning/flash, including
+    versioned variants like dmd2) that ignore the negative prompt at CFG~1. Empty
+    string, 'base' and any unknown family return False."""
     return str(family or "").strip().lower() in NO_NEGATIVE_FAMILIES
 
 
@@ -97,20 +129,28 @@ def read_safetensors_metadata(path: str, max_header: int = 10 * 1024 * 1024) -> 
 
 
 def detect_checkpoint_family(ckpt_name: str) -> str:
-    """Detects the checkpoint family from filename + safetensors metadata.
-    Returns 'base' if no distillation marker is found."""
-    haystack = str(ckpt_name).lower()
+    """Detects the checkpoint family from filename + (structured) safetensors metadata.
+    Returns 'base' if no distillation marker is found.
+
+    Family words may be concatenated to other words without a separator (e.g.
+    "HyperSDXL", "SDXLLightning", "LCMXL"); those are caught via case-aware boundaries.
+    Markers glued into a longer lowercase word (e.g. "hypernetwork", "calcium") are
+    ignored, and free-text metadata fields (descriptions, comments, …) are excluded so
+    phrasing like "hyper-realistic" cannot falsely flag a base model as distilled."""
+    text = str(ckpt_name)
     full_path = folder_paths.get_full_path("checkpoints", ckpt_name)
     if full_path and os.path.isfile(full_path):
         meta = read_safetensors_metadata(full_path)
         if meta:
-            haystack += " " + json.dumps(meta, ensure_ascii=False).lower()
+            text += " " + _meta_text(meta)
     for family, rx in _FAMILY_TOKEN_RE.items():
-        if rx.search(haystack):
-            # Guard: 'flash' routinely surfaces inside the token 'flash_attention', which is
-            # an attention mechanism, not a distilled Flash model family. Skip the match
-            # whenever that token is present (in either the filename or the metadata).
-            if family == "flash" and "flash_attention" in haystack:
+        for m in rx.finditer(text):
+            if not _boundary_ok(text, m.start(), m.end()):
                 continue
+            # Guard: 'flash' routinely surfaces inside the token 'flash_attention', which is
+            # an attention mechanism, not a distilled Flash model family. Skip the family
+            # whenever that token is present (in either the filename or the metadata).
+            if family == "flash" and "flash_attention" in text.lower():
+                break
             return family
     return "base"

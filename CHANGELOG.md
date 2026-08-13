@@ -6,6 +6,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.2] — 2026-08-13
+
+### Fixed
+- **Model preload used a malformed URL (`/v1/api/v1/models/load`) and silently did
+  nothing.** `load_model` built the native LM Studio v1 load endpoint from
+  `server_url` without stripping the trailing `/v1`, so with the default
+  `http://localhost:1234/v1` the request went to `/v1/api/v1/models/load`. LM Studio
+  returned 200 for that unknown route, so the node believed the model had loaded — but
+  it hadn't. The model was then loaded lazily by LM Studio on the first `chat/completions`
+  call, making the first generation slow, and the `flash_attention` /
+  `offload_kv_cache_to_gpu` load options were never applied. `load_model` now strips the
+  trailing `/v1` via the existing `_server_root()` helper (matching `_chat_v1` and
+  `maybe_unload_old`), so the endpoint is correctly `/api/v1/models/load` and models
+  preload before the first inference. `maybe_unload_old` now reuses `_server_root()` too.
+- **Checkpoint family detection missed many distilled models (false negatives).**
+  `detect_checkpoint_family` required a separator after the family token, so concatenated
+  CamelCase names like `HyperSDXL`, `SDXLLightning`, `TurboSDXL` and `LCMXL` (and the
+  `dmd2` LoRA variant) were reported as `base`, so `no_negative` mode never
+  auto-activated for them. Detection is now case-aware: a family word is accepted as a
+  standalone token or a CamelCase/version continuation (`HyperSDXL`, `LCMXL`, `dmd2`),
+  while still rejecting markers glued into a longer lowercase word (`hypernetwork`,
+  `calcium`, `flash_attention`). Versioned variants (`dmd2`) map to the `dmd` family.
+- **Checkpoint family detection produced false positives from metadata free text.**
+  The whole safetensors metadata JSON (including `description`/`comments`) was scanned,
+  so a base model whose description said "hyper-realistic" / "lightning-fast" /
+  "turbo-charged" was falsely flagged as distilled. The scan now uses only structured
+  metadata fields and excludes free-text keys, so descriptions can no longer trigger a
+  false family match (structured fields like `modelspec.title` are still honored).
+- **Writer wasted tokens emitting face fields when not requested.** The base
+  `writer_system` / `writer_system_no_negative` prompts mandated `face_positive` /
+  `face_negative` in every response and showed them in the JSON example, so the model
+  returned them even with `generate_face_prompts` off. The prompts now mark face fields
+  as OPTIONAL — included only when face-prompt generation is requested, omitted
+  otherwise (`parse_prompt_json` already defaults missing face fields to empty strings,
+  and the node falls back to the main prompts).
+
+---
+
 ## [1.0.1] — 2026-08-13
 
 ### Fixed

@@ -266,9 +266,7 @@ def maybe_unload_old(slot: str, server_url: str, new_model: str):
     old = _last_loaded.get(slot)
     if old and old != new_model and not old.startswith("—"):
         try:
-            base = server_url.rstrip("/")
-            if base.endswith("/v1"):
-                base = base[:-3].rstrip("/")
+            base = _server_root(server_url)
             requests.post(f"{base}/api/v0/models/unload", json={"model": old}, timeout=5)
             logger.debug("Requested unload of previous model '%s'", old)
         except requests.RequestException as e:
@@ -339,7 +337,7 @@ def load_model(server_url: str, api_key: str, model: str,
     Transient failures (HTTP 429/500/502/503/504, connection errors, timeouts) are retried
     with exponential backoff per endpoint."""
     server_url = validate_server_url(server_url)
-    base = server_url.rstrip("/")
+    base = _server_root(server_url)
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     identifier = quote(model, safe="")
 

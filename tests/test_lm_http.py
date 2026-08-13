@@ -99,6 +99,20 @@ def test_load_model_success_v1():
     assert post.call_args_list[0][0][0].endswith("/api/v1/models/load")
 
 
+def test_load_model_native_url_has_no_double_v1_prefix():
+    # Regression for the bug where server_url ending in /v1 produced
+    # /v1/api/v1/models/load (a silent no-op). The native endpoint must be
+    # /api/v1/models/load without the duplicated /v1 prefix.
+    resp = _ok_response(status=200)
+    with patch("requests.post", return_value=resp) as post:
+        ok = lm_http.load_model(LOCAL_V1, "", "m", backoff=0)
+    assert ok is True
+    url = post.call_args_list[0][0][0]
+    assert "/v1/api/v1/" not in url
+    assert url == "http://localhost:1234/api/v1/models/load"
+
+
+
 def test_load_model_fallback_to_v0():
     native = _ok_response(status=404, text="not found")
     legacy = _ok_response(status=404, text="not found")
@@ -141,6 +155,17 @@ def test_maybe_unload_old_posts_unload_for_previous():
                     if c[0][0].endswith("/api/v0/models/unload")]
     assert unload_calls, "expected an unload request for the previous model"
     assert unload_calls[0].kwargs["json"] == {"model": "oldmodel"}
+
+
+def test_maybe_unload_old_url_has_no_double_v1_prefix():
+    # Regression: the unload URL must be /api/v0/models/unload, not /v1/api/v0/...,
+    # when server_url ends in /v1. Uses _server_root() (same helper as load_model).
+    lm_http._last_loaded["slotZ"] = "oldmodel"
+    with patch("requests.post") as post:
+        lm_http.maybe_unload_old("slotZ", LOCAL_V1, "newmodel")
+    url = post.call_args_list[0][0][0]
+    assert "/v1/api/v0/" not in url
+    assert url == "http://localhost:1234/api/v0/models/unload"
 
 
 def test_maybe_unload_old_skips_when_same_model():
