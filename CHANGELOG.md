@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.5] — 2026-08-13
+
+### Fixed
+- **`reuse_last_prompt` broke when the user swapped the checkpoint.** The Writer cache key
+  included `family`, which is driven by the loaded checkpoint (via Smart Loader's
+  `detected_family`). So switching to a different checkpoint changed the key, forced a cache
+  miss, and regenerated the prompt instead of reusing the old one. The cache key is now
+  `(unique_id, prompt_mode)` — a mode switch still regenerates (as before), but a checkpoint
+  swap no longer invalidates the cache, so the previously generated prompts are carried over
+  to the new checkpoint as intended.
+
+---
+
 ## [1.0.4] — 2026-08-13
 
 ### Fixed
@@ -190,8 +203,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   "missing" (the prompts allow empty `face_positive`/`face_negative` when no face is
   present), eliminating needless field-retries.
 - **Prompt library dedupe** now considers both `positive` and `negative`.
-- **Writer cache key** includes `prompt_mode` + `family`, so `reuse_last_prompt` never
-  returns a result from a different mode.
+- **Writer cache key** is `(unique_id, prompt_mode)` — `reuse_last_prompt` never returns a
+  result from a different mode, but a checkpoint swap (which changes `family`) no longer
+  invalidates the cache, so the same prompts carry over to the new checkpoint.
 - **`combo_models()`** no longer blocks the UI while building a node; the **🔄 Refresh
   models** button remains the explicit population path (see 0.9.1 for the on-empty-cache
   fetch).

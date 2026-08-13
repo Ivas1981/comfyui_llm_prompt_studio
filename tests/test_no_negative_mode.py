@@ -145,6 +145,29 @@ def test_cache_key_distinguishes_modes():
     assert call.call_count == 1
 
 
+def test_cache_key_survives_checkpoint_family_change():
+    # First pass generates and caches the prompt for one checkpoint family.
+    _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                prompt_mode="standard", family="base", unique_id="cache-f")
+    # Swapping to a different checkpoint (different detected family) with reuse on must NOT
+    # regenerate: the same prompts are carried over to the new checkpoint.
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+         patch.object(writer, "chat_completion",
+                      side_effect=lambda *a, **k: _json(positive="WRONG", negative="WRONG",
+                                                        scene_name="WRONG")) as call:
+        result = writer.LLMPromptStudioWriter().execute(
+            server_url="http://localhost:1234/v1", api_key="", model="m",
+            context_length=8192, gpu_offload=1.0, system_prompt="SYS", idea="a cat",
+            revision_notes="", temperature=0.7, max_tokens=512, seed=0,
+            reuse_last_prompt=True, generate_face_prompts=False,
+            max_field_retries=2, face_prompt_instruction="",
+            prompt_mode="standard", family="turbo", unique_id="cache-f")
+    # LLM was NOT called again -> the previously generated prompts are reused verbatim.
+    assert call.call_count == 0
+    assert result[0] == "a cat"
+    assert result[1] == "blurry"
+
+
 def test_scene_no_negative_forces_empty():
     result = _run_scene([_json(positive="a cat", negative="blurry", scene_name="cat")],
                          prompt_mode="no_negative")
