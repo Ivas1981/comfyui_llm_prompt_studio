@@ -325,10 +325,25 @@ def test_load_model_legacy_body_keeps_camel_case_gpuOffload():
     assert "gpu_offload" not in body
 
 
-def test_load_model_v1_400_does_not_fall_through_to_legacy():
-    # Modern server rejects the v1 load (400) but the legacy route would have answered 200
-    # ("Unexpected endpoint"). A genuine rejection must return False and must NOT call legacy.
-    native = _ok_response(status=400, text="Unrecognized key(s): 'gpuOffload'")
+def test_load_model_v1_400_gpu_key_falls_back_to_camel_case():
+    # Server rejects the snake_case key but accepts the camelCase one: load_model must retry
+    # the v1 endpoint with gpuOffload and succeed (still on the v1 route, not legacy).
+    snake = _ok_response(status=400, text="Unrecognized key(s) in object: 'gpu_offload'")
+    camel = _ok_response(status=200)
+    with patch("requests.post", side_effect=[snake, camel]) as post:
+        ok = lm_http.load_model(LOCAL_V1, "", "m", retries=1, backoff=0)
+    assert ok is True
+    # Both attempts went to the native v1 endpoint; legacy was never called.
+    assert post.call_count == 2
+    assert all(c[0][0].endswith("/api/v1/models/load") for c in post.call_args_list)
+    # Second attempt used the camelCase key.
+    assert post.call_args_list[1][1]["json"]["gpuOffload"] == 1.0
+
+
+def test_load_model_v1_400_non_gpu_error_does_not_fall_through():
+    # A genuine v1 rejection that is NOT a gpu-key issue must return False and must NOT call
+    # the legacy route (which would answer 200 "Unexpected endpoint" and mask the failure).
+    native = _ok_response(status=400, text="invalid model identifier")
     legacy = _ok_response(status=200)  # would be the false success
     with patch("requests.post", side_effect=[native, legacy]) as post:
         ok = lm_http.load_model(LOCAL_V1, "", "m", retries=1, backoff=0)
