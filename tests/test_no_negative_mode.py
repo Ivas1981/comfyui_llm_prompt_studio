@@ -190,6 +190,50 @@ def test_detect_family_false_positives():
     assert detect_checkpoint_family("model_lcm.safetensors") == "lcm"
 
 
+def test_detect_dmd2_variant_as_dmd():
+    # Versioned distill variants (e.g. DMD2 1-4 step LoRAs) must map to the dmd family
+    # so no-negative mode auto-activates for them. dmd + trailing digit, not "dmd" glued
+    # to a letter (which would be a different token).
+    assert detect_checkpoint_family("dmd2_sdxl_4step_lora.safetensors") == "dmd"
+    assert detect_checkpoint_family("model_dmd2.safetensors") == "dmd"
+    assert is_no_negative_family("dmd2") is False  # detection returns "dmd", not "dmd2"
+    # "dmd2x" (letter after the digits) must NOT match.
+    assert detect_checkpoint_family("model_dmd2x.safetensors") == "base"
+
+
+def test_detect_glued_token_families():
+    # Distilled families are often concatenated to XL/SD with no separator (CamelCase),
+    # which the case-aware boundary must still detect (previously missed -> "base").
+    assert detect_checkpoint_family("HyperSDXL_10steps.safetensors") == "hyper"
+    assert detect_checkpoint_family("SDXLLightning_4step.safetensors") == "lightning"
+    assert detect_checkpoint_family("TurboSDXL.safetensors") == "turbo"
+    assert detect_checkpoint_family("LCMXL.safetensors") == "lcm"
+    assert detect_checkpoint_family("HyperSD_1.step.safetensors") == "hyper"
+
+
+def test_detect_excludes_freetext_metadata(monkeypatch):
+    # A base model whose free-text description mentions distilled families must NOT be
+    # falsely flagged, while a structured field carrying a marker still is detected.
+    meta = {
+        "modelspec.architecture": "stableDiffusionXL_v1",
+        "description": "a hyper-realistic, lightning-fast, turbo-charged base model",
+    }
+    monkeypatch.setattr(
+        "comfyui_llm_prompt_studio.model_meta.read_safetensors_metadata",
+        lambda *a, **k: meta)
+    monkeypatch.setattr(
+        "comfyui_llm_prompt_studio.model_meta.os.path.isfile", lambda *a, **k: True)
+    import folder_paths as _fp
+    monkeypatch.setattr(_fp, "get_full_path", lambda *a, **k: "/x.safetensors")
+    assert detect_checkpoint_family("my_base_xl.safetensors") == "base"
+    # Structured title still carries a marker.
+    meta2 = {"modelspec.title": "Juggernaut XL Turbo Edition"}
+    monkeypatch.setattr(
+        "comfyui_llm_prompt_studio.model_meta.read_safetensors_metadata",
+        lambda *a, **k: meta2)
+    assert detect_checkpoint_family("my_base_xl.safetensors") == "turbo"
+
+
 def test_parse_critic_json_float_score():
     score, _, _ = parse_critic_json(
         json.dumps({"score": "8.5", "verdict": "v", "revision_notes": "n"}))

@@ -21,6 +21,21 @@ def test_parse_prompt_json_valid():
     assert fn == "bad face"
 
 
+def test_parse_prompt_json_without_face_fields():
+    # When face prompt generation is off, the model may omit face_positive/face_negative
+    # entirely (the writer system prompt now tells it to). Parsing must treat them as empty
+    # strings and the missing-field check must still pass (face fields are never critical).
+    text = json.dumps({"positive": "a cat", "negative": "blurry", "scene_name": "cat_scene"})
+    pos, neg, scene, fp, fn = parse_prompt_json(text)
+    assert pos == "a cat"
+    assert neg == "blurry"
+    assert scene == "cat_scene"
+    assert fp == ""
+    assert fn == ""
+    assert find_missing_fields(
+        (pos, neg, scene, fp, fn), require_face=False, require_negative=True) == []
+
+
 def test_parse_prompt_json_code_fence():
     text = '```json\n{"positive": "a dog", "negative": "ugly", "scene_name": "dog"}\n```'
     pos, neg, scene, fp, fn = parse_prompt_json(text)
