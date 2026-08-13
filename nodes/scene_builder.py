@@ -4,7 +4,7 @@ import traceback
 
 from ..combos import combo_models
 from ..imaging import image_to_base64
-from ..lm_http import chat_completion, ensure_model_loaded, looks_like_vision
+from ..lm_http import chat_completion, ensure_model_loaded, resolve_vision
 from ..model_meta import is_no_negative_family
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ..stream_push import push_stream_chunk
@@ -123,11 +123,11 @@ class LLMPromptStudioSceneBuilder:
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
                 "and press the Refresh button on the node.")
-        if vision_check and not looks_like_vision(model):
+        if vision_check and not resolve_vision(server_url, api_key, model):
             raise RuntimeError(
-                f"Model '{model}' does not look like a vision model. For image analysis "
-                "choose a vision-capable model (Qwen2.5-VL, LLaVA, Gemma-3, etc.) "
-                "or disable the vision_check option.")
+                f"Model '{model}' is not a vision model (the server reports it does not "
+                "support image inputs). For image analysis choose a vision-capable model "
+                "(Qwen2.5-VL, LLaVA, Gemma-3/4, etc.) or disable the vision_check option.")
 
         ensure_model_loaded(f"{server_url}::scene", server_url, api_key, model,
                             context_length, gpu_offload,

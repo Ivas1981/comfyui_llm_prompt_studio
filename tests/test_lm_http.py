@@ -13,6 +13,7 @@ from comfyui_llm_prompt_studio import lm_http  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
 LOCAL_V1 = "http://localhost:1234/v1"
+NATIVE_MODELS_URL = "http://localhost:1234/api/v1/models"
 
 
 def _ok_response(status=200, text="{}"):
@@ -209,3 +210,182 @@ def test_get_cached_models_fetches_when_empty():
     with patch("requests.get", return_value=resp):
         models = lm_http.get_cached_models(url, "", allow_fetch=True, timeout=1)
     assert models == ["real-model"]
+
+
+# ---------------------------------------------------------------------------
+# Vision capability detection (server-authoritative).
+# ---------------------------------------------------------------------------
+
+def _models_response(models):
+    return _ok_response(text=json.dumps({"data": models}))
+
+
+def test_model_supports_vision_true():
+    models = [{"key": "qwen2.5-vl-7b", "capabilities": {"vision": True}}]
+    with patch("requests.get", return_value=_models_response(models)) as get:
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "qwen2.5-vl-7b") is True
+    assert get.call_args[0][0] == NATIVE_MODELS_URL
+
+
+def test_model_supports_vision_false():
+    # Server truth wins over the name heuristic: a "vl" name can be text-only.
+    models = [{"key": "qwen2.5-vl-7b", "capabilities": {"vision": False}}]
+    with patch("requests.get", return_value=_models_response(models)):
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "qwen2.5-vl-7b") is False
+
+
+def test_model_supports_vision_absent_capabilities_is_none():
+    # capabilities present but no vision key -> unknown (None), do not guess.
+    models = [{"key": "gemma4-12b", "capabilities": {}}]
+    with patch("requests.get", return_value=_models_response(models)):
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "gemma4-12b") is None
+
+
+def test_model_supports_vision_model_not_listed_is_none():
+    models = [{"key": "other-model", "capabilities": {"vision": True}}]
+    with patch("requests.get", return_value=_models_response(models)):
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "gemma4-12b") is None
+
+
+def test_model_supports_vision_matches_by_id():
+    models = [{"id": "gemma4-12b", "capabilities": {"vision": True}}]
+    with patch("requests.get", return_value=_models_response(models)):
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "gemma4-12b") is True
+
+
+def test_model_supports_vision_matches_by_loaded_instance_id():
+    models = [{"key": "k", "loaded_instances": [{"id": "gemma4-12b-instance"}],
+               "capabilities": {"vision": True}}]
+    with patch("requests.get", return_value=_models_response(models)):
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "gemma4-12b-instance") is True
+
+
+def test_model_supports_vision_matches_by_variant():
+    models = [{"key": "k", "variants": ["gemma4-12b-q4"], "capabilities": {"vision": True}}]
+    with patch("requests.get", return_value=_models_response(models)):
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "gemma4-12b-q4") is True
+
+
+def test_model_supports_vision_network_error_is_none():
+    with patch("requests.get", side_effect=__import__("requests").RequestException("down")):
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "m") is None
+
+
+def test_model_supports_vision_non200_is_none():
+    with patch("requests.get", return_value=_ok_response(status=404)):
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "m") is None
+
+
+def test_model_supports_vision_nonjson_is_none():
+    with patch("requests.get", return_value=_ok_response(text="<html>")):
+        assert lm_http.model_supports_vision(LOCAL_V1, "", "m") is None
+
+
+def test_resolve_vision_server_true_overrides_name():
+    # The name heuristic says False for "m", but the server truth (True) must win.
+    models = [{"key": "m", "capabilities": {"vision": True}}]
+    with patch("requests.get", return_value=_models_response(models)):
+        assert lm_http.resolve_vision(LOCAL_V1, "", "m") is True
+
+
+def test_resolve_vision_server_false_overrides_name():
+    # Name looks like vision but server says no -> respect the server (fixes qwen2.5-vl false positive).
+    models = [{"key": "qwen2.5-vl-7b", "capabilities": {"vision": False}}]
+    with patch("requests.get", return_value=_models_response(models)):
+        assert lm_http.resolve_vision(LOCAL_V1, "", "qwen2.5-vl-7b") is False
+
+
+def test_resolve_vision_none_falls_back_to_name():
+    # Server unreachable -> fall back to the name heuristic (qwen2.5-vl is a vision name).
+    with patch("requests.get", side_effect=__import__("requests").RequestException("down")):
+        assert lm_http.resolve_vision(LOCAL_V1, "", "qwen2.5-vl-7b") is True
+
+
+# ---------------------------------------------------------------------------
+# load_model v1 body key + legacy gating.
+# ---------------------------------------------------------------------------
+
+def test_load_model_v1_body_uses_snake_case_gpu_offload():
+    resp = _ok_response(status=200)
+    with patch("requests.post", return_value=resp) as post:
+        lm_http.load_model(LOCAL_V1, "", "m", backoff=0)
+    body = post.call_args_list[0][1]["json"]
+    assert body["gpu_offload"] == 1.0
+    assert "gpuOffload" not in body
+
+
+def test_load_model_legacy_body_keeps_camel_case_gpuOffload():
+    native = _ok_response(status=404, text="not found")
+    legacy = _ok_response(status=200)
+    with patch("requests.post", side_effect=[native, legacy]) as post:
+        lm_http.load_model(LOCAL_V1, "", "m", retries=1, backoff=0)
+    # second call is the legacy /v1 endpoint (legacy_body uses gpuOffload)
+    body = post.call_args_list[1][1]["json"]
+    assert body["gpuOffload"] == 1.0
+    assert "gpu_offload" not in body
+
+
+def test_load_model_v1_400_does_not_fall_through_to_legacy():
+    # Modern server rejects the v1 load (400) but the legacy route would have answered 200
+    # ("Unexpected endpoint"). A genuine rejection must return False and must NOT call legacy.
+    native = _ok_response(status=400, text="Unrecognized key(s): 'gpuOffload'")
+    legacy = _ok_response(status=200)  # would be the false success
+    with patch("requests.post", side_effect=[native, legacy]) as post:
+        ok = lm_http.load_model(LOCAL_V1, "", "m", retries=1, backoff=0)
+    assert ok is False
+    # Only the native v1 endpoint was attempted; legacy was never called.
+    assert post.call_count == 1
+    assert post.call_args_list[0][0][0].endswith("/api/v1/models/load")
+
+
+def test_load_model_v1_404_attempts_legacy():
+    # 404 from the v1 route means an old server without that endpoint -> legacy is tried.
+    native = _ok_response(status=404, text="not found")
+    legacy = _ok_response(status=200)
+    v0 = _ok_response(status=404)
+    with patch("requests.post", side_effect=[native, legacy, v0]) as post:
+        ok = lm_http.load_model(LOCAL_V1, "", "m", retries=1, backoff=0)
+    assert ok is True
+    # native 404 falls through to the legacy /v1 endpoint, which succeeds (no v0 needed).
+    assert post.call_count == 2
+    assert post.call_args_list[1][0][0].endswith("/v1/models/m/load")
+
+
+# ---------------------------------------------------------------------------
+# chat_completion error enrichment.
+# ---------------------------------------------------------------------------
+
+def test_chat_completion_enriches_vision_rejection():
+    msg = ("The provided messages contain images, but model does not support image inputs.")
+    resp = _ok_response(status=400, text=json.dumps({"error": {"message": msg}}))
+    messages = [{"role": "user", "content": [
+        {"type": "text", "text": "Describe."},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,xxx"}},
+    ]}]
+    with patch("requests.post", return_value=resp):
+        with pytest.raises(RuntimeError) as exc:
+            lm_http.chat_completion(LOCAL_V1, "", "m", messages, 0.7, 100)
+    assert "does not support image inputs" in str(exc.value)
+    assert "vision-capable model" in str(exc.value)
+
+
+def test_chat_completion_generic_error_when_no_images():
+    resp = _ok_response(status=400, text=json.dumps({"error": {"message": "bad request"}}))
+    messages = [{"role": "user", "content": "hello"}]
+    with patch("requests.post", return_value=resp):
+        with pytest.raises(RuntimeError) as exc:
+            lm_http.chat_completion(LOCAL_V1, "", "m", messages, 0.7, 100)
+    assert "does not support image inputs" not in str(exc.value)
+    assert "HTTP 400" in str(exc.value)
+
+
+def test_chat_completion_enriches_model_load_failure():
+    msg = ('Failed to load model "m". Error: Engine protocol runtime llama-server '
+           "exited before becoming healthy. exitCode=3221226505")
+    resp = _ok_response(status=400, text=json.dumps({"error": {"message": msg}}))
+    messages = [{"role": "user", "content": "hello"}]
+    with patch("requests.post", return_value=resp):
+        with pytest.raises(RuntimeError) as exc:
+            lm_http.chat_completion(LOCAL_V1, "", "m", messages, 0.7, 100)
+    assert "failed to load on the server" in str(exc.value)
+    assert "exited before becoming healthy" in str(exc.value)
