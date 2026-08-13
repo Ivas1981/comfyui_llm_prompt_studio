@@ -9,6 +9,7 @@ import {
 
 import {
     refreshModels, saveToLibrary, refreshScenes, sendToWriter, requeuePrompt,
+    reloadPresets, resetPresets, copyPresetsPath,
 } from "./llm_prompt_studio_actions.js";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,11 @@ app.registerExtension({
     nodeCreated(node) {
         if (isWriter(node) || isCritic(node)) {
             addButton(node, "🔄 Refresh models", () => refreshModels(node));
+        }
+        if (isWriter(node)) {
+            addButton(node, "🎨 Reload presets", () => reloadPresets(node));
+            addButton(node, "♻️ Reset presets", () => resetPresets(node));
+            addButton(node, "📋 Copy presets path", () => copyPresetsPath(node));
         }
         if (isScene(node)) {
             addButton(node, "→ Send to Writer", () => sendToWriter(node));
@@ -178,6 +184,29 @@ api.addEventListener("executed", (e) => {
             app.graph.setDirtyCanvas(true, true);
         }
     }
+});
+
+// --- Live streaming: append streamed chunks to the node's generation_view widget ---
+api.addEventListener("llm_prompt_studio.stream", (e) => {
+    const d = e.detail || {};
+    const node = app.graph.getNodeById(d.node_id);
+    if (!node) return;
+    const w = getW(node, "generation_view");
+    if (w) {
+        w.value = (w.value || "") + (d.chunk || "");
+        app.graph.setDirtyCanvas(true, true);
+    }
+});
+
+// Reset generation_view at the start of each node execution so streams don't accumulate.
+api.addEventListener("executing", (e) => {
+    const d = e.detail || {};
+    const id = d.node;
+    if (id == null) return;
+    const node = app.graph.getNodeById(id);
+    if (!node) return;
+    const w = getW(node, "generation_view");
+    if (w) w.value = "";
 });
 
 console.log("[LLMPromptStudio.Bridge] extension loaded");

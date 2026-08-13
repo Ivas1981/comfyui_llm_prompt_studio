@@ -4,14 +4,19 @@ import json
 import logging
 import os
 import time
+from typing import Any, Dict, Optional
 from urllib.parse import quote, urlparse
+
+import threading
 
 import requests
 
 from .constants import PLACEHOLDER, PLACEHOLDER_EMPTY
+from .debug import debug_active, log, log_http_request, log_http_response
 
 logger = logging.getLogger("llm_prompt_studio")
 
+# Nothing is logged when DEBUG_LEVEL is "OFF"; importing debug here is cheap and guarded.
 __all__ = [
     "ALLOW_PUBLIC_SERVER_URLS",
     "DEFAULT_SERVER",
@@ -28,11 +33,16 @@ __all__ = [
     "chat_completion",
 ]
 
+# Abort a stalled streaming response if no SSE event arrives for this many seconds.
+STREAM_WATCHDOG_SEC = 30
+
 # Read allow-public flag from environment for runtime configuration.
 ALLOW_PUBLIC_SERVER_URLS = os.getenv("LLM_PROMPT_STUDIO_ALLOW_PUBLIC", "False").lower() in ("1", "true", "yes")
 
 # cache "last loaded model" to unload the old one on switch: {slot: model_id}
 _last_loaded = {}
+# model instance ids returned by the v1 load endpoint, keyed for precise unload: {(server, model): id}
+_model_instances = {}
 # cache of model lists: {(server_url, api_key): (models, timestamp)}
 _model_cache = {}
 CACHE_TTL = 60  # seconds (was 10)
@@ -276,54 +286,123 @@ def _is_transient(status, exc):
     return status in _RETRYABLE_STATUS
 
 
-def load_model(server_url: str, api_key: str, model: str,
-                context_length: int = 8192, gpu_offload: float = 1.0,
-                timeout: int = 300, retries: int = 3, backoff: float = 1.0) -> bool:
-    """Load a model on the LM Studio server with the given context length / GPU offload.
-
-    Returns True if the server confirmed the load (HTTP < 400). Falls back from the v1 to
-    the v0 load endpoint. GPU offload is a 0.0–1.0 fraction (1.0 = max).
-
-    Transient failures (HTTP 429/500/502/503/504, connection errors, timeouts) are retried
-    with exponential backoff: `retries` attempts per endpoint, pausing `backoff` seconds
-    before the 2nd try, `backoff * 2` before the 3rd, and so on."""
-    server_url = validate_server_url(server_url)
+def _server_root(server_url: str) -> str:
+    """Strip a trailing ``/v1`` so we can build native ``/api/v1/*`` endpoints from a
+    server_url that already ends in ``/v1`` (the ComfyUI default)."""
     base = server_url.rstrip("/")
-    body = {"contextLength": int(context_length), "gpuOffload": gpu_offload, "seed": -1}
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    identifier = quote(model, safe="")
+    if base.endswith("/v1"):
+        base = base[:-3].rstrip("/")
+    return base
+
+
+def _try_post(path: str, body: dict, headers: dict, timeout: int, retries: int, backoff: float):
+    """POST JSON and return (ok, last_error, response-or-None).
+
+    Retries transient failures with exponential backoff; non-retryable client errors
+    (e.g. 400/401/404) stop immediately so the caller can try the next endpoint."""
     last_err = None
-    for path in (f"{base}/v1/models/{identifier}/load",
-                  f"{base}/api/v0/models/{identifier}/load"):
-        for attempt in range(retries):
-            started = time.time()
-            try:
-                resp = requests.post(path, json=body, headers=headers, timeout=timeout)
-            except requests.RequestException as e:
-                last_err = str(e)
-                if _is_transient(None, e) and attempt < retries - 1:
-                    logger.debug("Load attempt %d/%d for '%s' failed (%s); retrying",
-                                 attempt + 1, retries, model, e)
-                    time.sleep(backoff * (2 ** attempt))
-                    continue
-                break
-            if resp.status_code < 400:
-                logger.info("Loaded model '%s' (context=%s, gpuOffload=%s) in %.1fs",
-                            model, context_length, gpu_offload, time.time() - started)
-                return True
-            last_err = f"HTTP {resp.status_code}: {resp.text[:300]}"
-            if _is_transient(resp.status_code, None) and attempt < retries - 1:
-                logger.debug("Load attempt %d/%d for '%s' returned %d; retrying",
-                             attempt + 1, retries, model, resp.status_code)
+    for attempt in range(retries):
+        try:
+            resp = requests.post(path, json=body, headers=headers, timeout=timeout)
+        except requests.RequestException as e:
+            last_err = str(e)
+            if attempt < retries - 1:
                 time.sleep(backoff * (2 ** attempt))
                 continue
-            break  # non-retryable (e.g. 400/401/404) — try the next endpoint
-    logger.warning("LM Studio could not load model '%s': %s", model, last_err)
+            return False, last_err, None
+        if resp.status_code < 400:
+            return True, None, resp
+        last_err = f"HTTP {resp.status_code}: {resp.text[:300]}"
+        if _is_transient(resp.status_code, None) and attempt < retries - 1:
+            time.sleep(backoff * (2 ** attempt))
+            continue
+        return False, last_err, resp
+    return False, last_err, None
+
+
+def load_model(server_url: str, api_key: str, model: str,
+               context_length: int = 8192, gpu_offload: float = 1.0,
+               timeout: int = 300, retries: int = 3, backoff: float = 1.0,
+               flash_attention: Optional[bool] = None,
+               offload_kv_cache_to_gpu: Optional[bool] = None,
+               eval_batch_size: Optional[int] = None,
+               num_experts: Optional[int] = None,
+               echo_load_config: bool = True) -> bool:
+    """Load a model on the LM Studio server with the given context length / GPU offload.
+
+    Tries LM Studio's native ``/api/v1/models/load`` endpoint first (it supports flash
+    attention, KV-cache GPU offload, eval batch size and MoE experts), then falls back to the
+    legacy ``/v1/models/{id}/load`` and ``/api/v0/models/{id}/load`` endpoints which honor
+    ``gpuOffload`` but ignore the newer options. Returns True if any endpoint confirmed the
+    load (HTTP < 400).
+
+    Transient failures (HTTP 429/500/502/503/504, connection errors, timeouts) are retried
+    with exponential backoff per endpoint."""
+    server_url = validate_server_url(server_url)
+    base = server_url.rstrip("/")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    identifier = quote(model, safe="")
+
+    # Native v1 load body (snake_case per LM Studio docs). New options are only included when set.
+    v1_body = {"model": model, "context_length": int(context_length), "gpuOffload": gpu_offload}
+    if flash_attention is not None:
+        v1_body["flash_attention"] = bool(flash_attention)
+    if offload_kv_cache_to_gpu is not None:
+        v1_body["offload_kv_cache_to_gpu"] = bool(offload_kv_cache_to_gpu)
+    if eval_batch_size is not None:
+        v1_body["eval_batch_size"] = int(eval_batch_size)
+    if num_experts is not None:
+        v1_body["num_experts"] = int(num_experts)
+    if echo_load_config:
+        v1_body["echo_load_config"] = True
+
+    # Legacy body (camelCase) used by the older endpoints; ignores the new options.
+    legacy_body = {"contextLength": int(context_length), "gpuOffload": gpu_offload, "seed": -1}
+
+    # 1) Native v1 endpoint (best effort — supports flash attention / kv offload).
+    ok, err, resp = _try_post(f"{base}/api/v1/models/load", v1_body, headers,
+                              timeout, retries, backoff)
+    if ok:
+        _record_load_config(server_url, model, resp)
+        return True
+
+    # 2) Legacy endpoints (honor gpuOffload; the new options are silently ignored).
+    for path in (f"{base}/v1/models/{identifier}/load",
+                 f"{base}/api/v0/models/{identifier}/load"):
+        ok, err, resp = _try_post(path, legacy_body, headers, timeout, retries, backoff)
+        if ok:
+            logger.info("Loaded model '%s' (context=%s, gpuOffload=%s) in %.1fs",
+                        model, context_length, gpu_offload, 0.0)
+            return True
+
+    logger.warning("LM Studio could not load model '%s': %s", model, err)
     return False
 
 
+def _record_load_config(server_url: str, model: str, resp):
+    """Persist the instance id / echoed load_config from a successful v1 load (debug only)."""
+    try:
+        data = resp.json() if resp is not None else {}
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        return
+    instance_id = data.get("instance_id")
+    load_config = data.get("load_config", {})
+    if instance_id:
+        _model_instances[(server_url, model)] = instance_id
+    if debug_active():
+        log("DEBUG", "MODEL_LOAD", model,
+            {"instance_id": instance_id, "load_config": load_config})
+
+
 def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
-                        context_length: int = 8192, gpu_offload: float = 1.0):
+                        context_length: int = 8192, gpu_offload: float = 1.0,
+                        flash_attention: Optional[bool] = None,
+                        offload_kv_cache_to_gpu: Optional[bool] = None,
+                        eval_batch_size: Optional[int] = None,
+                        num_experts: Optional[int] = None,
+                        echo_load_config: bool = True):
     """Make sure `model` is the one loaded on the server before we call it.
 
     Skips work when the same model is already loaded for this slot, otherwise unloads the
@@ -337,7 +416,12 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     if _last_loaded.get(slot) == model:
         return  # already loaded for this slot — avoid a needless reload
     maybe_unload_old(slot, server_url, model)  # unloads the previous model
-    if not load_model(server_url, api_key, model, context_length, gpu_offload):
+    if not load_model(server_url, api_key, model, context_length, gpu_offload,
+                      flash_attention=flash_attention,
+                      offload_kv_cache_to_gpu=offload_kv_cache_to_gpu,
+                      eval_batch_size=eval_batch_size,
+                      num_experts=num_experts,
+                      echo_load_config=echo_load_config):
         _last_loaded[slot] = None  # load failed: allow a retry on the next run
         logger.warning(
             "Model '%s' for slot '%s' was not loaded. The next LLM call will fail "
@@ -373,10 +457,43 @@ def _serialize_message_content(content):
 
 
 def chat_completion(server_url, api_key, model, messages,
-                    temperature, max_tokens, timeout=600, seed=None) -> str:
+                    temperature, max_tokens, timeout=600, seed=None,
+                    stream=False, reasoning="off", repeat_penalty=1.0,
+                    top_k=None, top_p=None, min_p=None, on_delta=None) -> str:
+    """OpenAI-compatible chat completion with optional LM Studio v1-native features.
+
+    The native ``/api/v1/chat`` endpoint (which supports ``reasoning``, ``repeat_penalty``,
+    ``top_k``/``top_p``/``min_p`` and streaming) is used automatically when ``stream=True`` or
+    any v1-only parameter is set. Multimodal (image) requests always use the OpenAI
+    ``/chat/completions`` path for maximum compatibility — in that case the v1-only options are
+    ignored. If a streaming request fails, it gracefully falls back to a normal non-streaming
+    call so the node still returns text.
+
+    ``on_delta`` (callable[str]) receives each streamed content chunk when streaming."""
     server_url = validate_server_url(server_url)
-    # Send the messages exactly as given — including multimodal (image_url) content, which
-    # OpenAI-compatible servers expect in the request body. Serialize only for the debug log.
+    has_images = any(
+        isinstance(m.get("content"), list)
+        for m in messages if isinstance(m, dict))
+    # Route to the v1-native endpoint only when a v1-only feature is requested and the
+    # request is not multimodal (the OpenAI path is required for images).
+    use_v1 = (stream or reasoning not in (None, "off") or top_k is not None
+              or top_p is not None or min_p is not None
+              or (repeat_penalty is not None and repeat_penalty != 1.0)) and not has_images
+    if use_v1:
+        try:
+            return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
+                            timeout=timeout, seed=seed, stream=stream, reasoning=reasoning,
+                            repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
+                            min_p=min_p, on_delta=on_delta)
+        except Exception as e:  # noqa: BLE001 — graceful fallback for streaming failures
+            if stream:
+                logger.warning("Streaming failed (%s); falling back to non-streaming.", e)
+                stream = False
+                use_v1 = False
+            else:
+                raise
+
+    # --- OpenAI-compatible path (default; unchanged behavior) -------------------------
     body = {"model": model, "messages": messages,
             "temperature": temperature, "max_tokens": max_tokens}
     if seed is not None:
@@ -393,7 +510,6 @@ def chat_completion(server_url, api_key, model, messages,
         raise RuntimeError(f"Could not reach LM Studio ({server_url}): {e}")
     if resp.status_code >= 400:
         txt = resp.text or ""
-        #...
         snippet = txt[:1000] if len(txt) > 1000 else txt
         logger.error("LM Studio HTTP %s for model '%s': %s", resp.status_code, model, snippet)
         raise RuntimeError(
@@ -424,3 +540,142 @@ def chat_completion(server_url, api_key, model, messages,
                  model, time.time() - started, len(content),
                  _serialize_message_content(last))
     return content
+
+
+def _aggregate_v1_output(result: Dict) -> str:
+    """Join the ``content`` of all ``message``-type items in a v1 chat ``result``/response."""
+    output = result.get("output", []) if isinstance(result, dict) else []
+    parts = []
+    for item in output:
+        if isinstance(item, dict) and item.get("type") == "message":
+            parts.append(item.get("content", ""))
+    return "".join(parts)
+
+
+def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
+             timeout=600, seed=None, stream=False, reasoning="off",
+             repeat_penalty=1.0, top_k=None, top_p=None, min_p=None, on_delta=None) -> str:
+    """Call LM Studio's native ``/api/v1/chat`` endpoint (v1-only features + streaming)."""
+    base = _server_root(server_url)
+    url = f"{base}/api/v1/chat"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {
+        "model": model,
+        "input": messages,
+        "temperature": temperature,
+        "max_output_tokens": max_tokens,
+        "reasoning": reasoning,
+        "repeat_penalty": repeat_penalty,
+        "stream": stream,
+    }
+    if seed is not None:
+        payload["seed"] = seed
+    if top_k is not None:
+        payload["top_k"] = top_k
+    if top_p is not None:
+        payload["top_p"] = top_p
+    if min_p is not None:
+        payload["min_p"] = min_p
+
+    log_http_request("POST", url, headers, payload)
+    started = time.time()
+    if not stream:
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        except requests.RequestException as e:
+            raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
+        if resp.status_code >= 400:
+            snippet = (resp.text or "")[:1000]
+            raise RuntimeError(
+                f"LM Studio returned HTTP {resp.status_code} for model '{model}': {snippet}")
+        try:
+            data = resp.json()
+        except ValueError:
+            snippet = (resp.text or "")[:1000]
+            raise RuntimeError(f"LM Studio returned non-JSON response: {snippet}")
+        log_http_response(resp.status_code, time.time() - started, len(resp.text or ""))
+        return _aggregate_v1_output(data)
+
+    # Streaming: consume the SSE event stream.
+    try:
+        resp = requests.post(url, headers=headers, json=payload, stream=True, timeout=timeout)
+    except requests.RequestException as e:
+        raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
+    if resp.status_code >= 400:
+        snippet = (resp.text or "")[:1000]
+        raise RuntimeError(
+            f"LM Studio returned HTTP {resp.status_code} for model '{model}': {snippet}")
+    return _consume_sse(resp, on_delta, started, url, headers)
+
+
+def _consume_sse(resp, on_delta, started, url, headers) -> str:
+    """Parse an LM Studio ``/api/v1/chat`` SSE stream and return the final aggregated text.
+
+    Emits ``message.delta`` content to ``on_delta`` (for live UI). A no-activity watchdog
+    aborts a stalled stream; a server ``error`` event raises; ``chat.end`` returns the result."""
+    full: list = []
+    event_type = None
+    stop = threading.Event()
+    watchdog = None
+
+    def _arm():
+        nonlocal watchdog
+        if watchdog is not None:
+            watchdog.cancel()
+        if not stop.is_set():
+            watchdog = threading.Timer(STREAM_WATCHDOG_SEC, _stall)
+            watchdog.daemon = True
+            watchdog.start()
+
+    def _stall():
+        stop.set()
+        try:
+            resp.close()
+        except Exception:
+            pass
+
+    _arm()
+    try:
+        for raw in resp.iter_lines(decode_unicode=True):
+            if stop.is_set():
+                raise RuntimeError(
+                    f"Streaming stalled (no data for {STREAM_WATCHDOG_SEC}s) from {url}")
+            if not raw:
+                continue
+            _arm()
+            line = raw.strip()
+            if line.startswith("event:"):
+                event_type = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                data_str = line[len("data:"):].strip()
+                if not data_str:
+                    continue
+                try:
+                    data = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+                data["type"] = event_type or data.get("type")
+                et = data.get("type")
+                if et == "message.delta":
+                    chunk = data.get("content", "")
+                    full.append(chunk)
+                    if on_delta:
+                        try:
+                            on_delta(chunk)
+                        except Exception:
+                            pass
+                elif et == "error":
+                    raise RuntimeError(f"LM Studio streaming error: {data}")
+                elif et == "chat.end":
+                    return _aggregate_v1_output(data.get("result", {}))
+        return "".join(full)
+    finally:
+        stop.set()
+        if watchdog is not None:
+            watchdog.cancel()
+        try:
+            resp.close()
+        except Exception:
+            pass

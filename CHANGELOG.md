@@ -6,6 +6,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.0] — 2026-08-13
+
+### Added
+- **Style presets** — 14 ready-made style presets (Photorealism, Cinematic, Anime, 3D Render,
+  Digital Art, …) ship in `presets_default.json`. The Writer exposes a `style_preset` combobox;
+  selecting one appends the preset's `style_tags_positive`/`style_tags_negative` to the generated
+  prompt and (when the system prompt is left at default) applies the preset's `system_prompt`.
+  Presets are copied to an editable user file (`llm_prompt_studio_presets.json` in the ComfyUI
+  output dir) on first run; "Reload presets" refreshes the combo and "Reset to defaults" restores
+  the shipped set. Presets that opt out of no-negative mode are skipped automatically there.
+- **Debug logging** (`debug.py`) — opt-in, OFF by default. `DEBUG_LEVEL` = `MINIMAL` logs node
+  enter/exit/error; `FULL` adds HTTP request/response and JSON-parse attempts. API keys and
+  base64 blobs are masked/truncated; the rotating log file is only created when logging is active.
+- **LM Studio native v1 API support** — `lm_http.load_model` now tries LM Studio's native
+  `/api/v1/models/load` first (with `flash_attention`, `offload_kv_cache_to_gpu`,
+  `eval_batch_size`, `num_experts`, `echo_load_config`) and falls back to the legacy
+  `/v1/.../load` and `/api/v0/.../load` endpoints (which still honor `gpuOffload`) on failure.
+- **Advanced sampling widgets** on Writer / Image Critic / Scene Builder: `reasoning`
+  (`off`/`low`/`medium`/`high`/`on`), `flash_attention`, `offload_kv_cache_to_gpu`,
+  `repeat_penalty`, `top_k`, `top_p`, `min_p`. These are v1-native and only take effect when the
+  model server supports them (or when streaming is enabled); defaults keep the old behavior.
+- **Live streaming** — when `stream` is enabled, tokens are pushed to the node's `generation_view`
+  widget in real time over the ComfyUI websocket (`web/js/llm_prompt_studio_bridge.js` listens for
+  the `llm_prompt_studio.stream` event and appends chunks with auto-scroll).
+
+### Changed
+- `lm_http.chat_completion` automatically uses LM Studio's native `/api/v1/chat` endpoint when
+  `stream=True` or any v1-only parameter is set, falling back to the OpenAI `/chat/completions`
+  path for multimodal (image) requests or when a streaming call fails (so a stalled/errored
+  stream still returns text). Streaming uses SSE with a no-activity watchdog, server `error` events
+  are surfaced as `RuntimeError`, and a single failed stream falls back to a normal completion.
+
+---
+
 ## [0.9.1] — 2026-08-13
 
 ### Fixed

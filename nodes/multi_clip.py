@@ -1,5 +1,7 @@
 MAX_RESOLUTION = 16384
 
+from ..debug import node_span
+
 
 class LLMPromptStudioMultiClipSDXL:
     """Encodes up to four SDXL prompt pairs (positive1/negative1/positive2/negative2)
@@ -56,21 +58,22 @@ class LLMPromptStudioMultiClipSDXL:
                         "target_width": tw, "target_height": th}]]
 
     def encode(self, clip, width, height, crop_w, crop_h,
-               target_width=None, target_height=None,
-               positive1_g="", positive1_l="",
-               negative1_g="", negative1_l="",
-               positive2_g="", positive2_l="",
-               negative2_g="", negative2_l=""):
-        tw = target_width if target_width else width
-        th = target_height if target_height else height
+                target_width=None, target_height=None, unique_id=None,
+                positive1_g="", positive1_l="",
+                negative1_g="", negative1_l="",
+                positive2_g="", positive2_l="",
+                negative2_g="", negative2_l=""):
+        with node_span("Multi-CLIP SDXL", unique_id, {"width": width, "height": height}):
+            tw = target_width if target_width else width
+            th = target_height if target_height else height
 
-        positive1 = self._encode_pair(clip, positive1_g, positive1_l,
-                                      width, height, crop_w, crop_h, tw, th)
-        negative1 = self._encode_pair(clip, negative1_g, negative1_l,
-                                      width, height, crop_w, crop_h, tw, th)
-        positive2 = self._encode_pair(clip, positive2_g, positive2_l,
-                                      width, height, crop_w, crop_h, tw, th)
-        negative2 = self._encode_pair(clip, negative2_g, negative2_l,
-                                      width, height, crop_w, crop_h, tw, th)
+            positive1 = self._encode_pair(clip, positive1_g, positive1_l,
+                                           width, height, crop_w, crop_h, tw, th)
+            negative1 = self._encode_pair(clip, negative1_g, negative1_l,
+                                           width, height, crop_w, crop_h, tw, th)
+            positive2 = self._encode_pair(clip, positive2_g, positive2_l,
+                                           width, height, crop_w, crop_h, tw, th)
+            negative2 = self._encode_pair(clip, negative2_g, negative2_l,
+                                           width, height, crop_w, crop_h, tw, th)
 
-        return (clip, positive1, negative1, positive2, negative2)
+            return (clip, positive1, negative1, positive2, negative2)

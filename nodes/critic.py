@@ -1,8 +1,15 @@
+import logging
+import time
+import traceback
+
 from ..combos import combo_models
 from ..imaging import image_to_base64
 from ..lm_http import chat_completion, ensure_model_loaded, looks_like_vision
 from ..parsing import parse_critic_json
+from ..debug import log_node_enter, log_node_exit, log_error
 from ._defaults import DEFAULT_CRITIC
+
+logger = logging.getLogger("llm_prompt_studio")
 
 
 class LLMPromptStudioCritic:
@@ -29,7 +36,14 @@ class LLMPromptStudioCritic:
                 "max_retries": ("INT", {"default": 3, "min": 1, "max": 10}),
                 "vision_check": ("BOOLEAN", {"default": True}),
                 "revision_view": ("STRING", {"multiline": True, "default": ""}),
-            }
+                "flash_attention": ("BOOLEAN", {"default": False,
+                                    "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage"}),
+                "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
+                                          "tooltip": "Store KV cache in GPU memory (faster) vs CPU RAM (lower VRAM)"}),
+                "generation_view": ("STRING", {"multiline": True, "default": "",
+                                     "tooltip": "Live generation output (streaming requires a non-vision model)"}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("BOOLEAN", "INT", "STRING", "STRING", "STRING")
@@ -39,7 +53,29 @@ class LLMPromptStudioCritic:
     def execute(self, image, prompt, server_url, api_key, model, context_length, gpu_offload,
                  critic_prompt, threshold, image_max_size, temperature, max_tokens,
                  clear_notes_on_approve, auto_loop, max_retries,
-                 vision_check=True, revision_view=""):
+                 vision_check=True, revision_view="",
+                 flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None):
+        _t0 = time.time()
+        log_node_enter("Critic", unique_id, {
+            "server_url": server_url, "model": model, "threshold": threshold,
+            "image_max_size": image_max_size, "temperature": temperature,
+            "max_tokens": max_tokens, "vision_check": vision_check,
+        })
+        try:
+            return self._run(image, prompt, server_url, api_key, model, context_length, gpu_offload,
+                             critic_prompt, threshold, image_max_size, temperature, max_tokens,
+                             clear_notes_on_approve, auto_loop, max_retries,
+                             vision_check, revision_view, flash_attention,
+                             offload_kv_cache_to_gpu, unique_id, _t0)
+        except Exception as e:
+            log_error(unique_id, e, traceback.format_exc())
+            raise
+
+    def _run(self, image, prompt, server_url, api_key, model, context_length, gpu_offload,
+             critic_prompt, threshold, image_max_size, temperature, max_tokens,
+             clear_notes_on_approve, auto_loop, max_retries,
+             vision_check=True, revision_view="",
+             flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None, _t0=None):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -51,7 +87,9 @@ class LLMPromptStudioCritic:
                 "or disable the vision_check option.")
 
         ensure_model_loaded(f"{server_url}::critic", server_url, api_key, model,
-                            context_length, gpu_offload)
+                            context_length, gpu_offload,
+                            flash_attention=flash_attention,
+                            offload_kv_cache_to_gpu=offload_kv_cache_to_gpu)
         b64 = image_to_base64(image, image_max_size)
 
         messages = [
@@ -65,10 +103,12 @@ class LLMPromptStudioCritic:
             ]},
         ]
         raw = chat_completion(server_url, api_key, model, messages,
-                              temperature, max_tokens)
+                               temperature, max_tokens)
         score, verdict, notes = parse_critic_json(raw)
         approved = score >= threshold
 
+        log_node_exit("Critic", unique_id, {"score": score, "approved": approved,
+                       "notes_len": len(notes)}, (time.time() - _t0) * 1000)
         return {
             "ui": {
                 "approved": [approved],

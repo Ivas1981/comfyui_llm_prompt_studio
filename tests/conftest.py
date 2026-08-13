@@ -2,10 +2,13 @@ import os
 import sys
 from unittest.mock import MagicMock
 
-# Make the package root importable so `import parsing` etc. work in tests.
+# Make the package root importable so `import comfyui_llm_prompt_studio` etc. work in
+# tests. The package lives at <repo>/comfyui_llm_prompt_studio, so its PARENT (the repo
+# root) must be on sys.path, not the package directory itself.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _PKG_ROOT not in sys.path:
-    sys.path.insert(0, _PKG_ROOT)
+_PROJECT_ROOT = os.path.dirname(_PKG_ROOT)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 # folder_paths is provided by ComfyUI at runtime; stub it for standalone tests.
 if "folder_paths" not in sys.modules:
