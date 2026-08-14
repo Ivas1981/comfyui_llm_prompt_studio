@@ -173,8 +173,6 @@ def cached_model_list(server_url: str = DEFAULT_SERVER):
     return None
 
 
-_load_disk_cache()
-
 VISION_NAME_HINTS = (
     # generic substrings found in vision-capable model ids
     "vl", "vlm", "vision", "visual",
@@ -240,6 +238,9 @@ def _store_model_cache(server_url: str, models):
     _model_cache[_normalize_server(server_url)] = (models, time.time())
     if len(_model_cache) > _MODEL_CACHE_MAX:
         _model_cache.pop(next(iter(_model_cache)))  # drop oldest
+
+
+_load_disk_cache()
 
 
 def cache_models(server_url: str, api_key: str, models: list):
