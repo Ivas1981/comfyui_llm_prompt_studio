@@ -1,13 +1,6 @@
 import json
-import os
-import sys
 
-_PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_PARENT = os.path.dirname(_PKG)
-if _PARENT not in sys.path:
-    sys.path.insert(0, _PKG)  # make `parsing` importable as a top-level module
-
-from parsing import parse_prompt_json, _extract_json_dict  # noqa: E402
+from comfyui_llm_prompt_studio.parsing import parse_prompt_json, _extract_json_dict  # noqa: E402
 
 pytest = __import__("pytest")
 pytest.importorskip("hypothesis")

@@ -1,8 +1,9 @@
 import json
 
-from parsing import (_iter_brace_objects, _salvage_partial_prompt, find_missing_fields,
-                       parse_critic_json, parse_prompt_json, slugify)
-from model_meta import detect_checkpoint_family
+from comfyui_llm_prompt_studio.parsing import (_iter_brace_objects, _salvage_partial_prompt,
+                                                find_missing_fields, parse_critic_json,
+                                                parse_prompt_json, slugify)
+from comfyui_llm_prompt_studio.model_meta import detect_checkpoint_family
 
 
 def test_parse_prompt_json_valid():
