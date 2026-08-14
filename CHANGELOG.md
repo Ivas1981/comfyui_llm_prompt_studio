@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.8] — 2026-08-14
+
+### Changed
+- **System prompts now follow SDXL prompt-engineering best practices.** Every preset's
+  `system_prompt` / `system_prompt_no_negative` gained an "Engineering rules" block that instructs the LLM to
+  compose prompts in clear layers (subject -> appearance -> action/pose -> object relationships -> environment ->
+  composition -> camera/lens -> lighting -> color palette -> mood -> style), lead with the main subject, prefer
+  concrete visual descriptors over abstract booster adjectives, state spatial/object relationships explicitly,
+  describe the visible result rather than the intention, blend natural-language with a few key style tags, keep the
+  prompt concise, and use prompt weighting sparingly `(concept:1.1)`–`(concept:1.3)` only on the most important trait.
+  Negatives are told to stay short and targeted (no giant legacy dumps). NSFW authorization (anatomically correct,
+  precise terms, no censorship) is preserved and reinforced.
+- **Removed the legacy `8k uhd` booster tag** from the Photorealism `style_tags_positive` list (it is appended to the
+  positive prompt and the manual flags `8k` as a non-magical SD1.5-era quality dump).
+- **Base system prompts in `prompts.json` received the same treatment.** `writer_system`,
+  `writer_system_no_negative`, `composer` and `composer_no_negative` gained an "Additional engineering rules" block:
+  explicit object/spatial relationships, added color-palette and mood/atmosphere layers, concrete-over-abstract
+  descriptors, "describe the visible result not the intention", sparing `(concept:1.1)`–`(concept:1.3)` weighting,
+  composition variety, and short targeted negatives. NSFW authorization is preserved.
+- **Anime / Manga preset now uses Danbooru/booru tagging.** Per the SDXL manual, most SDXL anime checkpoints
+  (Pony, Illustrious, Animagine, NoobAI-derived) are trained on booru vocabulary and respond to it best, so the
+  preset now instructs ordered booru tags (rating → character count → identity → traits → clothing → pose →
+  expression → composition → environment → lighting → style), with score tags only when the model expects them.
+  `style_tags_positive` was made booru-friendly (`anime`, `cel shading`, `vibrant colors`, `detailed illustration`).
+  NSFW authorization is preserved (precise booru + natural-language terms, no censorship).
+- **Single source of truth for all system prompts.** Base default prompts (Writer, Scene Builder describe/composer,
+  Critic, face instructions) and the 14 style presets now live in **one file**, `presets_default.json`, with two
+  top-level sections: `defaults` (the base prompts used when no preset is selected) and `presets` (the style
+  presets). `prompts.json` was deleted; `nodes/_defaults.py` now reads the base prompts from `presets_default.json`
+  via `presets.get_defaults()`, and `presets._migrate` backfills a missing `defaults` section for older user files.
+  When the Writer's `style_preset` combobox is left at "— none —" it uses `defaults.writer_system`; selecting a
+  preset overrides it (and appends the preset's style tags). This matches the pre-existing behavior, now in one place.
+
 ## [1.0.7] — 2026-08-14
 
 ### Fixed

@@ -87,10 +87,10 @@ comfyui_llm_prompt_studio/
 ├── imaging.py                # image tensor → base64 JPEG
 ├── model_meta.py             # generation metadata, safetensors, family detection
 ├── server_routes.py          # /llm_prompt_studio/* routes used by the JS bridge
-├── prompts.json              # default system prompts (edit without touching code)
+├── presets_default.json      # single source of truth: base `defaults` + style `presets`
 ├── nodes/
 │   ├── __init__.py           # node mappings
-│   ├── _defaults.py          # loads prompts.json
+│   ├── _defaults.py          # loads base `defaults` from presets_default.json
 │   ├── writer.py
 │   ├── critic.py
 │   ├── smart_save.py
@@ -246,10 +246,13 @@ Encodes up to four SDXL prompt pairs with one CLIP and shared size settings.
 
 ---
 
-## Prompt templates (`prompts.json`)
+## Prompt templates and style presets (`presets_default.json`)
 
-All default system prompts live in **`prompts.json`** at the package root — edit them
-without touching Python. Keys:
+All default system prompts and all style presets live in a **single file**,
+**`presets_default.json`** at the package root — edit them without touching Python. It has two
+top-level sections:
+
+- **`defaults`** — the base system prompts used when no style preset is selected. Keys:
 
 | Key | Used by |
 |-----|---------|
@@ -263,8 +266,15 @@ without touching Python. Keys:
 | `composer_no_negative` | Scene Builder (distilled/no-negative mode; falls back to `composer`) |
 | `face_instruction_no_negative` | Prompt Writer face prompts (no-negative mode; falls back to `face_instruction`) |
 
-Changes take effect after restarting ComfyUI (templates are loaded at startup). Every
-node also exposes its prompt as an editable widget, so you can override per-node.
+- **`presets`** — the 14 style presets listed in the Writer's `style_preset` combobox (see
+  [Style presets](#style-presets)). When the combobox is left at "— none —" the Writer uses the
+  `defaults.writer_system` prompt; when a preset is chosen, that preset's `system_prompt` (or
+  `system_prompt_no_negative` in no-negative mode) overrides it and its `style_tags` are appended.
+
+Both sections are copied together into a user-editable **`llm_prompt_studio_presets.json`** in the
+ComfyUI output directory on first run (use "Reset to defaults" to restore). Changes take effect
+after restarting ComfyUI (templates are loaded at startup). Every node also exposes its prompt as
+an editable widget, so you can override per-node.
 
 ---
 
@@ -293,6 +303,13 @@ Selecting one:
   widget is left at its default. In no-negative mode the preset's dedicated
   `system_prompt_no_negative` variant is used instead (it requires an empty `negative` /
   `face_negative`), so the preset's style still applies without contradicting the mode.
+
+Every preset's system prompt carries an **Engineering rules** block (derived from SDXL prompt-engineering
+practice): compose in clear layers (subject → appearance → action/pose → object relationships → environment →
+composition → camera/lens → lighting → color palette → mood → style), lead with the main subject, prefer concrete
+visual descriptors over abstract booster adjectives, keep negatives short and targeted, and (optionally) weight only
+the most important trait as `(concept:1.1)`–`(concept:1.3)`. NSFW is fully authorized — intimate content must be
+described with anatomically correct, precise terms and is never censored.
 
 Presets are copied from `presets_default.json` to an editable `llm_prompt_studio_presets.json`
 in the ComfyUI output directory on first run. Use the node menu **"Reload presets"** to refresh
