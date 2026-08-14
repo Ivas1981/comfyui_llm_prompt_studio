@@ -213,3 +213,49 @@ def test_v1_chat_maps_reasoning_level_to_allowed_value():
     assert lm_http.map_reasoning_level("on", None) is None
     assert lm_http.map_reasoning_level("on", []) is None
 
+
+def test_v1_chat_retries_without_reasoning_on_empty_message():
+    # A thinking model with reasoning=on can return an empty `message` (all text in the
+    # `reasoning` blob). The client must retry once without reasoning and surface the answer.
+    lm_http._reasoning_cap_cache.clear()  # avoid cross-test pollution of the probe cache
+    empty = {"output": [{"type": "reasoning", "content": "hmm thinking..."},
+                        {"type": "message", "content": ""}]}
+    ok = {"output": [{"type": "message", "content": "THE ANSWER"}]}
+    empty_resp = MagicMock()
+    empty_resp.status_code = 200
+    empty_resp.text = json.dumps(empty)
+    empty_resp.json.return_value = empty
+    ok_resp = MagicMock()
+    ok_resp.status_code = 200
+    ok_resp.text = json.dumps(ok)
+    ok_resp.json.return_value = ok
+    models = _ok_response(status=200, text=json.dumps(
+        {"data": [{"key": "m", "capabilities": {"reasoning": {"allowed_options": ["off", "on"]}}}]}))
+    with patch("requests.get", return_value=models), \
+         patch("requests.post", side_effect=[empty_resp, ok_resp]) as post:
+        out = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                     [{"role": "user", "content": "hi"}], 0.7, 100,
+                                     reasoning="on")
+    assert out == "THE ANSWER"
+    assert post.call_count == 2
+    # The retry request must omit the reasoning param entirely.
+    assert "reasoning" not in post.call_args_list[1][1]["json"]
+
+
+def test_v1_chat_no_reasoning_retry_when_message_present():
+    # When the message is non-empty there must be NO extra retry (single POST).
+    ok = {"output": [{"type": "message", "content": "fine"}]}
+    ok_resp = MagicMock()
+    ok_resp.status_code = 200
+    ok_resp.text = json.dumps(ok)
+    ok_resp.json.return_value = ok
+    models = _ok_response(status=200, text=json.dumps(
+        {"data": [{"key": "m", "capabilities": {"reasoning": {"allowed_options": ["off", "on"]}}}]}))
+    with patch("requests.get", return_value=models), \
+         patch("requests.post", return_value=ok_resp) as post:
+        out = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                     [{"role": "user", "content": "hi"}], 0.7, 100,
+                                     reasoning="on")
+    assert out == "fine"
+    assert post.call_count == 1
+

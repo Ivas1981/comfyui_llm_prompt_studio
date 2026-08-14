@@ -7,7 +7,7 @@ from ..imaging import image_to_base64
 from ..lm_http import chat_completion, ensure_model_loaded, resolve_vision
 from ..model_meta import is_no_negative_family
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
-from ..stream_push import push_stream_chunk
+from ..stream_push import push_stream_chunk, push_stream_reset
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._defaults import DEFAULT_COMPOSER, DEFAULT_COMPOSER_NO_NEGATIVE, DEFAULT_DESCRIBE
 
@@ -141,6 +141,7 @@ class LLMPromptStudioSceneBuilder:
         min_p_v = min_p if (min_p is not None and min_p > 0.0) else None
         repeat_penalty_v = repeat_penalty if repeat_penalty != 1.0 else None
         on_delta = (lambda chunk: push_stream_chunk(unique_id, chunk)) if stream else None
+        on_reset = (lambda: push_stream_reset(unique_id)) if stream else None
 
         # Stage 1: describe the image (no JSON here, plain text from the model)
         if stage.startswith("1"):
@@ -157,7 +158,7 @@ class LLMPromptStudioSceneBuilder:
                                    temperature, max_tokens, stream=stream,
                                    reasoning=reasoning, repeat_penalty=repeat_penalty_v,
                                    top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
-                                   on_delta=on_delta)
+                                   on_delta=on_delta, on_reset=on_reset)
             description = raw.strip()
             log_node_exit("Scene Builder", unique_id, {"stage": 1, "desc_len": len(description)},
                           (time.time() - _t0) * 1000)
@@ -205,7 +206,7 @@ class LLMPromptStudioSceneBuilder:
                                  temperature, max_tokens, stream=stream,
                                  reasoning=reasoning, repeat_penalty=repeat_penalty_v,
                                  top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
-                                 on_delta=on_delta)
+                                 on_delta=on_delta, on_reset=on_reset)
         parsed = parse_prompt_json(raw)
 
         # Field-retry: if the model omitted required JSON fields, re-ask it (up to
@@ -227,7 +228,7 @@ class LLMPromptStudioSceneBuilder:
                                         temperature, max_tokens, stream=stream,
                                         reasoning=reasoning, repeat_penalty=repeat_penalty_v,
                                         top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
-                                        on_delta=on_delta)
+                                 on_delta=on_delta, on_reset=on_reset)
             raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                     f"missing {', '.join(missing)}]\n{raw_new}")
             parsed = parse_prompt_json(raw_new)
