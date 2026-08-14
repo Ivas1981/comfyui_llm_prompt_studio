@@ -44,6 +44,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.7] — 2026-08-14
+
+### Fixed
+- **Native `/api/v1/chat` was sending OpenAI `messages` as `input` (HTTP 400 `Invalid
+  discriminator value. Expected 'text' | 'image'`), so every text/vision/streaming/reasoning
+  call failed.** `_chat_v1` now builds the correct native schema: the `system` role is extracted
+  into a top-level `system_prompt`, and the remaining messages are flattened into typed `input`
+  parts — `{type:"text", content:...}` and `{type:"image", data_url:<full data URL>}` (images
+  keep the whole `data:image/...;base64,...` string, not just the base64). This single path now
+  covers text, vision, streaming and reasoning (the OpenAI `/chat/completions` route is kept only
+  as a graceful fallback, e.g. when native vision is rejected).
+- **Reasoning was sent unconditionally and broke models that don't expose it** (HTTP 400 `does
+  not expose reasoning configuration` / `Reasoning setting '…' is not supported`). `chat_completion`
+  now detects support via `capabilities.reasoning.allowed_options` and maps the widget level
+  `off/low/medium/high/on` to the nearest allowed value (omitting the param entirely when the model
+  has no reasoning configuration). On a reasoning rejection it retries once without `reasoning`.
+- **Native chat calls were stateful.** `store: false` is now sent on every `/api/v1/chat` request so
+  LM Studio keeps no server-side conversation state (reproducible, no hidden dependency on a previous
+  run).
+
+---
+
 ## [1.0.5] — 2026-08-13
 
 ### Fixed

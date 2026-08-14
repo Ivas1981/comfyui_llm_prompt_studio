@@ -90,10 +90,10 @@ def test_chat_completion_handles_nonjson_response():
 
 
 def test_chat_completion_handles_missing_choices():
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.text = json.dumps({"ok": True})
-    resp.json.return_value = {"ok": True}
+    # Native-first: a 400 with no usable body fails on the native path and the OpenAI
+    # fallback, raising RuntimeError. (An empty 200 body now yields "" instead of erroring,
+    # so we exercise the real failure path with a 400.)
+    resp = _ok_response(status=400, text=json.dumps({"error": {"message": "bad request"}}))
     with patch("requests.post", return_value=resp):
         with pytest.raises(RuntimeError):
             lm_http.chat_completion(LOCAL_V1, "", "m", [], 0.7, 100)

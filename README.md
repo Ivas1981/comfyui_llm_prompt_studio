@@ -372,11 +372,15 @@ result is shown exactly once (no partial text left behind).
 The advanced widgets — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
 `repeat_penalty`, `top_k`, `top_p`, `min_p` — are forwarded to LM Studio's native v1 API
 (`/api/v1/chat` for sampling, `/api/v1/models/load` for `flash_attention` /
-`offload_kv_cache_to_gpu`). They only take effect when the server supports them (or when `stream`
-is on); defaults keep the OpenAI-compatible behavior. Multimodal (image) requests always use the
-OpenAI path, where these options are ignored. Model loads are resilient: if a server rejects an
-optional load parameter (e.g. `gpu_offload` on some builds), that key is dropped and the load
-still succeeds; switching models unloads the previously loaded instance via its `instance_id`.
+`offload_kv_cache_to_gpu`). The native `/api/v1/chat` endpoint is the single path for text, vision,
+streaming and reasoning: it sends the system prompt as a top-level `system_prompt`, renders message
+content as typed `input` parts (text + `data_url` images), and sets `store: false` so LM Studio keeps
+no server-side conversation state. `reasoning` is only sent when the model actually exposes it
+(detected via `capabilities.reasoning.allowed_options`); if a server rejects it, the call retries once
+without it. The OpenAI `/chat/completions` route is kept only as a graceful fallback (e.g. when native
+vision is rejected). Model loads are resilient: if a server rejects an optional load parameter
+(e.g. `gpu_offload` on some builds), that key is dropped and the load still succeeds; switching models
+unloads the previously loaded instance via its `instance_id`.
 
 The model list is cached **per LM Studio server URL** (the cache key is the URL only — the API
 key is never persisted). **🔄 Refresh models** populates the combo for that server; each node

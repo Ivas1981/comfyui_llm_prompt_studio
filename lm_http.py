@@ -30,6 +30,8 @@ __all__ = [
     "looks_like_vision",
     "model_supports_vision",
     "resolve_vision",
+    "model_supports_reasoning",
+    "map_reasoning_level",
     "maybe_unload_old",
     "load_model",
     "ensure_model_loaded",
@@ -368,6 +370,112 @@ def resolve_vision(server_url: str, api_key: str, model_id: str) -> bool:
     if server is not None:
         return server
     return looks_like_vision(model_id)
+
+
+# Cache of reasoning capability probes: {(server, model): allowed_options_or_None}.
+# allowed_options is the list of reasoning levels a model accepts (e.g. ["off","on"]),
+# or None when the model exposes no reasoning configuration at all (template thinking).
+_reasoning_cap_cache = {}
+
+
+def model_supports_reasoning(server_url: str, api_key: str, model_id: str,
+                             timeout: int = 5):
+    """Best-effort reasoning capability probe from LM Studio's native endpoint.
+
+    Queries ``GET {server}/api/v1/models`` and reads
+    ``entry["capabilities"]["reasoning"]`` for ``model_id``. Returns one of:
+
+    * a list of allowed reasoning option strings (e.g. ``["off", "on"]``),
+    * ``[]`` when reasoning is exposed but allows no extra levels,
+    * ``None`` when the model exposes no reasoning configuration (the server may
+      still think via its template — we simply omit the param).
+
+    Never raises: network errors, parse errors, missing ``/api/v1/models`` and 404
+    all return ``None`` so callers fall back to sending nothing rather than guessing."""
+    key = (server_url, model_id)
+    if key in _reasoning_cap_cache:
+        return _reasoning_cap_cache[key]
+    result = None
+    try:
+        base = _server_root(validate_server_url(server_url))
+        resp = requests.get(f"{base}/api/v1/models",
+                            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+                            timeout=timeout)
+    except requests.RequestException:
+        _reasoning_cap_cache[key] = None
+        return None
+    if resp.status_code != 200:
+        _reasoning_cap_cache[key] = None
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        _reasoning_cap_cache[key] = None
+        return None
+    models = data.get("data") if isinstance(data, dict) else None
+    if models is None:
+        models = data.get("models") if isinstance(data, dict) else None
+    if not isinstance(models, list):
+        _reasoning_cap_cache[key] = None
+        return None
+    for entry in models:
+        if not isinstance(entry, dict):
+            continue
+        if not _model_matches(entry, model_id):
+            continue
+        caps = entry.get("capabilities") or {}
+        reasoning = caps.get("reasoning")
+        if reasoning is None:
+            # capabilities present but no reasoning key -> unknown for this model.
+            result = None
+            break
+        if isinstance(reasoning, dict):
+            allowed = reasoning.get("allowed_options")
+            if isinstance(allowed, list):
+                result = [str(a) for a in allowed]
+            else:
+                # exposed but no explicit list -> treat as configurable, default off/on.
+                result = ["off", "on"]
+        elif reasoning is True:
+            result = ["off", "on"]
+        else:
+            result = []
+        break
+    _reasoning_cap_cache[key] = result
+    return result
+
+
+def map_reasoning_level(level, allowed_options):
+    """Map the widget's reasoning level to a value the model accepts.
+
+    Widget levels are ``off`` / ``low`` / ``medium`` / ``high`` / ``on``. ``allowed_options``
+    is the list from :func:`model_supports_reasoning` (or ``None`` when the model exposes no
+    reasoning configuration). Returns the allowed string to send, or ``None`` to OMIT the
+    parameter entirely (no reasoning config, or only ``off`` is available and we want off)."""
+    allowed = allowed_options
+    if not isinstance(allowed, list) or not allowed:
+        # Model exposes no reasoning configuration: never send the param.
+        return None
+    allowed_lc = [str(a).lower() for a in allowed]
+    if "off" not in allowed_lc and "on" not in allowed_lc:
+        # Listed values are neither off nor on (unexpected) — safest to omit.
+        return None
+    lvl = str(level or "off").lower()
+    # off is always acceptable when present.
+    off = "off" if "off" in allowed_lc else None
+    on = "on" if "on" in allowed_lc else None
+    if lvl == "off":
+        return off if off is not None else on
+    if lvl in ("on",) or lvl in ("low", "medium", "high"):
+        # Prefer the strongest allowed level (high if listed, else on) so the user's
+        # "think harder" intent is honored on models that support gradations.
+        if "high" in allowed_lc:
+            return "high" if "high" in allowed else on
+        if on is not None:
+            return on
+        return off
+    # Unknown level -> omit (server decides), but if only off is allowed return off.
+    return off if off is not None else on
 
 
 def maybe_unload_old(slot: str, server_url: str, new_model: str):
@@ -736,14 +844,14 @@ def chat_completion(server_url, api_key, model, messages,
                      stream=False, reasoning="off", repeat_penalty=1.0,
                      top_k=None, top_p=None, min_p=None, on_delta=None,
                      on_reset=None) -> str:
-    """OpenAI-compatible chat completion with optional LM Studio v1-native features.
+    """LM Studio chat completion that prefers the native ``/api/v1/chat`` endpoint.
 
-    The native ``/api/v1/chat`` endpoint (which supports ``reasoning``, ``repeat_penalty``,
-    ``top_k``/``top_p``/``min_p`` and streaming) is used automatically when ``stream=True`` or
-    any v1-only parameter is set. Multimodal (image) requests always use the OpenAI
-    ``/chat/completions`` path for maximum compatibility — in that case the v1-only options are
-    ignored. If a streaming request fails, it gracefully falls back to a normal non-streaming
-    call so the node still returns text.
+    The native endpoint (which supports ``reasoning``, ``repeat_penalty``,
+    ``top_k``/``top_p``/``min_p``, streaming and vision) is the single path for text, vision,
+    streaming and reasoning. ``store=False`` keeps the server stateless. If the native call
+    fails — including a vision rejection — it gracefully falls back to the OpenAI-compatible
+    ``/chat/completions`` path so the node still returns text. JSON-Schema structured output
+    (Phase 5, optional) would route here unconditionally.
 
     ``on_delta`` (callable[str]) receives each streamed content chunk when streaming.
     ``on_reset`` (callable) is invoked right before a failed streaming request falls back
@@ -753,20 +861,22 @@ def chat_completion(server_url, api_key, model, messages,
     has_images = any(
         isinstance(m.get("content"), list)
         for m in messages if isinstance(m, dict))
-    # Route to the v1-native endpoint only when a v1-only feature is requested and the
-    # request is not multimodal (the OpenAI path is required for images).
-    use_v1 = (stream or reasoning not in (None, "off") or top_k is not None
-              or top_p is not None or min_p is not None
-              or (repeat_penalty is not None and repeat_penalty != 1.0)) and not has_images
-    if use_v1:
+
+    # Prefer the native /api/v1/chat endpoint for ALL requests (text, vision, streaming,
+    # reasoning): it is the project's base integration. A JSON-Schema `response_format`
+    # (Phase 5, optional) would route to the OpenAI path instead. For multimodal requests
+    # we fall back to the OpenAI /chat/completions path if native vision is rejected, since
+    # not every local server's native vision has been confirmed end-to-end.
+    prefer_native = True
+    if prefer_native:
         try:
             return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
                             timeout=timeout, seed=seed, stream=stream, reasoning=reasoning,
                             repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
                             min_p=min_p, on_delta=on_delta)
-        except Exception as e:  # noqa: BLE001 — graceful fallback for streaming failures
+        except Exception as e:  # noqa: BLE001 — graceful fallback to OpenAI-compatible path
             if stream:
-                logger.warning("Streaming failed (%s); falling back to non-streaming.", e)
+                logger.warning("Native streaming failed (%s); falling back to non-streaming.", e)
                 # Clear any partial text so the fallback result shows cleanly in the UI.
                 if on_reset:
                     try:
@@ -774,11 +884,13 @@ def chat_completion(server_url, api_key, model, messages,
                     except Exception:
                         pass
                 stream = False
-                use_v1 = False
             else:
-                raise
+                logger.warning("Native /api/v1/chat failed (%s); falling back to OpenAI path.", e)
+            # Vision rejection on the native path is the classic reason to fall back here.
+            if has_images:
+                logger.debug("Falling back to OpenAI /chat/completions for vision request.")
 
-    # --- OpenAI-compatible path (default; unchanged behavior) -------------------------
+    # --- OpenAI-compatible path (specialized fallback / structured output) -------------
     body = {"model": model, "messages": messages,
             "temperature": temperature, "max_tokens": max_tokens}
     if seed is not None:
@@ -827,9 +939,9 @@ def chat_completion(server_url, api_key, model, messages,
     logger.debug("LLM call to '%s' completed in %.1fs (%d chars): %s",
                  model, time.time() - started, len(content),
                  _serialize_message_content(last))
-    # When we fell back from a failed stream, deliver the full text through on_delta so the
-    # UI shows the complete result exactly once (the partial stream was already cleared).
-    if on_delta and stream is False and use_v1 is False:
+    # When we fell back from a failed native call, deliver the full text through on_delta
+    # so the UI shows the complete result exactly once (any partial stream was cleared).
+    if on_delta and stream is False:
         try:
             on_delta(content)
         except Exception:
@@ -847,24 +959,107 @@ def _aggregate_v1_output(result: Dict) -> str:
     return "".join(parts)
 
 
+def _build_native_chat_input(messages):
+    """Convert OpenAI-style ``messages`` into LM Studio's native ``/api/v1/chat`` shape.
+
+    Returns ``(system_prompt, input_parts)`` where ``system_prompt`` is the joined text of
+    all ``system``-role messages (native API takes it as a top-level string) and
+    ``input_parts`` is a list of typed content parts:
+
+    * ``{"type": "text", "content": "..."}`` for string or ``text`` message parts;
+    * ``{"type": "image", "data_url": "data:image/...;base64,..."}`` for ``image_url`` parts
+      (the full data URL string is passed through — LM Studio does NOT want just the base64).
+
+    The native chat endpoint rejects OpenAI ``messages`` as ``input`` ("Invalid discriminator
+    value. Expected 'text' | 'image'"), so every message must be flattened into this schema."""
+    system_parts = []
+    input_parts = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "system":
+            system_parts.append(content if isinstance(content, str) else str(content))
+            continue
+        if isinstance(content, str):
+            if content:
+                input_parts.append({"type": "text", "content": content})
+            continue
+        if isinstance(content, list):
+            for part in content:
+                if not isinstance(part, dict):
+                    input_parts.append({"type": "text", "content": str(part)})
+                    continue
+                ptype = part.get("type")
+                if ptype == "text":
+                    text = part.get("text", "")
+                    if text:
+                        input_parts.append({"type": "text", "content": text})
+                elif ptype == "image_url":
+                    img = part.get("image_url", {})
+                    url = img.get("url") if isinstance(img, dict) else None
+                    if url:
+                        input_parts.append({"type": "image", "data_url": url})
+                # Unknown part types are skipped (native API only knows text/image).
+            continue
+        if content:
+            input_parts.append({"type": "text", "content": str(content)})
+    system_prompt = "\n".join(p for p in system_parts if p) or None
+    return system_prompt, input_parts
+
+
+def _is_reasoning_rejection(text: str) -> bool:
+    """True when a 400 error is specifically about an unsupported/unknown ``reasoning`` setting.
+
+    Some models expose no reasoning configuration and reject the param with messages like
+    'does not expose reasoning configuration' or 'Reasoning setting ... is not supported'."""
+    low = (text or "").lower()
+    return ("reasoning" in low
+            and ("does not expose reasoning" in low
+                 or "not support" in low and "reasoning" in low
+                 or "is not supported" in low and "reasoning" in low
+                 or "invalid" in low and "reasoning" in low))
+
+
 def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
              timeout=600, seed=None, stream=False, reasoning="off",
-             repeat_penalty=1.0, top_k=None, top_p=None, min_p=None, on_delta=None) -> str:
-    """Call LM Studio's native ``/api/v1/chat`` endpoint (v1-only features + streaming)."""
+             repeat_penalty=1.0, top_k=None, top_p=None, min_p=None, on_delta=None,
+             skip_reasoning=False) -> str:
+    """Call LM Studio's native ``/api/v1/chat`` endpoint (v1-only features + streaming).
+
+    Builds the *native* request shape (top-level ``system_prompt`` + typed ``input`` parts),
+    adds ``store=False`` so the server keeps no conversation state, and includes ``reasoning``
+    only when the model actually supports it (mapped to an allowed value). If the server still
+    rejects the ``reasoning`` param, the call is retried once without it."""
     base = _server_root(server_url)
     url = f"{base}/api/v1/chat"
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+
+    system_prompt, input_parts = _build_native_chat_input(messages)
+
+    # Decide whether to send reasoning. When skip_reasoning (one-shot fallback) or the model
+    # exposes no reasoning config, omit the param entirely.
+    send_reasoning = None
+    if not skip_reasoning:
+        allowed = model_supports_reasoning(server_url, api_key, model)
+        send_reasoning = map_reasoning_level(reasoning, allowed)
+
     payload = {
         "model": model,
-        "input": messages,
+        "input": input_parts,
         "temperature": temperature,
         "max_output_tokens": max_tokens,
-        "reasoning": reasoning,
         "repeat_penalty": repeat_penalty,
         "stream": stream,
+        "store": False,
     }
+    if system_prompt is not None:
+        payload["system_prompt"] = system_prompt
+    if send_reasoning is not None:
+        payload["reasoning"] = send_reasoning
     if seed is not None:
         payload["seed"] = seed
     if top_k is not None:
@@ -876,13 +1071,24 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
 
     log_http_request("POST", url, headers, payload)
     started = time.time()
+
+    def _do_post(use_stream):
+        return requests.post(url, headers=headers, json=payload,
+                             stream=use_stream, timeout=timeout)
+
     if not stream:
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            resp = _do_post(False)
         except requests.RequestException as e:
             raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
         if resp.status_code >= 400:
             snippet = (resp.text or "")[:1000]
+            if (not skip_reasoning) and _is_reasoning_rejection(resp.text or ""):
+                logger.debug("Reasoning rejected by '%s'; retrying without reasoning.", model)
+                return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
+                                timeout=timeout, seed=seed, stream=False, reasoning=reasoning,
+                                repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
+                                min_p=min_p, on_delta=on_delta, skip_reasoning=True)
             enriched = _enrich_http_error(model, resp.status_code, resp.text or "", False)
             if enriched is not None:
                 raise RuntimeError(enriched)
@@ -898,11 +1104,22 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
 
     # Streaming: consume the SSE event stream.
     try:
-        resp = requests.post(url, headers=headers, json=payload, stream=True, timeout=timeout)
+        resp = _do_post(True)
     except requests.RequestException as e:
         raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
     if resp.status_code >= 400:
         snippet = (resp.text or "")[:1000]
+        if (not skip_reasoning) and _is_reasoning_rejection(resp.text or ""):
+            logger.debug("Reasoning rejected by '%s' (stream); retrying without reasoning.",
+                         model)
+            try:
+                resp.close()
+            except Exception:
+                pass
+            return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
+                            timeout=timeout, seed=seed, stream=True, reasoning=reasoning,
+                            repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
+                            min_p=min_p, on_delta=on_delta, skip_reasoning=True)
         enriched = _enrich_http_error(model, resp.status_code, resp.text or "", False)
         if enriched is not None:
             raise RuntimeError(enriched)
