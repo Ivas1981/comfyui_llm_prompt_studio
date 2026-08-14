@@ -32,6 +32,7 @@ __all__ = [
     "resolve_vision",
     "model_supports_reasoning",
     "map_reasoning_level",
+    "unload_all_loaded",
     "maybe_unload_old",
     "load_model",
     "ensure_model_loaded",
@@ -56,6 +57,11 @@ ALLOW_PUBLIC_SERVER_URLS = os.getenv("LLM_PROMPT_STUDIO_ALLOW_PUBLIC", "False").
 
 # cache "last loaded model" to unload the old one on switch: {slot: fingerprint}
 _last_loaded = {}
+# The single model currently resident on a given server (managed by ensure_model_loaded /
+# unload_all_loaded within this process). LM Studio holds one model at a time for our use, so
+# this is the authoritative "what is actually loaded" truth that lets us unload models left
+# resident by a DIFFERENT node/slot before loading the selected one.
+_server_loaded = {}
 # model instance ids returned by the v1 load endpoint, keyed for precise unload: {(server, model): id}
 _model_instances = {}
 # cache of model lists, KEYED BY NORMALIZED SERVER URL (api_key is intentionally NOT part
@@ -215,12 +221,49 @@ def validate_server_url(url: str) -> str:
     )
 
 
+def _parse_native_models(data) -> list:
+    """Extract model identifiers from a native ``GET /api/v1/models`` envelope.
+
+    Handles both the documented ``{data: [...]}`` shape and a legacy ``{models: [...]}``
+    shape. Per entry it prefers ``key`` (the canonical native id) and falls back to ``id``,
+    matching the resolution logic in :func:`_model_matches` so listed ids line up with the
+    ids used for chat/load."""
+    if not isinstance(data, dict):
+        return []
+    models = data.get("data")
+    if not isinstance(models, list):
+        models = data.get("models")
+    if not isinstance(models, list):
+        return []
+    ids = []
+    for m in models:
+        if not isinstance(m, dict):
+            continue
+        mid = m.get("key") or m.get("id")
+        if mid:
+            ids.append(str(mid))
+    return ids
+
+
 def fetch_models(server_url: str, api_key: str = "", timeout: int = 5) -> list:
     server_url = validate_server_url(server_url)
-    resp = requests.get(f"{server_url.rstrip('/')}/models",
-                        headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
-                        timeout=timeout)
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    base = _server_root(server_url)
+    # Prefer LM Studio's native model list (LMStudioAPI.md §15: "Lists models via native
+    # GET /api/v1/models"). It returns capability-rich entries keyed by `key`, consistent
+    # with the identifiers used by chat/load and _model_matches.
     try:
+        resp = requests.get(f"{base}/api/v1/models", headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        models = _parse_native_models(resp.json())
+        if models:
+            return models
+    except (requests.RequestException, ValueError):
+        logger.debug("Native /api/v1/models unavailable for %s; falling back to /v1/models",
+                     server_url)
+    # Fallback for pre-0.4.0 servers that only expose the OpenAI-compatible list.
+    try:
+        resp = requests.get(f"{server_url.rstrip('/')}/models", headers=headers, timeout=timeout)
         resp.raise_for_status()
     except requests.RequestException as e:
         logger.error("Failed to fetch models from %s: %s", server_url, e)
@@ -533,6 +576,68 @@ def maybe_unload_old(slot: str, server_url: str, new_model: str):
     _last_loaded[slot] = new_model
 
 
+def unload_all_loaded(server_url: str, api_key: str = "",
+                      except_model: Optional[str] = None):
+    """Unload every model currently resident on the server so the next load starts clean.
+
+    This is the "check for and unload already-loaded models before loading the selected one"
+    step: it enumerates loaded instances via the native ``GET /api/v1/models`` (each entry's
+    ``loaded_instances[].id``) and unloads each with ``POST /api/v1/models/unload`` using the
+    exact ``instance_id``. ``except_model`` (when given) is spared so a model that is already
+    the intended one is not needlessly evicted. 404 / already-gone ids are idempotent success.
+
+    Never raises: list/parse/network errors are logged and ignored so the subsequent load can
+    still proceed. Used by ``ensure_model_loaded`` to evict models left resident by other
+    nodes/slots before the selected model is loaded."""
+    try:
+        base = _server_root(validate_server_url(server_url))
+    except ValueError as e:
+        logger.debug("unload_all_loaded: invalid server %s: %s", server_url, e)
+        return
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        resp = requests.get(f"{base}/api/v1/models", headers=headers, timeout=5)
+    except requests.RequestException as e:
+        logger.debug("unload_all_loaded: could not list models on %s: %s", server_url, e)
+        return
+    if resp.status_code != 200:
+        return
+    try:
+        data = resp.json()
+    except ValueError:
+        return
+    models = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(models, list):
+        models = data.get("models") if isinstance(data, dict) else None
+    if not isinstance(models, list):
+        return
+    except_lc = except_model.lower() if except_model else None
+    for entry in models:
+        if not isinstance(entry, dict):
+            continue
+        # Skip the model we intend to keep loaded (matched by native key or id).
+        if except_lc:
+            key = entry.get("key") or entry.get("id")
+            if key and str(key).lower() == except_lc:
+                continue
+        for inst in (entry.get("loaded_instances") or []):
+            inst_id = inst.get("id") if isinstance(inst, dict) else inst
+            if not inst_id:
+                continue
+            try:
+                r = requests.post(f"{base}/api/v1/models/unload",
+                                  json={"instance_id": inst_id},
+                                  headers=headers, timeout=5)
+                if r.status_code < 400 or r.status_code == 404:
+                    logger.debug("Unloaded resident model instance %s", inst_id)
+                else:
+                    logger.debug("unload_all_loaded: unload of %s returned HTTP %s: %s",
+                                 inst_id, r.status_code, (r.text or "")[:200])
+            except requests.RequestException as e:
+                logger.debug("unload_all_loaded: could not unload instance %s: %s",
+                             inst_id, e)
+
+
 # HTTP status codes worth retrying: transient server hiccups / rate limits.
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
@@ -759,9 +864,14 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
                         echo_load_config: bool = True):
     """Make sure `model` is the one loaded on the server before we call it.
 
-    Skips work when the same model is already loaded for this slot, otherwise unloads the
-    previous model and loads the requested one with the requested parameters. A failed load is
-    not recorded as "loaded", so the next run will retry."""
+    Before loading, it unloads *every* model currently resident on the server (including ones
+    left loaded by a different node/slot) so VRAM holds only the selected model — the requested
+    behavior of "check for and unload already-loaded models before loading the selected one".
+
+    It skips the unload+reload when the requested model is already loaded with the identical
+    config (tracked server-scoped, since LM Studio serves one model at a time). A changed
+    config (context_length / gpu_offload / flash-attention / KV-offload / batch-size / experts)
+    forces a reload. A failed load is not recorded as "loaded", so the next run will retry."""
     if not model or model.startswith("—"):
         return
     # Remember this model so a saved workflow that uses it stays valid (and selectable)
@@ -769,26 +879,31 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     remember_model(model, server_url)
     # Fingerprint the requested load config so a changed context_length / gpu_offload /
     # flash-attention / KV-offload / batch-size / experts forces a reload even when the same
-    # model is currently loaded. Old string values in _last_loaded (pre-fingerprint) compare
-    # unequal to the tuple and trigger a one-time reload, as intended.
+    # model is currently loaded.
     fingerprint = (model, context_length, gpu_offload, flash_attention,
                    offload_kv_cache_to_gpu, eval_batch_size, num_experts)
-    if _last_loaded.get(slot) == fingerprint:
-        return  # already loaded with the same config for this slot — avoid a needless reload
-    maybe_unload_old(slot, server_url, model)  # unloads the previous model
+    # Server-scoped truth: if the requested model is already resident with the exact config,
+    # there is nothing to do — avoid a needless unload+reload.
+    if _server_loaded.get(server_url) == fingerprint:
+        _last_loaded[slot] = fingerprint
+        return
+    # Evict every resident model (other nodes' included) before loading the selected one.
+    unload_all_loaded(server_url, api_key)
     if not load_model(server_url, api_key, model, context_length, gpu_offload,
                       flash_attention=flash_attention,
                       offload_kv_cache_to_gpu=offload_kv_cache_to_gpu,
                       eval_batch_size=eval_batch_size,
                       num_experts=num_experts,
                       echo_load_config=echo_load_config):
-        _last_loaded[slot] = None  # load failed: allow a retry on the next run
+        _server_loaded[server_url] = None  # load failed: allow a retry on the next run
+        _last_loaded[slot] = None
         logger.warning(
             "Model '%s' for slot '%s' was not loaded. The next LLM call will fail "
             "until the model is available (check that LM Studio is running and the "
             "model id is correct).", model, slot)
     else:
-        _last_loaded[slot] = fingerprint  # record the exact loaded config
+        _server_loaded[server_url] = fingerprint  # record the exact loaded config
+        _last_loaded[slot] = fingerprint
 
 
 def _serialize_message_content(content):
@@ -896,6 +1011,15 @@ def chat_completion(server_url, api_key, model, messages,
             "temperature": temperature, "max_tokens": max_tokens}
     if seed is not None:
         body["seed"] = seed
+    # Forward the sampling params the node layer already computed (native-v1 equivalents).
+    # `min_p` is native-v1-only (LMStudioAPI.md §8/§6.1) and must stay out of the OpenAI body,
+    # keeping the fallback symmetric with the native path so sampling never silently changes.
+    if top_p is not None:
+        body["top_p"] = top_p
+    if top_k is not None:
+        body["top_k"] = top_k
+    if repeat_penalty is not None:
+        body["repeat_penalty"] = repeat_penalty
     started = time.time()
     try:
         resp = requests.post(
