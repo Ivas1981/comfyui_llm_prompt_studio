@@ -10,7 +10,8 @@ from ..presets import apply_preset_to_prompts, get_preset_by_name
 from ..stream_push import push_stream_chunk
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._defaults import (DEFAULT_SYSTEM, DEFAULT_SYSTEM_NO_NEGATIVE,
-                        FACE_PROMPT_INSTRUCTION, FACE_PROMPT_INSTRUCTION_NO_NEGATIVE)
+                        FACE_PROMPT_INSTRUCTION, FACE_PROMPT_INSTRUCTION_NO_NEGATIVE,
+                        REASONING_HINT)
 
 logger = logging.getLogger("llm_prompt_studio")
 
@@ -199,22 +200,28 @@ class LLMPromptStudioWriter:
         if no_negative:
             effective_system = system_prompt if system_prompt != DEFAULT_SYSTEM \
                 else DEFAULT_SYSTEM_NO_NEGATIVE
-            if generate_face_prompts:
-                inst = face_prompt_instruction.strip() if face_prompt_instruction else ""
-                if not inst:
-                    inst = FACE_PROMPT_INSTRUCTION_NO_NEGATIVE
-                effective_system = effective_system + inst
         else:
             effective_system = system_prompt
-            if generate_face_prompts:
-                inst = face_prompt_instruction.strip() if face_prompt_instruction else ""
-                if not inst:
-                    inst = FACE_PROMPT_INSTRUCTION
-                effective_system = effective_system + inst
+        if generate_face_prompts:
+            inst = face_prompt_instruction.strip() if face_prompt_instruction else ""
+            if not inst:
+                inst = FACE_PROMPT_INSTRUCTION_NO_NEGATIVE if no_negative \
+                    else FACE_PROMPT_INSTRUCTION
+            effective_system = effective_system + inst
 
         # Override the system prompt with the preset's only when the user left it at default.
+        # In no-negative mode we prefer the preset's dedicated no-negative variant so the
+        # negative is correctly required to be empty; otherwise its standard variant is used.
         if preset and system_prompt == DEFAULT_SYSTEM:
-            effective_system = preset.get("system_prompt") or effective_system
+            if no_negative and preset.get("system_prompt_no_negative"):
+                effective_system = preset["system_prompt_no_negative"]
+            else:
+                effective_system = preset.get("system_prompt") or effective_system
+            # Presets embed their own short reasoning hint; if it is absent for some reason,
+            # make sure the canonical reasoning hint is still present.
+            if REASONING_HINT and "ALWAYS finish your reply with the complete JSON object" \
+                    not in effective_system:
+                effective_system = effective_system + REASONING_HINT
 
         # v1-native sampling params: convert "off"/default widget values to None so the
         # default call stays on the OpenAI-compatible path (backward compatible).

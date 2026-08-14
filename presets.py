@@ -62,6 +62,7 @@ def _migrate(data: Dict) -> Dict:
         p.setdefault("name", p.get("id", "preset"))
         p.setdefault("description", "")
         p.setdefault("system_prompt", "")
+        p.setdefault("system_prompt_no_negative", "")
         p.setdefault("style_tags_positive", [])
         p.setdefault("style_tags_negative", [])
         p.setdefault("disabled_in_no_negative_mode", False)
