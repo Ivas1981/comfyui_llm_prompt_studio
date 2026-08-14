@@ -1101,7 +1101,21 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
             snippet = (resp.text or "")[:1000]
             raise RuntimeError(f"LM Studio returned non-JSON response: {snippet}")
         log_http_response(resp.status_code, time.time() - started, len(resp.text or ""))
-        return _aggregate_v1_output(data)
+        result = _aggregate_v1_output(data)
+        # A thinking model with reasoning enabled can return an empty `message` (all text lives
+        # in the `reasoning` blob). Retry once without reasoning so JSON-extracting callers
+        # (Writer / Scene Builder) still get their answer instead of an empty/parse error.
+        if (not skip_reasoning) and send_reasoning is not None and not result.strip():
+            out_items = data.get("output", []) if isinstance(data, dict) else []
+            has_reasoning = any(isinstance(o, dict) and o.get("type") == "reasoning"
+                               and (o.get("content") or "").strip() for o in out_items)
+            if has_reasoning:
+                logger.debug("Reasoning model returned empty message; retrying without reasoning.")
+                return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
+                                timeout=timeout, seed=seed, stream=False, reasoning=reasoning,
+                                repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
+                                min_p=min_p, on_delta=on_delta, skip_reasoning=True)
+        return result
 
     # Streaming: consume the SSE event stream.
     try:
@@ -1126,7 +1140,16 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
             raise RuntimeError(enriched)
         raise RuntimeError(
             f"LM Studio returned HTTP {resp.status_code} for model '{model}': {snippet}")
-    return _consume_sse(resp, on_delta, started, url, headers)
+    content = _consume_sse(resp, on_delta, started, url, headers)
+    # Same thinking-model safety net as the non-streaming path: if the streamed `message` came
+    # back empty while reasoning was requested, retry once without reasoning (non-streaming).
+    if (not skip_reasoning) and send_reasoning is not None and not content.strip():
+        logger.debug("Reasoning model returned empty streamed message; retrying without reasoning.")
+        return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
+                        timeout=timeout, seed=seed, stream=False, reasoning=reasoning,
+                        repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
+                        min_p=min_p, on_delta=on_delta, skip_reasoning=True)
+    return content
 
 
 def _consume_sse(resp, on_delta, started, url, headers) -> str:
