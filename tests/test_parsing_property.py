@@ -15,10 +15,12 @@ def test_parse_prompt_json_never_crashes(text):
         assert len(result) == 5  # (positive, negative, scene_name, face_+, face_-)
 
 
-@given(st.dictionaries(
-    keys=st.sampled_from(["positive", "negative", "scene_name", "face_positive", "face_negative"]),
-    values=st.text()))
-def test_extract_json_dict_handles_valid_json(data):
+@given(st.text(),
+       st.dictionaries(
+           keys=st.sampled_from(["negative", "scene_name", "face_positive", "face_negative"]),
+           values=st.text()))
+def test_extract_json_dict_handles_valid_json(positive, rest):
+    data = {**rest, "positive": positive}
     json_str = json.dumps(data)
     result = _extract_json_dict(json_str, "positive")
     assert result is not None
