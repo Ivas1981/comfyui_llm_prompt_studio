@@ -94,7 +94,14 @@ def _mask_headers(headers: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 def _looks_like_b64(s: str) -> bool:
     s = s.strip()
-    return bool(s) and len(s) > 50 and bool(_BASE64_RE.match(s))
+    if not s or len(s) < 50:
+        return False
+    if not _BASE64_RE.match(s):
+        return False
+    # Real base64 is padded ('=') or its length is a multiple of 4 once whitespace is
+    # stripped. This drops ordinary long alphanumeric text that merely matches the alphabet.
+    core = re.sub(r"\s", "", s)
+    return "=" in core or len(core) % 4 == 0
 
 
 def _redact_obj(obj: Any) -> Any:

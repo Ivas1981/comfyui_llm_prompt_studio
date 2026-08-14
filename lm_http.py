@@ -3,6 +3,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, Optional
 from urllib.parse import quote, urlparse
@@ -36,7 +37,9 @@ __all__ = [
 ]
 
 # Abort a stalled streaming response if no SSE event arrives for this many seconds.
-STREAM_WATCHDOG_SEC = 30
+# Override with LLM_PROMPT_STUDIO_STREAM_WATCHDOG_SEC (the watchdog re-arms on every
+# received chunk, so it only fires on a true idle stall, not on slow generation).
+STREAM_WATCHDOG_SEC = int(os.getenv("LLM_PROMPT_STUDIO_STREAM_WATCHDOG_SEC", "30"))
 
 # Read allow-public flag from environment for runtime configuration.
 ALLOW_PUBLIC_SERVER_URLS = os.getenv("LLM_PROMPT_STUDIO_ALLOW_PUBLIC", "False").lower() in ("1", "true", "yes")
@@ -366,11 +369,21 @@ def _server_root(server_url: str) -> str:
     return base
 
 
+# LM Studio versions differ on the rejected-gpu-key wording ("unrecognized key",
+# "unknown key", "invalid ... key"). Match any of these near "gpu" so the v1→legacy
+# casing fallback still triggers if the server rephrases the error.
+_GPU_KEY_PATTERNS = [
+    re.compile(r"unrecognized key.*gpu", re.I),
+    re.compile(r"unknown key.*gpu", re.I),
+    re.compile(r"invalid parameter.*gpu", re.I),
+]
+
+
 def _is_unrecognized_gpu_key(text: str) -> bool:
     """True when the server rejects the gpu-offload key by name (casing differs across
     LM Studio versions: some want `gpu_offload`, others `gpuOffload`)."""
     low = (text or "").lower()
-    return "unrecognized key" in low and ("gpu_offload" in low or "gpuoffload" in low)
+    return any(p.search(low) for p in _GPU_KEY_PATTERNS)
 
 
 def _try_post(path: str, body: dict, headers: dict, timeout: int, retries: int, backoff: float):

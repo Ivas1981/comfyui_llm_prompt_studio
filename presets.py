@@ -65,6 +65,15 @@ def _migrate(data: Dict) -> Dict:
         p.setdefault("style_tags_positive", [])
         p.setdefault("style_tags_negative", [])
         p.setdefault("disabled_in_no_negative_mode", False)
+        # Normalize types: a hand-edited JSON may carry a wrong type (e.g. a string
+        # where a list is expected). setdefault only fills missing keys, so coerce
+        # explicitly to avoid a crash later in apply_preset_to_prompts.
+        for _tag_key in ("style_tags_positive", "style_tags_negative"):
+            _tags = p.get(_tag_key)
+            if not isinstance(_tags, list):
+                p[_tag_key] = [_tags] if _tags else []
+        if not isinstance(p.get("disabled_in_no_negative_mode"), bool):
+            p["disabled_in_no_negative_mode"] = bool(p.get("disabled_in_no_negative_mode"))
         migrated.append(p)
     data["presets"] = migrated
     data["schema_version"] = CURRENT_SCHEMA_VERSION
@@ -102,10 +111,14 @@ def apply_preset_to_prompts(preset: Dict, positive: str, negative: str,
                             no_negative: bool = False):
     """Append the preset's style tags to the positive (and negative, unless no-negative)."""
     pos_tags = preset.get("style_tags_positive") or []
+    if not isinstance(pos_tags, list):
+        pos_tags = [pos_tags] if pos_tags else []
     if pos_tags:
         positive = f"{positive}, {', '.join(pos_tags)}" if positive else ", ".join(pos_tags)
     if not no_negative:
         neg_tags = preset.get("style_tags_negative") or []
+        if not isinstance(neg_tags, list):
+            neg_tags = [neg_tags] if neg_tags else []
         if neg_tags:
             negative = f"{negative}, {', '.join(neg_tags)}" if negative else ", ".join(neg_tags)
     return positive, negative
