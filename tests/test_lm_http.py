@@ -44,6 +44,7 @@ def _reset_state():
     lm_http._model_instances.clear()
     lm_http._model_cache.clear()
     lm_http._static_keys.clear()
+    lm_http._server_loaded.clear()
     yield
     lm_http._last_loaded.clear()
     lm_http._last_loaded.update(saved)
@@ -51,6 +52,7 @@ def _reset_state():
     lm_http._model_instances.clear()
     lm_http._model_cache.clear()
     lm_http._static_keys.clear()
+    lm_http._server_loaded.clear()
 
 
 def test_validate_server_url_allows_local():
@@ -64,19 +66,45 @@ def test_validate_server_url_rejects_public():
 
 
 def test_fetch_models_returns_ids():
-    resp = _ok_response(text=json.dumps({"data": [{"id": "a"}, {"id": "b"}]}))
+    # Native /api/v1/models envelope: prefer `key`, fall back to `id`.
+    resp = _ok_response(text=json.dumps(
+        {"data": [{"key": "a", "id": "a-id"}, {"id": "b"}]}))
     with patch("requests.get", return_value=resp) as get:
         models = lm_http.fetch_models(LOCAL_V1)
     assert models == ["a", "b"]
-    get.assert_called_once()
+    # The native endpoint is queried first, not the OpenAI /v1/models list.
+    assert get.call_args_list[0][0][0] == NATIVE_MODELS_URL
 
 
-def test_fetch_models_handles_nonjson():
+def test_fetch_models_prefers_native_key_over_id():
+    # When an entry carries both, the canonical `key` wins so listed ids match chat/load.
+    resp = _ok_response(text=json.dumps(
+        {"data": [{"key": "canonical", "id": "alt-id"}]}))
+    with patch("requests.get", return_value=resp):
+        assert lm_http.fetch_models(LOCAL_V1) == ["canonical"]
+
+
+def test_fetch_models_falls_back_to_openai_list():
+    # A pre-0.4.0 server that lacks the native endpoint falls through to /v1/models.
+    native = _ok_response(status=404, text="not found")
+    openai = _ok_response(text=json.dumps({"data": [{"id": "legacy"}]}))
+    with patch("requests.get", side_effect=[native, openai]) as get:
+        models = lm_http.fetch_models(LOCAL_V1)
+    assert models == ["legacy"]
+    # First call native, second the OpenAI-compatible fallback.
+    assert get.call_args_list[0][0][0] == NATIVE_MODELS_URL
+    assert get.call_args_list[1][0][0].endswith("/v1/models")
+
+
+def test_fetch_models_handles_nonjson_native_then_openai():
+    # Both the native probe and the OpenAI fallback returning non-JSON must surface a
+    # RuntimeError (not a bare ValueError) to the caller.
     resp = _ok_response(text="<html>error</html>")
     resp.json.side_effect = ValueError("No JSON")
     with patch("requests.get", return_value=resp):
         with pytest.raises(RuntimeError):
             lm_http.fetch_models(LOCAL_V1)
+
 
 
 def test_chat_completion_handles_nonjson_response():
@@ -97,6 +125,26 @@ def test_chat_completion_handles_missing_choices():
     with patch("requests.post", return_value=resp):
         with pytest.raises(RuntimeError):
             lm_http.chat_completion(LOCAL_V1, "", "m", [], 0.7, 100)
+
+
+def test_chat_completion_openai_fallback_forwards_sampling_params():
+    # When the native path fails, the OpenAI fallback must still forward the sampling
+    # params the node layer computed (top_p/top_k/repeat_penalty) so behavior matches the
+    # native path; min_p stays native-only and must be absent.
+    native_err = RuntimeError("native transport down")
+    ok = _ok_response(status=200,
+                      text=json.dumps({"choices": [{"message": {"content": "x"}}]}))
+    with patch("requests.post", side_effect=[native_err, ok]) as post:
+        out = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                      [{"role": "user", "content": "hi"}], 0.7, 100,
+                                      top_p=0.9, top_k=40, repeat_penalty=1.1)
+    assert out == "x"
+    # Second POST is the OpenAI-compatible fallback.
+    body = post.call_args_list[1][1]["json"]
+    assert body["top_p"] == 0.9
+    assert body["top_k"] == 40
+    assert body["repeat_penalty"] == 1.1
+    assert "min_p" not in body
 
 
 def test_load_model_success_v1():
@@ -187,29 +235,56 @@ def test_maybe_unload_old_skips_when_same_model():
 
 
 def test_ensure_model_loaded_marks_loaded_on_success():
-    with patch.object(lm_http, "load_model", return_value=True) as load:
+    # unload_all_loaded lists models (none resident here) then the load happens; the loaded
+    # state is recorded both per-slot and server-scoped.
+    with patch("requests.get", return_value=_ok_response(status=404)), \
+         patch.object(lm_http, "load_model", return_value=True) as load:
         lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
     load.assert_called_once()
+    fp = ("m", 8192, 1.0, None, None, None, None)
     # The loaded state is now a config fingerprint (model + load params), not the bare name.
-    assert lm_http._last_loaded["s"] == ("m", 8192, 1.0, None, None, None, None)
+    assert lm_http._last_loaded["s"] == fp
+    assert lm_http._server_loaded[LOCAL_V1] == fp
 
 
 def test_ensure_model_loaded_skips_when_already_loaded():
-    # With the same fingerprint, no reload is attempted.
-    lm_http._last_loaded["s"] = ("m", 8192, 1.0, None, None, None, None)
-    with patch.object(lm_http, "load_model") as load:
+    # Server-scoped truth: same fingerprint already resident -> no unload/reload at all.
+    fp = ("m", 8192, 1.0, None, None, None, None)
+    lm_http._server_loaded[LOCAL_V1] = fp
+    with patch("requests.get") as get, \
+         patch.object(lm_http, "load_model") as load:
         lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
     load.assert_not_called()
+    get.assert_not_called()  # no model listing needed when we skip
 
 
 def test_ensure_model_loaded_nulls_state_on_failure(caplog):
-    lm_http._last_loaded["s"] = "prev"
-    with patch.object(lm_http, "load_model", return_value=False) as load:
+    with patch("requests.get", return_value=_ok_response(status=404)), \
+         patch.object(lm_http, "load_model", return_value=False) as load:
         lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
     load.assert_called_once()
     # Failure leaves state as None so the next run will retry; warning is logged.
     assert lm_http._last_loaded["s"] is None
+    assert lm_http._server_loaded[LOCAL_V1] is None
     assert "was not loaded" in caplog.text
+
+
+def test_ensure_model_loaded_unloads_others_before_loading():
+    # A model resident under a DIFFERENT slot must be evicted before the selected one loads.
+    other = _ok_response(status=200, text=json.dumps({"data": [
+        {"key": "other", "loaded_instances": [{"id": "inst-other"}]},
+    ]}))
+    with patch("requests.get", return_value=other), \
+         patch("requests.post", return_value=_ok_response(status=200)) as post, \
+         patch.object(lm_http, "load_model", return_value=True) as load:
+        lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
+    load.assert_called_once()
+    unloads = [c for c in post.call_args_list
+               if c[0][0].endswith("/api/v1/models/unload")]
+    assert unloads, "expected the resident 'other' model to be unloaded first"
+    assert unloads[0].kwargs["json"] == {"instance_id": "inst-other"}
+    # The selected model is now the server-scoped resident.
+    assert lm_http._server_loaded[LOCAL_V1] == ("m", 8192, 1.0, None, None, None, None)
 
 
 def test_maybe_unload_old_uses_known_instance_id():
@@ -238,21 +313,68 @@ def test_maybe_unload_old_stale_instance_id_tolerated():
 
 
 def test_ensure_model_loaded_reloads_on_config_change():
-    # Changing context_length (same model/slot) must force a reload thanks to the fingerprint.
-    lm_http._last_loaded["s"] = ("m", 8192, 1.0, None, None, None, None)
-    with patch.object(lm_http, "load_model", return_value=True) as load:
+    # Changing context_length changes the fingerprint -> unload + reload.
+    with patch("requests.get", return_value=_ok_response(status=404)), \
+         patch.object(lm_http, "load_model", return_value=True) as load:
         lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m", context_length=16384)
     load.assert_called_once()
     # The new fingerprint reflects the changed context_length.
     assert lm_http._last_loaded["s"] == ("m", 16384, 1.0, None, None, None, None)
+    assert lm_http._server_loaded[LOCAL_V1] == ("m", 16384, 1.0, None, None, None, None)
 
 
 def test_ensure_model_loaded_old_string_state_forces_reload():
     # A pre-fingerprint string value compares unequal to the tuple and triggers a one-time reload.
     lm_http._last_loaded["s"] = "m"
-    with patch.object(lm_http, "load_model", return_value=True) as load:
+    with patch("requests.get", return_value=_ok_response(status=404)), \
+         patch.object(lm_http, "load_model", return_value=True) as load:
         lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
     load.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# unload_all_loaded: evict every resident model before loading the selected one.
+# ---------------------------------------------------------------------------
+
+def test_unload_all_loaded_unloads_every_instance():
+    # Two loaded models (distinct instances) must both be unloaded by instance_id.
+    models = _ok_response(status=200, text=json.dumps({"data": [
+        {"key": "a", "loaded_instances": [{"id": "inst-a"}]},
+        {"key": "b", "loaded_instances": [{"id": "inst-b"}]},
+    ]}))
+    with patch("requests.get", return_value=models) as get, \
+         patch("requests.post", return_value=_ok_response(status=200)) as post:
+        lm_http.unload_all_loaded(LOCAL_V1, "")
+    assert get.call_args_list[0][0][0] == NATIVE_MODELS_URL
+    unloads = [c for c in post.call_args_list
+               if c[0][0].endswith("/api/v1/models/unload")]
+    assert len(unloads) == 2
+    assert {u.kwargs["json"]["instance_id"] for u in unloads} == {"inst-a", "inst-b"}
+
+
+def test_unload_all_loaded_skips_except_model():
+    # except_model is spared so an already-selected model is not needlessly evicted.
+    models = _ok_response(status=200, text=json.dumps({"data": [
+        {"key": "keep", "loaded_instances": [{"id": "inst-keep"}]},
+        {"key": "drop", "loaded_instances": [{"id": "inst-drop"}]},
+    ]}))
+    with patch("requests.get", return_value=models), \
+         patch("requests.post", return_value=_ok_response(status=200)) as post:
+        lm_http.unload_all_loaded(LOCAL_V1, "", except_model="keep")
+    unloads = [c for c in post.call_args_list
+               if c[0][0].endswith("/api/v1/models/unload")]
+    assert len(unloads) == 1
+    assert unloads[0].kwargs["json"] == {"instance_id": "inst-drop"}
+
+
+def test_unload_all_loaded_handles_errors_silently():
+    # Network / HTTP / parse errors must never raise; the function simply does nothing.
+    with patch("requests.get", side_effect=__import__("requests").RequestException("down")):
+        lm_http.unload_all_loaded(LOCAL_V1, "")  # no raise
+    with patch("requests.get", return_value=_ok_response(status=500)):
+        lm_http.unload_all_loaded(LOCAL_V1, "")  # no raise
+    with patch("requests.get", return_value=_ok_response(text="<html>")):
+        lm_http.unload_all_loaded(LOCAL_V1, "")  # no raise (non-JSON)
 
 
 def test_get_cached_models_fetches_when_empty():

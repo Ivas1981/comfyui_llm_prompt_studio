@@ -130,10 +130,11 @@ Generates an SDXL prompt from an idea.
     as a positive statement instead.
   - **`family`** (optional) — wire the Smart Loader's `detected_family` output here to let
     `auto` detect the distilled family automatically. Leave unconnected to use `standard`.
-  - Loads the selected model on the LM Studio server **on demand** (via the load API) using
-    `context_length` (default 8192) and `gpu_offload` (1.0 = max GPU), and unloads the
-    previously loaded model for this node type when you switch. You no longer need to pre-load
-    the model in the LM Studio GUI.
+  - Loads the selected model on the LM Studio server **on demand** (via the load API) with
+    `context_length` (default 8192), `gpu_offload` (1.0 = max GPU) and the advanced load options
+    (`flash_attention`, `offload_kv_cache_to_gpu`), and **unloads every model currently resident
+    on the server — from any node — before loading the selected one**, so only the model you picked
+    stays in VRAM. You no longer need to pre-load the model in the LM Studio GUI.
 - **Outputs:** `positive`, `negative`, `raw`, `scene_name`, `face_positive`,
   `face_negative`.
 - Toggle **`generate_face_prompts`** to also get short face-only prompts for
@@ -398,8 +399,9 @@ no server-side conversation state. `reasoning` is only sent when the model actua
 (detected via `capabilities.reasoning.allowed_options`); if a server rejects it, the call retries once
 without it. The OpenAI `/chat/completions` route is kept only as a graceful fallback (e.g. when native
 vision is rejected). Model loads are resilient: if a server rejects an optional load parameter
-(e.g. `gpu_offload` on some builds), that key is dropped and the load still succeeds; switching models
-unloads the previously loaded instance via its `instance_id`.
+(e.g. `gpu_offload` on some builds), that key is dropped and the load still succeeds; before loading
+a model, **every currently loaded instance is unloaded via its `instance_id`**, so only the selected
+model remains resident.
 
 The model list is cached **per LM Studio server URL** (the cache key is the URL only — the API
 key is never persisted). **🔄 Refresh models** populates the combo for that server; each node
