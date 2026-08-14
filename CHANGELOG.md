@@ -6,6 +6,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.6] — 2026-08-14
+
+### Fixed
+- **Model loading was completely broken on LM Studio builds that reject the `gpu_offload` key
+  (HTTP 400 `Unrecognized key(s)`).** `load_model` now treats any `unrecognized_keys` rejection
+  generically: it parses the rejected key names (from the `error.code`/`keys` body or the message),
+  drops them, and retries — so an unsupported optional parameter (e.g. `gpu_offload`,
+  `offload_kv_cache_to_gpu`) no longer hard-fails the whole load. Known-rejected keys are remembered
+  per server+model so a subsequent load drops them up front.
+- **Switching models did not actually unload the previous one.** `maybe_unload_old` now unloads via
+  the exact v1 `instance_id` captured from a successful load (a 404 / already-gone id is treated as
+  idempotent success). The legacy `/api/v0/models/unload` is only used as a fallback when the v1
+  route is unreachable (connection error / 404), never on a 2xx "Unexpected endpoint".
+- **`ensure_model_loaded` ignored context/gpu/flash/KV changes.** It now fingerprints the requested
+  config `(model, context_length, gpu_offload, flash_attention, offload_kv_cache_to_gpu,
+  eval_batch_size, num_experts)` and force-reloads when any of them change (a pre-fingerprint string
+  value triggers a one-time reload).
+- **Model combos mixed up servers.** The model cache is now keyed by normalized server URL (the API
+  key is never persisted). `Refresh models` patches only the widgets whose `server_url` matches the
+  refreshed server, so each server's combo shows only its own models. `INPUT_TYPES` no longer hits the
+  network (Refresh / node-creation refresh is the source of truth).
+- **Concurrent library saves could lose entries.** `save_prompt_to_library` is now serialized by a
+  per-library-path lock, written atomically via `.tmp` + replace, and keeps a `.bak` of the previous
+  file. The duplicate check now also compares `face_positive` / `face_negative`.
+- **Smart Save could overwrite files on a numbering race.** Filename reservation now uses an exclusive
+  create (`O_EXCL`) and bumps the counter on collision instead of a racy `listdir → max+1`.
+- **Streaming failures left `generation_view` stale / partial.** A streaming failure now resets the
+  widget and shows the full non-streaming result exactly once via `on_delta`.
+- **Auto-revision loop always targeted the first Writer.** It now follows the Critic's `prompt` link
+  back to the producing Writer, so multi-Writer/Critic workflows are deterministic.
+- **`slugify` dropped Cyrillic/Unicode and plain-text model refusals were silently accepted as
+  prompts.** `slugify` (and `smart_save._slug_part`) are now Unicode-aware; the Writer sets
+  `allow_plain_text_fallback=False` so a non-JSON refusal becomes an explicit error.
+- **Dead Critic `generation_view` widget removed** (the Critic is always a vision model and never
+  streams).
+
+---
+
 ## [1.0.5] — 2026-08-13
 
 ### Fixed
