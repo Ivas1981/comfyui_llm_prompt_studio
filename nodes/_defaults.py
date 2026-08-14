@@ -29,6 +29,7 @@ if not _P:
     logger.warning("prompts.json not found or invalid — default prompts will be empty.")
 
 _REASONING_HINT = _P.get("reasoning_hint", "")
+REASONING_HINT = _REASONING_HINT
 
 
 def _with_hint(text: str) -> str:

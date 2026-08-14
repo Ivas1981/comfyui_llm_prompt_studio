@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.7] — 2026-08-14
+
+### Fixed
+- **Style presets ignored no-negative mode.** When a preset was selected with the system prompt left
+  at default, the Writer overrode the whole system prompt with the preset's standard variant, which
+  demanded a non-empty `negative` — contradicting no-negative (CFG~1) mode where the negative must be
+  empty. Each preset now ships a `system_prompt_no_negative` variant (empty `negative`/`face_negative`)
+  and the Writer uses it automatically in `no_negative` mode; `photorealism` is still fully disabled
+  there via `disabled_in_no_negative_mode`.
+- **Preset system prompts lost the reasoning hint.** Presets embed their own reasoning instruction, so
+  the canonical `reasoning_hint` is now guaranteed present when a preset is applied.
+- **Preset face instructions lacked the "empty string if no face is visible" fallback.** The new
+  `system_prompt_no_negative` variants keep `face_negative` empty (consistent with no-negative mode).
+- **Preset no-negative variants did not explain positive-only composition.** Each
+  `system_prompt_no_negative` now states that distilled models sample at CFG~1 (negative ignored) and
+  that every stylistic/quality constraint must be phrased as a positive statement in the prompt —
+  i.e. the prompt is composed so it works without a negative.
+
 ## [1.0.6] — 2026-08-14
 
 ### Fixed

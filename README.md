@@ -290,7 +290,9 @@ Selecting one:
 - appends the preset's `style_tags_positive` / `style_tags_negative` to the generated
   `positive` / `negative` (skipped for `negative` in no-negative mode);
 - overrides the system prompt with the preset's `system_prompt` **only when** the system-prompt
-  widget is left at its default.
+  widget is left at its default. In no-negative mode the preset's dedicated
+  `system_prompt_no_negative` variant is used instead (it requires an empty `negative` /
+  `face_negative`), so the preset's style still applies without contradicting the mode.
 
 Presets are copied from `presets_default.json` to an editable `llm_prompt_studio_presets.json`
 in the ComfyUI output directory on first run. Use the node menu **"Reload presets"** to refresh

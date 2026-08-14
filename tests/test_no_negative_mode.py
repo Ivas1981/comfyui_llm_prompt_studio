@@ -174,6 +174,31 @@ def test_scene_no_negative_forces_empty():
     assert result["result"][1] == ""
 
 
+def test_preset_no_negative_uses_no_negative_variant():
+    # Regression: selecting a style preset (that is not disabled in no-negative mode) together
+    # with no_negative mode must use the preset's no-negative system prompt, which requires an
+    # empty negative, instead of its standard variant (which demanded a non-empty negative).
+    captured = []
+    def spy(*a, **k):
+        captured.append(a[3])  # the messages list
+        return _json(positive="a cat", negative="IGNORED", scene_name="cat")
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+         patch.object(writer, "chat_completion", side_effect=spy):
+        result = writer.LLMPromptStudioWriter().execute(
+            server_url="http://localhost:1234/v1", api_key="", model="m",
+            context_length=8192, gpu_offload=1.0, system_prompt=writer.DEFAULT_SYSTEM,
+            idea="a cat", revision_notes="", temperature=0.7, max_tokens=512, seed=0,
+            reuse_last_prompt=False, generate_face_prompts=False,
+            max_field_retries=2, face_prompt_instruction="",
+            prompt_mode="no_negative", family="", style_preset="Anime / Manga",
+            unique_id="preset-nn")
+    sys_msg = captured[0][0]["content"]
+    assert '"negative": ""' in sys_msg
+    assert "negative prompt (always required)" not in sys_msg
+    # the node still forces the negative empty regardless of the model's reply
+    assert result[1] == ""
+
+
 def test_scene_standard_uses_standard_composer_when_default():
     # Regression: in standard mode with the composer widget left at its default, the node
     # must NOT switch to the no-negative composer (that produced an empty negative, which
