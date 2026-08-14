@@ -41,23 +41,41 @@ __all__ = [
 # received chunk, so it only fires on a true idle stall, not on slow generation).
 STREAM_WATCHDOG_SEC = int(os.getenv("LLM_PROMPT_STUDIO_STREAM_WATCHDOG_SEC", "30"))
 
+# Server+model pairs for which a v1 load option key was rejected (e.g. `gpu_offload` on
+# builds that only accept `gpuOffload`). Remembered so a subsequent load drops the key up
+# front instead of round-tripping the same 400. Per-process cache; harmless to keep.
+_rejected_v1_keys = {}
+
+# Max times we strip a rejected key from the v1 load body and retry before giving up.
+_MAX_REJECTED_RETRIES = 8
+
 # Read allow-public flag from environment for runtime configuration.
 ALLOW_PUBLIC_SERVER_URLS = os.getenv("LLM_PROMPT_STUDIO_ALLOW_PUBLIC", "False").lower() in ("1", "true", "yes")
 
-# cache "last loaded model" to unload the old one on switch: {slot: model_id}
+# cache "last loaded model" to unload the old one on switch: {slot: fingerprint}
 _last_loaded = {}
 # model instance ids returned by the v1 load endpoint, keyed for precise unload: {(server, model): id}
 _model_instances = {}
-# cache of model lists: {(server_url, api_key): (models, timestamp)}
+# cache of model lists, KEYED BY NORMALIZED SERVER URL (api_key is intentionally NOT part
+# of the key or the disk cache: model lists don't depend on it, and we must not persist
+# secrets in plaintext). {server_url: (models, timestamp)}
 _model_cache = {}
 CACHE_TTL = 60  # seconds (was 10)
 _MODEL_CACHE_MAX = 32
 
 DEFAULT_SERVER = "http://localhost:1234/v1"
-# Keys whose list is disk-backed and must NOT be auto-refetched; "Refresh models" is the
-# source of truth. This keeps INPUT_TYPES non-blocking while still letting a saved
+# Server URLs whose list is disk-backed and must NOT be auto-refetched; "Refresh models"
+# is the source of truth. This keeps INPUT_TYPES non-blocking while still letting a saved
 # workflow load with its previously selected model already present in the combo.
 _static_keys = set()
+
+
+def _normalize_server(url: str) -> str:
+    """Canonicalize a server URL for cache keys (drop trailing slash, default to localhost)."""
+    u = (url or "").strip()
+    if not u:
+        u = DEFAULT_SERVER
+    return u.rstrip("/")
 
 
 def _model_cache_path():
@@ -68,7 +86,11 @@ def _model_cache_path():
     return os.path.join(here, "llm_prompt_studio_models_cache.json")
 
 
-def _read_disk_models():
+def _read_disk_cache():
+    """Return the per-server model cache from disk: {normalized_server_url: [model_ids]}.
+
+    Migrates the legacy flat-list cache (a plain JSON array, or the old copy that lived in
+    the ComfyUI output dir) into the DEFAULT_SERVER entry so future reads are consistent."""
     candidates = [_model_cache_path()]
     # Backwards-compat: also read the old cache that previously lived in the output dir.
     try:
@@ -84,54 +106,68 @@ def _read_disk_models():
                 data = json.load(f)
         except (OSError, json.JSONDecodeError):
             continue
+        if isinstance(data, dict):
+            servers = {str(k): list(v) for k, v in data.items()
+                       if isinstance(v, list) and v}
+            if servers:
+                # Promote a legacy output-dir list cache into the package-location dict.
+                if path != _model_cache_path() and DEFAULT_SERVER not in servers:
+                    _persist_models(DEFAULT_SERVER, servers.get(DEFAULT_SERVER, []))
+                return servers
         if isinstance(data, list) and data and data not in ([PLACEHOLDER], [PLACEHOLDER_EMPTY]):
-            # Migrate to the new location so future reads are consistent.
+            # Old flat-list cache: treat it as the default server's list and migrate.
             if path != _model_cache_path():
-                _persist_models(data)
-            return list(data)
-    return None
+                _persist_models(DEFAULT_SERVER, list(data))
+            return {DEFAULT_SERVER: list(data)}
+    return {}
 
 
-def _persist_models(models):
+def _persist_models(server_url: str, models):
     if not models or models in ([PLACEHOLDER], [PLACEHOLDER_EMPTY]):
         return
-    # Merge with the on-disk list so the cache accumulates every model that has ever
-    # been available. This keeps a saved workflow's model selectable (and valid) even
-    # when the server is offline and only a stale list is on disk.
-    existing = _read_disk_models() or []
+    server_url = _normalize_server(server_url)
+    cache = _read_disk_cache()
+    existing = cache.get(server_url) or []
     merged = list(dict.fromkeys(list(existing) + list(models)))
+    cache[server_url] = merged
     try:
         with open(_model_cache_path(), "w", encoding="utf-8") as f:
-            json.dump(merged, f)
+            json.dump(cache, f)
     except OSError:
         pass
 
 
-def remember_model(model: str):
+def remember_model(model: str, server_url: str = DEFAULT_SERVER):
     """Persist a single model id so it stays valid/selectable offline.
 
     Called whenever a node actually uses a model, so a workflow reloaded after the
     server went away still validates its previously-run model instead of ComfyUI
-    rejecting it with 'Value not in list'."""
+    rejecting it with 'Value not in list'. The model is recorded under its server so it
+    never leaks into a different server's combo."""
     if not model or model.startswith("—"):
         return
-    _persist_models([model])
+    _persist_models(server_url, [model])
 
 
 def _load_disk_cache():
-    disk = _read_disk_models()
-    if disk:
-        _model_cache[(DEFAULT_SERVER, "")] = (disk, time.time())
-        _static_keys.add((DEFAULT_SERVER, ""))
+    disk = _read_disk_cache()
+    for srv, models in disk.items():
+        _store_model_cache(srv, list(models))
+        _static_keys.add(srv)
 
 
-def cached_model_list():
-    """Return the persisted model list (non-blocking), seeding the in-memory cache."""
-    disk = _read_disk_models()
-    if disk:
-        _store_model_cache((DEFAULT_SERVER, ""), disk)
-        _static_keys.add((DEFAULT_SERVER, ""))
-        return disk
+def cached_model_list(server_url: str = DEFAULT_SERVER):
+    """Return the persisted model list for `server_url` (non-blocking), seeding the
+    in-memory cache. Falls back to the default-server list when this server has none yet."""
+    disk = _read_disk_cache()
+    srv = _normalize_server(server_url)
+    models = disk.get(srv)
+    if models:
+        _store_model_cache(srv, list(models))
+        _static_keys.add(srv)
+        return list(models)
+    if srv != DEFAULT_SERVER and disk.get(DEFAULT_SERVER):
+        return list(disk[DEFAULT_SERVER])
     return None
 
 
@@ -198,39 +234,37 @@ def fetch_models(server_url: str, api_key: str = "", timeout: int = 5) -> list:
     return [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
 
 
-def _store_model_cache(key, models):
-    _model_cache[key] = (models, time.time())
+def _store_model_cache(server_url: str, models):
+    _model_cache[_normalize_server(server_url)] = (models, time.time())
     if len(_model_cache) > _MODEL_CACHE_MAX:
         _model_cache.pop(next(iter(_model_cache)))  # drop oldest
 
 
 def cache_models(server_url: str, api_key: str, models: list):
     if models:
-        key = (server_url, api_key)
-        _store_model_cache(key, list(models))
-        # Always persist to the default-server cache that combo_models() reads. combo_models()
-        # is keyed to DEFAULT_SERVER regardless of the node's server_url, so persisting the
-        # refreshed list here (even for a custom server_url) keeps the server-side INPUT_TYPES
-        # combo populated. This is what lets a queued prompt pass "Value not in list" validation
-        # without a ComfyUI restart after a Refresh.
-        _persist_models(models)
-        _static_keys.add((DEFAULT_SERVER, ""))
+        srv = _normalize_server(server_url)
+        # Persist under the REFRESHED server (not the default) so each server's combo stays
+        # scoped to its own models — fixing the cross-server model mix-up where a Refresh of
+        # server B would overwrite server A's combo. The api_key is deliberately not stored.
+        _store_model_cache(srv, list(models))
+        _persist_models(srv, models)
+        _static_keys.add(srv)
 
 
 def get_cached_models(server_url=DEFAULT_SERVER, api_key="", allow_fetch=True, timeout=5):
-    key = (server_url, api_key)
-    cached = _model_cache.get(key)
+    srv = _normalize_server(server_url)
+    cached = _model_cache.get(srv)
     # Fresh cache within TTL — return it
     if cached and time.time() - cached[1] < CACHE_TTL:
         return list(cached[0])
-    # Disk-backed / default list: never auto-refetch; Refresh is the source of truth.
+    # Disk-backed / known list: never auto-refetch; Refresh is the source of truth.
     # This lets INPUT_TYPES return the previously known models without hitting the network.
-    if key in _static_keys:
+    if srv in _static_keys:
         if cached:
             return list(cached[0])
-        # In-memory entry evicted (LRU) but the list is still "known": re-read disk
-        # instead of falling back to the unavailable placeholder.
-        disk = _read_disk_models()
+        # In-memory entry evicted (LRU) but the list is still "known": re-read disk for
+        # this server instead of falling back to the unavailable placeholder.
+        disk = _read_disk_cache().get(srv)
         return list(disk) if disk else [PLACEHOLDER]
     # Expired cache — try to re-fetch, fall back to stale only on error
     if cached:
@@ -238,10 +272,9 @@ def get_cached_models(server_url=DEFAULT_SERVER, api_key="", allow_fetch=True, t
             return list(cached[0])
         try:
             models = fetch_models(server_url, api_key, timeout=timeout) or [PLACEHOLDER_EMPTY]
-            _store_model_cache(key, models)
-            if key == (DEFAULT_SERVER, ""):
-                _persist_models(models)
-                _static_keys.add(key)
+            _store_model_cache(srv, models)
+            _persist_models(srv, models)
+            _static_keys.add(srv)
             return models
         except Exception:
             return list(cached[0])
@@ -249,15 +282,14 @@ def get_cached_models(server_url=DEFAULT_SERVER, api_key="", allow_fetch=True, t
     if allow_fetch:
         try:
             models = fetch_models(server_url, api_key, timeout=timeout) or [PLACEHOLDER_EMPTY]
-            _store_model_cache(key, models)
-            if key == (DEFAULT_SERVER, ""):
-                _persist_models(models)
-                _static_keys.add(key)
+            _store_model_cache(srv, models)
+            _persist_models(srv, models)
+            _static_keys.add(srv)
             return models
         except Exception:
             # Negative-cache the failure so we don't block on every INPUT_TYPES call while
             # the server is down; it expires with CACHE_TTL and a manual Refresh still works.
-            _store_model_cache(key, [PLACEHOLDER])
+            _store_model_cache(srv, [PLACEHOLDER])
             return [PLACEHOLDER]
     return [PLACEHOLDER]
 
@@ -339,14 +371,56 @@ def resolve_vision(server_url: str, api_key: str, model_id: str) -> bool:
 
 
 def maybe_unload_old(slot: str, server_url: str, new_model: str):
+    """Unload the previously-loaded model before a new one loads.
+
+    The unload targets the exact v1 ``instance_id`` captured from a successful load (in
+    ``_model_instances``). 404 / already-gone ids are treated as idempotent success. When no
+    instance id is known we probe the v1 route by model name; only if that route is missing
+    (404 / connection error) do we fall back to the legacy ``/api/v0/models/unload`` — a
+    modern server answers 200 "Unexpected endpoint", which we do NOT treat as a failure.
+
+    ``_last_loaded[slot]`` may hold a fingerprint tuple (see ``ensure_model_loaded``); the
+    model name is taken from its first element. This function only performs the unload — the
+    caller is responsible for recording the new load state."""
     old = _last_loaded.get(slot)
-    if old and old != new_model and not old.startswith("—"):
-        try:
-            base = _server_root(server_url)
-            requests.post(f"{base}/api/v0/models/unload", json={"model": old}, timeout=5)
-            logger.debug("Requested unload of previous model '%s'", old)
-        except requests.RequestException as e:
-            logger.debug("Could not unload previous model '%s': %s", old, e)
+    old_model = old[0] if isinstance(old, tuple) else old
+    if (not old_model or old_model == new_model
+            or str(old_model).startswith("—")):
+        return
+    try:
+        base = _server_root(server_url)
+        instance_id = _model_instances.get((server_url, old_model))
+        if instance_id:
+            # v1 unload of the exact instance; 404 (already gone) is success.
+            resp = requests.post(f"{base}/api/v1/models/unload",
+                                 json={"instance_id": instance_id}, timeout=5)
+            if resp.status_code < 400 or resp.status_code == 404:
+                logger.debug("Unloaded previous model '%s' (instance %s)",
+                             old_model, instance_id)
+            else:
+                logger.debug("Unload of '%s' returned HTTP %s: %s", old_model,
+                             resp.status_code, (resp.text or "")[:200])
+        else:
+            # No stored instance id: try the v1 route by model name (old servers handle it).
+            # A 404 means the v1 route is missing -> fall back to legacy v0. A 2xx
+            # "Unexpected endpoint" is an old server's no-op success, not an error.
+            resp = None
+            try:
+                resp = requests.post(f"{base}/api/v1/models/unload",
+                                     json={"model": old_model}, timeout=5)
+            except requests.RequestException:
+                resp = None
+            if resp is None or resp.status_code == 404:
+                requests.post(f"{base}/api/v0/models/unload",
+                              json={"model": old_model}, timeout=5)
+            elif resp.status_code >= 400:
+                logger.debug("v1 unload of '%s' failed (HTTP %s): %s", old_model,
+                             resp.status_code, (resp.text or "")[:200])
+    except requests.RequestException as e:
+        logger.debug("Could not unload previous model '%s': %s", old_model, e)
+    # Record the new model name so a same-model check (and the legacy string-state path)
+    # behaves correctly. ensure_model_loaded overwrites this with the full fingerprint on a
+    # successful load, so the config-fingerprint compare stays authoritative.
     _last_loaded[slot] = new_model
 
 
@@ -369,21 +443,57 @@ def _server_root(server_url: str) -> str:
     return base
 
 
-# LM Studio versions differ on the rejected-gpu-key wording ("unrecognized key",
-# "unknown key", "invalid ... key"). Match any of these near "gpu" so the v1→legacy
-# casing fallback still triggers if the server rephrases the error.
-_GPU_KEY_PATTERNS = [
-    re.compile(r"unrecognized key.*gpu", re.I),
-    re.compile(r"unknown key.*gpu", re.I),
-    re.compile(r"invalid parameter.*gpu", re.I),
-]
+def _decode_error(resp):
+    """Return the `error` object of a JSON error response, or None."""
+    if resp is None:
+        return None
+    try:
+        data = resp.json()
+    except Exception:
+        return None
+    if isinstance(data, dict):
+        return data.get("error")
+    return None
 
 
-def _is_unrecognized_gpu_key(text: str) -> bool:
-    """True when the server rejects the gpu-offload key by name (casing differs across
-    LM Studio versions: some want `gpu_offload`, others `gpuOffload`)."""
-    low = (text or "").lower()
-    return any(p.search(low) for p in _GPU_KEY_PATTERNS)
+def _is_unrecognized_keys(resp) -> bool:
+    """True when an LM Studio error rejects one or more request body keys by name
+    (code `unrecognized_keys` and friends). Used to make loads resilient to per-server
+    schema differences: a rejected optional key is dropped and the load retried."""
+    err = _decode_error(resp)
+    if not isinstance(err, dict):
+        return False
+    code = err.get("code")
+    if code in ("unrecognized_keys", "unknown_keys", "invalid_keys",
+                "unrecognized_key", "unknown_key"):
+        return True
+    msg = str(err.get("message", "") or "").lower()
+    return "unrecognized" in msg or "unknown key" in msg
+
+
+def _parse_rejected_keys(resp, body_keys) -> set:
+    """Extract the rejected body-key names from an `unrecognized_keys` 400 response.
+
+    Tries an explicit `keys`/`key` list in the error object first, then falls back to
+    quoted identifiers in the message and any body-key name that appears verbatim."""
+    err = _decode_error(resp)
+    keys: set = set()
+    if isinstance(err, dict):
+        listed = err.get("keys") or err.get("unrecognized_keys") or err.get("key")
+        if isinstance(listed, str):
+            listed = [listed]
+        if isinstance(listed, list):
+            for k in listed:
+                if isinstance(k, str):
+                    keys.add(k)
+    if not keys and isinstance(err, dict):
+        msg = str(err.get("message", "") or "")
+        for m in re.findall(r"['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]", msg):
+            keys.add(m)
+        for k in body_keys:
+            if re.search(r"\b" + re.escape(k) + r"\b", msg):
+                keys.add(k)
+    return keys
 
 
 def _try_post(path: str, body: dict, headers: dict, timeout: int, retries: int, backoff: float):
@@ -434,10 +544,13 @@ def load_model(server_url: str, api_key: str, model: str,
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     identifier = quote(model, safe="")
 
-    # Native v1 load body. LM Studio versions disagree on the gpu-offload key casing: newer
-    # servers accept snake_case `gpu_offload`, older ones only `gpuOffload`. We try snake_case
-    # first and fall back to camelCase if the server rejects the key (see below). All other
-    # v1 keys are snake_case per the LM Studio docs. New options are only included when set.
+    # Native v1 load body. All optional v1 keys are snake_case per the LM Studio docs;
+    # we send the full set and let the resilient retry below drop any key a particular
+    # server rejects (e.g. `gpu_offload` on builds that only accept `gpuOffload`, or
+    # servers without flash-attention / KV-offload support). New options are only included
+    # when set. Keys previously rejected for this server+model are dropped up front so we
+    # don't repeat a known-bad request.
+    rejected = set(_rejected_v1_keys.get((server_url, model), set()))
     v1_body = {"model": model, "context_length": int(context_length), "gpu_offload": gpu_offload}
     if flash_attention is not None:
         v1_body["flash_attention"] = bool(flash_attention)
@@ -449,6 +562,7 @@ def load_model(server_url: str, api_key: str, model: str,
         v1_body["num_experts"] = int(num_experts)
     if echo_load_config:
         v1_body["echo_load_config"] = True
+    v1_body = {k: v for k, v in v1_body.items() if k not in rejected}
 
     # Legacy body (camelCase) used by the older endpoints; ignores the new options.
     legacy_body = {"contextLength": int(context_length), "gpuOffload": gpu_offload, "seed": -1}
@@ -460,18 +574,32 @@ def load_model(server_url: str, api_key: str, model: str,
         _record_load_config(server_url, model, resp)
         return True
 
-    # Some LM Studio versions reject the snake_case gpu_offload key and only accept the
-    # camelCase gpuOffload. If the v1 route rejected precisely that key, retry once with the
-    # alternate casing before giving up on the v1 route.
-    if (resp is not None and resp.status_code == 400
-            and _is_unrecognized_gpu_key(resp.text or "")
-            and "gpu_offload" in v1_body):
-        v1_body["gpuOffload"] = v1_body.pop("gpu_offload")
-        ok, err, resp = _try_post(f"{base}/api/v1/models/load", v1_body, headers,
-                                  timeout, retries, backoff)
-        if ok:
-            _record_load_config(server_url, model, resp)
-            return True
+    # Resilient retry: some LM Studio builds reject optional parameters by name with a
+    # 400 `unrecognized_keys` error (e.g. `gpu_offload`). Parse the rejected key names,
+    # drop them from the body, and retry — looping until nothing is rejected or the body
+    # stabilizes. This makes loads succeed on servers that don't support a given key
+    # instead of hard-failing the whole load.
+    if resp is not None and resp.status_code == 400 and _is_unrecognized_keys(resp):
+        body = dict(v1_body)
+        seen = set(rejected)
+        for _ in range(_MAX_REJECTED_RETRIES):
+            dropped = set()
+            for k in _parse_rejected_keys(resp, set(body.keys())):
+                if k in body:
+                    body.pop(k, None)
+                    dropped.add(k)
+                seen.add(k)
+            _rejected_v1_keys.setdefault((server_url, model), set()).update(seen)
+            if not dropped:
+                break
+            ok, err, resp = _try_post(f"{base}/api/v1/models/load", body, headers,
+                                      timeout, retries, backoff)
+            if ok:
+                _record_load_config(server_url, model, resp)
+                return True
+            if not (resp is not None and resp.status_code == 400
+                    and _is_unrecognized_keys(resp)):
+                break
 
     # A modern server's legacy route is a no-op that answers 200 ("Unexpected endpoint"),
     # which would mask the real v1 rejection. Only fall through to the legacy endpoints on
@@ -529,9 +657,15 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
         return
     # Remember this model so a saved workflow that uses it stays valid (and selectable)
     # even when the server is offline later and the combo would otherwise be the placeholder.
-    remember_model(model)
-    if _last_loaded.get(slot) == model:
-        return  # already loaded for this slot — avoid a needless reload
+    remember_model(model, server_url)
+    # Fingerprint the requested load config so a changed context_length / gpu_offload /
+    # flash-attention / KV-offload / batch-size / experts forces a reload even when the same
+    # model is currently loaded. Old string values in _last_loaded (pre-fingerprint) compare
+    # unequal to the tuple and trigger a one-time reload, as intended.
+    fingerprint = (model, context_length, gpu_offload, flash_attention,
+                   offload_kv_cache_to_gpu, eval_batch_size, num_experts)
+    if _last_loaded.get(slot) == fingerprint:
+        return  # already loaded with the same config for this slot — avoid a needless reload
     maybe_unload_old(slot, server_url, model)  # unloads the previous model
     if not load_model(server_url, api_key, model, context_length, gpu_offload,
                       flash_attention=flash_attention,
@@ -544,6 +678,8 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
             "Model '%s' for slot '%s' was not loaded. The next LLM call will fail "
             "until the model is available (check that LM Studio is running and the "
             "model id is correct).", model, slot)
+    else:
+        _last_loaded[slot] = fingerprint  # record the exact loaded config
 
 
 def _serialize_message_content(content):
@@ -596,9 +732,10 @@ def _enrich_http_error(model: str, status: int, text: str, has_images: bool) -> 
 
 
 def chat_completion(server_url, api_key, model, messages,
-                    temperature, max_tokens, timeout=600, seed=None,
-                    stream=False, reasoning="off", repeat_penalty=1.0,
-                    top_k=None, top_p=None, min_p=None, on_delta=None) -> str:
+                     temperature, max_tokens, timeout=600, seed=None,
+                     stream=False, reasoning="off", repeat_penalty=1.0,
+                     top_k=None, top_p=None, min_p=None, on_delta=None,
+                     on_reset=None) -> str:
     """OpenAI-compatible chat completion with optional LM Studio v1-native features.
 
     The native ``/api/v1/chat`` endpoint (which supports ``reasoning``, ``repeat_penalty``,
@@ -608,7 +745,10 @@ def chat_completion(server_url, api_key, model, messages,
     ignored. If a streaming request fails, it gracefully falls back to a normal non-streaming
     call so the node still returns text.
 
-    ``on_delta`` (callable[str]) receives each streamed content chunk when streaming."""
+    ``on_delta`` (callable[str]) receives each streamed content chunk when streaming.
+    ``on_reset`` (callable) is invoked right before a failed streaming request falls back
+    to a non-streaming call, so the UI can clear any partial text; the fallback's full text
+    is then delivered via ``on_delta`` (so it shows exactly once, no partial left behind)."""
     server_url = validate_server_url(server_url)
     has_images = any(
         isinstance(m.get("content"), list)
@@ -627,6 +767,12 @@ def chat_completion(server_url, api_key, model, messages,
         except Exception as e:  # noqa: BLE001 — graceful fallback for streaming failures
             if stream:
                 logger.warning("Streaming failed (%s); falling back to non-streaming.", e)
+                # Clear any partial text so the fallback result shows cleanly in the UI.
+                if on_reset:
+                    try:
+                        on_reset()
+                    except Exception:
+                        pass
                 stream = False
                 use_v1 = False
             else:
@@ -681,6 +827,13 @@ def chat_completion(server_url, api_key, model, messages,
     logger.debug("LLM call to '%s' completed in %.1fs (%d chars): %s",
                  model, time.time() - started, len(content),
                  _serialize_message_content(last))
+    # When we fell back from a failed stream, deliver the full text through on_delta so the
+    # UI shows the complete result exactly once (the partial stream was already cleared).
+    if on_delta and stream is False and use_v1 is False:
+        try:
+            on_delta(content)
+        except Exception:
+            pass
     return content
 
 

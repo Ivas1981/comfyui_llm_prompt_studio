@@ -37,12 +37,20 @@ import json  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _reset_state():
-    # Avoid cross-test contamination of the global "last loaded" cache.
+    # Avoid cross-test contamination of the global load caches and rejected-key memory.
     saved = dict(lm_http._last_loaded)
     lm_http._last_loaded.clear()
+    lm_http._rejected_v1_keys.clear()
+    lm_http._model_instances.clear()
+    lm_http._model_cache.clear()
+    lm_http._static_keys.clear()
     yield
     lm_http._last_loaded.clear()
     lm_http._last_loaded.update(saved)
+    lm_http._rejected_v1_keys.clear()
+    lm_http._model_instances.clear()
+    lm_http._model_cache.clear()
+    lm_http._static_keys.clear()
 
 
 def test_validate_server_url_allows_local():
@@ -148,25 +156,26 @@ def test_load_model_fails_after_retries(caplog):
 
 def test_maybe_unload_old_posts_unload_for_previous():
     lm_http._last_loaded["slotX"] = "oldmodel"
-    with patch("requests.post") as post:
+    with patch("requests.post", return_value=_ok_response(status=200)) as post:
         lm_http.maybe_unload_old("slotX", LOCAL_V1, "newmodel")
     assert lm_http._last_loaded["slotX"] == "newmodel"
-    # An unload request for the previous model was issued.
+    # With no known instance id, the unload is issued on the v1 route by model name.
     unload_calls = [c for c in post.call_args_list
-                    if c[0][0].endswith("/api/v0/models/unload")]
-    assert unload_calls, "expected an unload request for the previous model"
+                    if c[0][0].endswith("/api/v1/models/unload")]
+    assert unload_calls, "expected a v1 unload request for the previous model"
     assert unload_calls[0].kwargs["json"] == {"model": "oldmodel"}
 
 
 def test_maybe_unload_old_url_has_no_double_v1_prefix():
-    # Regression: the unload URL must be /api/v0/models/unload, not /v1/api/v0/...,
-    # when server_url ends in /v1. Uses _server_root() (same helper as load_model).
+    # Regression: the v1 unload URL must be /api/v1/models/unload, not /v1/api/v1/...,
+    # when server_url ends in /v1. Uses _server_root() (same helper as load_model). With no
+    # known instance id the first attempt is the v1 route by model name.
     lm_http._last_loaded["slotZ"] = "oldmodel"
-    with patch("requests.post") as post:
+    with patch("requests.post", return_value=_ok_response(status=200)) as post:
         lm_http.maybe_unload_old("slotZ", LOCAL_V1, "newmodel")
     url = post.call_args_list[0][0][0]
-    assert "/v1/api/v0/" not in url
-    assert url == "http://localhost:1234/api/v0/models/unload"
+    assert "/v1/api/v1/" not in url
+    assert url == "http://localhost:1234/api/v1/models/unload"
 
 
 def test_maybe_unload_old_skips_when_same_model():
@@ -181,11 +190,13 @@ def test_ensure_model_loaded_marks_loaded_on_success():
     with patch.object(lm_http, "load_model", return_value=True) as load:
         lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
     load.assert_called_once()
-    assert lm_http._last_loaded["s"] == "m"
+    # The loaded state is now a config fingerprint (model + load params), not the bare name.
+    assert lm_http._last_loaded["s"] == ("m", 8192, 1.0, None, None, None, None)
 
 
 def test_ensure_model_loaded_skips_when_already_loaded():
-    lm_http._last_loaded["s"] = "m"
+    # With the same fingerprint, no reload is attempted.
+    lm_http._last_loaded["s"] = ("m", 8192, 1.0, None, None, None, None)
     with patch.object(lm_http, "load_model") as load:
         lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
     load.assert_not_called()
@@ -199,6 +210,49 @@ def test_ensure_model_loaded_nulls_state_on_failure(caplog):
     # Failure leaves state as None so the next run will retry; warning is logged.
     assert lm_http._last_loaded["s"] is None
     assert "was not loaded" in caplog.text
+
+
+def test_maybe_unload_old_uses_known_instance_id():
+    # When the v1 load returned an instance_id, the unload must target it via the v1 route.
+    lm_http._model_instances[(LOCAL_V1, "oldmodel")] = "inst-7"
+    lm_http._last_loaded["slotI"] = "oldmodel"
+    with patch("requests.post", return_value=_ok_response(status=200)) as post:
+        lm_http.maybe_unload_old("slotI", LOCAL_V1, "newmodel")
+    unload = [c for c in post.call_args_list
+              if c[0][0].endswith("/api/v1/models/unload")]
+    assert unload, "expected a v1 unload by instance_id"
+    assert unload[0].kwargs["json"] == {"instance_id": "inst-7"}
+
+
+def test_maybe_unload_old_stale_instance_id_tolerated():
+    # A 404 (already gone) on the v1 unload is treated as idempotent success, not an error.
+    lm_http._model_instances[(LOCAL_V1, "oldmodel")] = "gone"
+    lm_http._last_loaded["slotJ"] = "oldmodel"
+    resp404 = _ok_response(status=404, text="not found")
+    with patch("requests.post", return_value=resp404) as post:
+        lm_http.maybe_unload_old("slotJ", LOCAL_V1, "newmodel")
+    unload = [c for c in post.call_args_list
+              if c[0][0].endswith("/api/v1/models/unload")]
+    assert unload
+    assert unload[0].kwargs["json"] == {"instance_id": "gone"}
+
+
+def test_ensure_model_loaded_reloads_on_config_change():
+    # Changing context_length (same model/slot) must force a reload thanks to the fingerprint.
+    lm_http._last_loaded["s"] = ("m", 8192, 1.0, None, None, None, None)
+    with patch.object(lm_http, "load_model", return_value=True) as load:
+        lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m", context_length=16384)
+    load.assert_called_once()
+    # The new fingerprint reflects the changed context_length.
+    assert lm_http._last_loaded["s"] == ("m", 16384, 1.0, None, None, None, None)
+
+
+def test_ensure_model_loaded_old_string_state_forces_reload():
+    # A pre-fingerprint string value compares unequal to the tuple and triggers a one-time reload.
+    lm_http._last_loaded["s"] = "m"
+    with patch.object(lm_http, "load_model", return_value=True) as load:
+        lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
+    load.assert_called_once()
 
 
 def test_get_cached_models_fetches_when_empty():
@@ -325,19 +379,39 @@ def test_load_model_legacy_body_keeps_camel_case_gpuOffload():
     assert "gpu_offload" not in body
 
 
-def test_load_model_v1_400_gpu_key_falls_back_to_camel_case():
-    # Server rejects the snake_case key but accepts the camelCase one: load_model must retry
-    # the v1 endpoint with gpuOffload and succeed (still on the v1 route, not legacy).
-    snake = _ok_response(status=400, text="Unrecognized key(s) in object: 'gpu_offload'")
-    camel = _ok_response(status=200)
-    with patch("requests.post", side_effect=[snake, camel]) as post:
-        ok = lm_http.load_model(LOCAL_V1, "", "m", retries=1, backoff=0)
-    assert ok is True
+def test_load_model_v1_400_unrecognized_key_is_dropped_and_retried():
+    # A server that rejects an optional key (e.g. gpu_offload) by name must not hard-fail:
+    # load_model strips the rejected key and retries the v1 endpoint. The key is dropped
+    # (not re-sent as camelCase), so the retry body omits it entirely and the load succeeds
+    # on the v1 route rather than falling through to legacy.
+    snake = _ok_response(status=400,
+                         text='{"error":{"code":"unrecognized_keys",'
+                              '"message":"Unrecognized key(s) in object: \'gpu_offload\'"}}')
+    ok = _ok_response(status=200)
+    with patch("requests.post", side_effect=[snake, ok]) as post:
+        result = lm_http.load_model(LOCAL_V1, "", "m", retries=1, backoff=0)
+    assert result is True
     # Both attempts went to the native v1 endpoint; legacy was never called.
     assert post.call_count == 2
     assert all(c[0][0].endswith("/api/v1/models/load") for c in post.call_args_list)
-    # Second attempt used the camelCase key.
-    assert post.call_args_list[1][1]["json"]["gpuOffload"] == 1.0
+    # The rejected key is gone from the retry (and the camelCase alias is never invented).
+    retry_body = post.call_args_list[1][1]["json"]
+    assert "gpu_offload" not in retry_body
+    assert "gpuOffload" not in retry_body
+
+
+def test_load_model_v1_400_unrecognized_keys_list_dropped():
+    # The error may also list offending keys under an explicit "keys" field.
+    snake = _ok_response(status=400,
+                         text='{"error":{"code":"unrecognized_keys",'
+                              '"keys":["offload_kv_cache_to_gpu"]}}')
+    ok = _ok_response(status=200)
+    with patch("requests.post", side_effect=[snake, ok]) as post:
+        result = lm_http.load_model(LOCAL_V1, "", "m",
+                                    offload_kv_cache_to_gpu=True, retries=1, backoff=0)
+    assert result is True
+    retry_body = post.call_args_list[1][1]["json"]
+    assert "offload_kv_cache_to_gpu" not in retry_body
 
 
 def test_load_model_v1_400_non_gpu_error_does_not_fall_through():

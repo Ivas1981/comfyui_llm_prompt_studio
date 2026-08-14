@@ -40,8 +40,6 @@ class LLMPromptStudioCritic:
                                     "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage"}),
                 "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
                                           "tooltip": "Store KV cache in GPU memory (faster) vs CPU RAM (lower VRAM)"}),
-                "generation_view": ("STRING", {"multiline": True, "default": "",
-                                     "tooltip": "Live generation output (streaming requires a non-vision model)"}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -53,7 +51,7 @@ class LLMPromptStudioCritic:
     def execute(self, image, prompt, server_url, api_key, model, context_length, gpu_offload,
                  critic_prompt, threshold, image_max_size, temperature, max_tokens,
                  clear_notes_on_approve, auto_loop, max_retries,
-                  vision_check=True, revision_view="", generation_view="",
+                  vision_check=True, revision_view="",
                   flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None):
         _t0 = time.time()
         log_node_enter("Critic", unique_id, {
@@ -72,10 +70,10 @@ class LLMPromptStudioCritic:
             raise
 
     def _run(self, image, prompt, server_url, api_key, model, context_length, gpu_offload,
-             critic_prompt, threshold, image_max_size, temperature, max_tokens,
-             clear_notes_on_approve, auto_loop, max_retries,
-             vision_check=True, revision_view="",
-             flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None, _t0=None):
+              critic_prompt, threshold, image_max_size, temperature, max_tokens,
+              clear_notes_on_approve, auto_loop, max_retries,
+              vision_check=True, revision_view="",
+              flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None, _t0=None):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "

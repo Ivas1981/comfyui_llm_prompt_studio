@@ -3,6 +3,9 @@ import json
 import logging
 import os
 import re
+import shutil
+import threading
+import time
 
 import folder_paths
 
@@ -21,6 +24,32 @@ __all__ = [
 
 # Set to False to allow library/save paths outside the ComfyUI output directory.
 RESTRICT_PATHS_TO_OUTPUT = True
+
+# Per-library-path locks so concurrent saves (many queued prompts, or the Smart Save
+# auto-save running alongside a manual save) serialize their read-modify-write instead of
+# clobbering each other's entries. Guarded by a global lock when first created.
+_library_locks = {}
+_library_locks_guard = threading.Lock()
+
+
+def _lock_for(library_path: str) -> threading.Lock:
+    with _library_locks_guard:
+        return _library_locks.setdefault(library_path, threading.Lock())
+
+
+def _atomic_replace(tmp_path: str, library_path: str, attempts: int = 10):
+    # os.replace is atomic, but on Windows a MoveFileEx can transiently fail with
+    # ERROR_SHARING_VIOLATION (PermissionError) if another handle still lingers on the
+    # destination. A short bounded retry lets the holder release before we give up.
+    last = None
+    for _ in range(attempts):
+        try:
+            os.replace(tmp_path, library_path)
+            return
+        except OSError as e:
+            last = e
+            time.sleep(0.01)
+    raise last
 
 
 def safe_path_in_output(path: str) -> str:
@@ -63,45 +92,58 @@ def save_prompt_to_library(library_path: str, scene_name: str,
                             positive: str, negative: str,
                             face_positive: str = "", face_negative: str = ""):
     """Appends a prompt to the JSON library with duplicate check.
-    Returns (name, added): added=False if the same positive already exists."""
+    Returns (name, added): added=False if the same positive already exists.
+
+    The read-modify-write is serialized by a per-path lock and written atomically via a
+    temp file + ``os.replace``; the previous file is kept as a ``.bak`` for cheap recovery."""
     # Defense in depth: the callers already resolve via resolve_library_path(), but this
     # function must never write outside the output directory on its own.
     library_path = safe_path_in_output(library_path)
     parent = os.path.dirname(library_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    entries = []
-    if os.path.exists(library_path):
-        try:
-            with open(library_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, list):
-                entries = data
-        except (json.JSONDecodeError, OSError):
-            entries = []
-    for e in entries:
-        if isinstance(e, dict) and \
-                str(e.get("prompt", "")).strip() == positive.strip() and \
-                str(e.get("negative_prompt", "")).strip() == negative.strip():
-            return str(e.get("name", "")), False
-    max_idx = 0
-    for e in entries:
-        if isinstance(e, dict):
-            m = re.match(r"(\d+)", str(e.get("name", "")))
-            if m:
-                max_idx = max(max_idx, int(m.group(1)))
-    slug = scene_name.strip() or slugify(positive)
-    name = f"{max_idx + 1:03d}_{slug}"
-    entries.append({
-        "name": name,
-        "prompt": positive,
-        "negative_prompt": negative,
-        "face_positive": face_positive,
-        "face_negative": face_negative,
-    })
-    tmp_path = library_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, library_path)
+    lock = _lock_for(library_path)
+    with lock:
+        entries = []
+        if os.path.exists(library_path):
+            try:
+                with open(library_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    entries = data
+            except (json.JSONDecodeError, OSError):
+                entries = []
+        for e in entries:
+            if isinstance(e, dict) and \
+                    str(e.get("prompt", "")).strip() == positive.strip() and \
+                    str(e.get("negative_prompt", "")).strip() == negative.strip() and \
+                    str(e.get("face_positive", "")).strip() == face_positive.strip() and \
+                    str(e.get("face_negative", "")).strip() == face_negative.strip():
+                return str(e.get("name", "")), False
+        max_idx = 0
+        for e in entries:
+            if isinstance(e, dict):
+                m = re.match(r"(\d+)", str(e.get("name", "")))
+                if m:
+                    max_idx = max(max_idx, int(m.group(1)))
+        slug = scene_name.strip() or slugify(positive)
+        name = f"{max_idx + 1:03d}_{slug}"
+        entries.append({
+            "name": name,
+            "prompt": positive,
+            "negative_prompt": negative,
+            "face_positive": face_positive,
+            "face_negative": face_negative,
+        })
+        # Keep the previous version as a backup before replacing it atomically.
+        if os.path.exists(library_path):
+            try:
+                shutil.copyfile(library_path, library_path + ".bak")
+            except OSError:
+                pass
+        tmp_path = library_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(entries, f, ensure_ascii=False, indent=2)
+        _atomic_replace(tmp_path, library_path)
     logger.debug("Saved scene '%s' to library %s", name, library_path)
     return name, True

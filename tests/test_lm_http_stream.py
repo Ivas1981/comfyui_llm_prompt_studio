@@ -90,3 +90,23 @@ def test_v1_streaming_falls_back_on_transport_error():
     # First attempt was the native streaming endpoint, second the OpenAI fallback.
     assert post.call_args_list[0][0][0].endswith("/api/v1/chat")
     assert post.call_args_list[1][0][0].endswith("/chat/completions")
+
+
+def test_streaming_failure_resets_then_delivers_full_text():
+    # On a streaming failure, on_reset must fire (so the UI clears stale partial text) and the
+    # non-streaming fallback's full text is delivered exactly once via on_delta.
+    ok = MagicMock()
+    ok.status_code = 200
+    ok.text = json.dumps({"choices": [{"message": {"content": "full fallback result"}}]})
+    ok.json.return_value = {"choices": [{"message": {"content": "full fallback result"}}]}
+    reset = MagicMock()
+    deltas = []
+    with patch("requests.post", side_effect=[RuntimeError("stream died"), ok]):
+        out = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                      [{"role": "user", "content": "hi"}],
+                                      0.7, 100, stream=True,
+                                      on_delta=deltas.append, on_reset=reset)
+    assert out == "full fallback result"
+    reset.assert_called_once()
+    # The complete fallback text is shown once; no partial left behind.
+    assert deltas == ["full fallback result"]

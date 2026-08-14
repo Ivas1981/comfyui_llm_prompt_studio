@@ -12,6 +12,22 @@ import {
     reloadPresets, resetPresets, copyPresetsPath,
 } from "./llm_prompt_studio_actions.js";
 
+// Resolve the Writer that actually produces a Critic's `prompt` input: follow the inbound
+// link on the Critic's `prompt` widget back to its origin node. This makes multi-Writer /
+// multi-Critic workflows deterministic (each Critic revises its own Writer) instead of
+// always looping the first Writer in the graph. Falls back to the first Writer if the link
+// can't be resolved.
+function upstreamWriter(criticNode) {
+    if (!criticNode || !criticNode.inputs || !app.graph || !app.graph.links) return null;
+    const promptInput = criticNode.inputs.find((i) => i.name === "prompt");
+    if (!promptInput || promptInput.link == null) return null;
+    const link = app.graph.links[promptInput.link];
+    if (!link) return null;
+    const src = app.graph.getNodeById(link[0]);
+    if (src && isWriter(src)) return src;
+    return null;
+}
+
 // ---------------------------------------------------------------------------
 // Button registration
 // ---------------------------------------------------------------------------
@@ -126,7 +142,7 @@ api.addEventListener("executed", (e) => {
                     }
                 }
             } else if (count < max_retries) {
-                const writer = app.graph.nodes.find(isWriter);
+                const writer = upstreamWriter(node) || app.graph.nodes.find(isWriter);
                 if (!writer) {
                     loopCounters.set(key, 0);
                     console.warn("[LLMPromptStudio.Bridge] Auto-loop: no Writer node found, stopping.");
@@ -194,6 +210,19 @@ api.addEventListener("llm_prompt_studio.stream", (e) => {
     const w = getW(node, "generation_view");
     if (w) {
         w.value = (w.value || "") + (d.chunk || "");
+        app.graph.setDirtyCanvas(true, true);
+    }
+});
+
+// --- Streaming reset: clear generation_view before a fallback result is shown, so a
+//     failed stream doesn't leave stale/partial text behind. ---
+api.addEventListener("llm_prompt_studio.stream_reset", (e) => {
+    const d = e.detail || {};
+    const node = app.graph.getNodeById(d.node_id);
+    if (!node) return;
+    const w = getW(node, "generation_view");
+    if (w) {
+        w.value = "";
         app.graph.setDirtyCanvas(true, true);
     }
 });
