@@ -6,7 +6,10 @@ and appends the chunk to the node's ``generation_view`` widget. Importing this m
 fails outside ComfyUI (e.g. in unit tests) — the ``server`` import is deferred and failures
 are swallowed so streaming degrades to a no-op push rather than an error.
 """
+import logging
 from typing import Any
+
+logger = logging.getLogger("llm_prompt_studio")
 
 
 def push_stream_chunk(node_id: Any, chunk: str) -> None:
@@ -19,5 +22,5 @@ def push_stream_chunk(node_id: Any, chunk: str) -> None:
             "node_id": node_id,
             "chunk": chunk,
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Websocket push failed for node %s: %s", node_id, e)
