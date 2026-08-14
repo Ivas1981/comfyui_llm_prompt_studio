@@ -12,7 +12,9 @@ from ..debug import node_span
 
 def _slug_part(name, max_len=40):
     base = os.path.splitext(os.path.basename(str(name)))[0]
-    base = re.sub(r"[^A-Za-z0-9]+", "_", base).strip("_")
+    # Unicode-aware: keep non-ASCII letters/digits (e.g. Cyrillic checkpoint names) instead
+    # of stripping them; replace any run of non-word chars with a single underscore.
+    base = re.sub(r"[^\w]+", "_", base, flags=re.UNICODE).strip("_")
     return base[:max_len].rstrip("_")
 
 
@@ -150,9 +152,26 @@ class LLMPromptStudioSmartSave:
     @staticmethod
     def _next_path(folder, base):
         pattern = re.compile(re.escape(base) + r"_(\d+)\.jpg$", re.I)
+        # Seed the counter from the highest existing index, then reserve the next name
+        # atomically with an exclusive-create (O_EXCL) so two concurrent saves can never
+        # pick the same number and clobber each other. On a collision we bump and retry.
         max_c = 0
-        for f in os.listdir(folder):
-            m = pattern.match(f)
-            if m:
-                max_c = max(max_c, int(m.group(1)))
-        return os.path.join(folder, f"{base}_{max_c + 1:05d}.jpg")
+        try:
+            for f in os.listdir(folder):
+                m = pattern.match(f)
+                if m:
+                    max_c = max(max_c, int(m.group(1)))
+        except OSError:
+            pass
+        n = max_c + 1
+        for _ in range(10000):
+            path = os.path.join(folder, f"{base}_{n:05d}.jpg")
+            try:
+                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+                return path
+            except FileExistsError:
+                n += 1
+        # Practically unreachable: fall back to a timestamp-suffixed unique name.
+        import time as _t
+        return os.path.join(folder, f"{base}_{int(_t.time()):010d}.jpg")

@@ -10,7 +10,9 @@ __all__ = [
 
 
 def slugify(text: str, max_words: int = 6) -> str:
-    words = re.findall(r"[a-zA-Z0-9]+", text.lower())
+    # [^\W_] keeps unicode word letters/digits (Cyrillic, CJK, …) but not underscores, so
+    # non-ASCII prompts get a meaningful slug; CJK collapses to one token (acceptable).
+    words = re.findall(r"[^\W_]+", text.lower(), flags=re.UNICODE)
     return "_".join(words[:max_words]) or "scene"
 
 
@@ -98,8 +100,14 @@ def _salvage_partial_prompt(text: str):
     return None
 
 
-def parse_prompt_json(text: str):
-    """Returns (positive, negative, scene_name, face_positive, face_negative)."""
+def parse_prompt_json(text: str, allow_plain_text_fallback: bool = True):
+    """Returns (positive, negative, scene_name, face_positive, face_negative).
+
+    When the reply is neither JSON nor salvageable, ``allow_plain_text_fallback=True`` (the
+    default, used by the Critic/Scene Builder) treats the raw text as the positive prompt.
+    ``allow_plain_text_fallback=False`` (used by the Writer) returns the empty tuple instead,
+    so a model refusal / non-prompt reply becomes an explicit error rather than a silent, bad
+    prompt."""
     obj = _extract_json_dict(text, "positive")
     if obj:
         result = (str(obj.get("positive", "")).strip(),
@@ -111,12 +119,14 @@ def parse_prompt_json(text: str):
         salv = _salvage_partial_prompt(text)
         if salv:
             result = salv
-        else:
+        elif allow_plain_text_fallback:
             fallback = text.strip()
             if fallback and len(fallback) <= 2000:
                 result = (fallback, "", "", "", "")
             else:
                 result = ("", "", "", "", "")
+        else:
+            result = ("", "", "", "", "")
     try:
         from .debug import log_parse_attempt  # package context
     except ImportError:

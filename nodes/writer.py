@@ -223,6 +223,7 @@ class LLMPromptStudioWriter:
         min_p_v = min_p if (min_p is not None and min_p > 0.0) else None
         repeat_penalty_v = repeat_penalty if repeat_penalty != 1.0 else None
         on_delta = (lambda chunk: push_stream_chunk(unique_id, chunk)) if stream else None
+        on_reset = (lambda: push_stream_reset(unique_id)) if stream else None
 
         messages = [
             {"role": "system", "content": effective_system},
@@ -240,8 +241,9 @@ class LLMPromptStudioWriter:
                                 temperature, max_tokens, seed=seed,
                                 stream=stream, reasoning=reasoning,
                                 repeat_penalty=repeat_penalty_v, top_k=top_k_v,
-                                top_p=top_p_v, min_p=min_p_v, on_delta=on_delta)
-        parsed = parse_prompt_json(raw)
+                                top_p=top_p_v, min_p=min_p_v,
+                                on_delta=on_delta, on_reset=on_reset)
+        parsed = parse_prompt_json(raw, allow_plain_text_fallback=False)
 
         # Field-retry: if the model omitted required JSON fields, re-ask it (up to
         # max_field_retries times) for a complete answer before falling back. In no-negative
@@ -262,7 +264,8 @@ class LLMPromptStudioWriter:
                                         temperature, max_tokens, seed=seed,
                                         stream=stream, reasoning=reasoning,
                                         repeat_penalty=repeat_penalty_v, top_k=top_k_v,
-                                        top_p=top_p_v, min_p=min_p_v, on_delta=on_delta)
+                                        top_p=top_p_v, min_p=min_p_v,
+                                        on_delta=on_delta, on_reset=on_reset)
             raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                    f"missing {', '.join(missing)}]\n{raw_new}")
             parsed = parse_prompt_json(raw_new)

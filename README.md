@@ -166,7 +166,7 @@ A vision model scores how well the image matches the prompt.
   - **Inputs:** `image`, `prompt`, `server_url`, `api_key`, `model`, `context_length`,
     `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`, `temperature`,
     `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`, `vision_check`,
-    `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`, `generation_view`.
+    `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`.
 - **Outputs:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
 - `approved = score >= threshold`. Wire `approved` into Smart Save to gate saving.
 - **Auto-revision loop**: enable `auto_loop` to have the critic automatically feed its
@@ -272,8 +272,11 @@ node also exposes its prompt as an editable widget, so you can override per-node
 
 Approved prompts can be stored in a JSON library (default
 `output/llm_prompt_studio_library.json`). Each entry keeps `prompt`, `negative_prompt`,
-`face_positive` and `face_negative`. Duplicates (same positive) are skipped. Load them
-back with **Library Loader**. Writes are atomic (`.tmp` + rename) to avoid corruption.
+`face_positive` and `face_negative`. A save is treated as a duplicate (and skipped) only when
+**all four** fields match an existing entry, so two prompts that share the same positive but
+have different face prompts are both kept. Writes are serialized by a per-file lock and are
+atomic (`.tmp` + rename); the previous file is kept as `*.json.bak` for recovery. Load them
+back with **Library Loader**.
 
 ---
 
@@ -359,16 +362,25 @@ or truncated and never written in full.
 
 ### Live streaming & advanced LM Studio options
 
-Enable `stream` on the Writer / Critic / Scene Builder to push generated tokens to the node's
-`generation_view` widget in real time (over the ComfyUI websocket). Streaming failures degrade
-gracefully to a normal completion.
+Enable `stream` on the **Writer** (text-only) to push generated tokens to its `generation_view`
+widget in real time over the ComfyUI websocket. Streaming uses LM Studio's native v1 API and is
+only available for text prompts; **vision / image** requests (e.g. the Image Critic, which is
+always a vision model) use the non-streaming OpenAI path, so the Critic has no `generation_view`.
+If a streaming request fails mid-way, the `generation_view` is reset and the full non-streaming
+result is shown exactly once (no partial text left behind).
 
 The advanced widgets — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
 `repeat_penalty`, `top_k`, `top_p`, `min_p` — are forwarded to LM Studio's native v1 API
 (`/api/v1/chat` for sampling, `/api/v1/models/load` for `flash_attention` /
 `offload_kv_cache_to_gpu`). They only take effect when the server supports them (or when `stream`
 is on); defaults keep the OpenAI-compatible behavior. Multimodal (image) requests always use the
-OpenAI path, where these options are ignored.
+OpenAI path, where these options are ignored. Model loads are resilient: if a server rejects an
+optional load parameter (e.g. `gpu_offload` on some builds), that key is dropped and the load
+still succeeds; switching models unloads the previously loaded instance via its `instance_id`.
+
+The model list is cached **per LM Studio server URL** (the cache key is the URL only — the API
+key is never persisted). **🔄 Refresh models** populates the combo for that server; each node
+patches only its own server's list, so multiple servers don't cross-contaminate.
 
 ---
 

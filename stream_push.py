@@ -24,3 +24,17 @@ def push_stream_chunk(node_id: Any, chunk: str) -> None:
         })
     except Exception as e:
         logger.debug("Websocket push failed for node %s: %s", node_id, e)
+
+
+def push_stream_reset(node_id: Any) -> None:
+    """Reset the node's ``generation_view`` on the frontend (used when a streaming
+    request fails and we fall back to a non-streaming call so the partial text is wiped
+    before the full result is shown)."""
+    try:
+        from server import PromptServer
+        PromptServer.instance.send_json({
+            "type": "llm_prompt_studio.stream_reset",
+            "node_id": node_id,
+        })
+    except Exception as e:
+        logger.debug("Websocket reset push failed for node %s: %s", node_id, e)
