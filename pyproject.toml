@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-llm-prompt-studio"
-version = "1.0.5"
+version = "1.0.6"
 description = "SDXL prompt generation and critique via local LLMs (LM Studio / any local OpenAI-compatible server)"
 readme = "README.md"
 license = { text = "MIT" }
