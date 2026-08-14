@@ -10,6 +10,22 @@ if _PARENT not in sys.path:
 from comfyui_llm_prompt_studio import lm_http  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 import pytest  # noqa: E402
+import json  # noqa: E402
+
+
+def _ok_response(status=200, text="{}"):
+    resp = MagicMock()
+    resp.status_code = status
+    resp.text = text
+    try:
+        resp.json.return_value = json.loads(text) if text.strip() else {}
+    except ValueError:
+        resp.json.side_effect = ValueError("No JSON could be decoded")
+    resp.headers = {"Content-Type": "application/json"}
+    resp.ok = status < 400
+    resp.status = status
+    return resp
+
 
 LOCAL_V1 = "http://localhost:1234/v1"
 
@@ -110,3 +126,90 @@ def test_streaming_failure_resets_then_delivers_full_text():
     reset.assert_called_once()
     # The complete fallback text is shown once; no partial left behind.
     assert deltas == ["full fallback result"]
+
+
+# ---------------------------------------------------------------------------
+# Native /api/v1/chat request construction (system_prompt + input parts).
+# ---------------------------------------------------------------------------
+
+def test_v1_chat_builds_native_input_with_system_prompt_and_image():
+    # Native chat must NOT send OpenAI `messages` as `input`; it must split system into a
+    # top-level system_prompt and render the rest as typed {type, content/data_url} parts,
+    # converting image_url -> image with the full data URL.
+    data = {"output": [{"type": "message", "content": "done"}]}
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.text = json.dumps(data)
+    resp.json.return_value = data
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Describe this."},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,ABC"}},
+        ]},
+    ]
+    with patch("requests.get", return_value=MagicMock(status_code=404)), \
+         patch("requests.post", return_value=resp) as post:
+        out = lm_http.chat_completion(LOCAL_V1, "", "m", messages, 0.7, 100)
+    assert out == "done"
+    body = post.call_args_list[0][1]["json"]
+    assert body["system_prompt"] == "You are a helpful assistant."
+    assert body["store"] is False
+    assert "messages" not in body
+    parts = body["input"]
+    assert parts[0] == {"type": "text", "content": "Describe this."}
+    assert parts[1] == {"type": "image", "data_url": "data:image/jpeg;base64,ABC"}
+
+
+def test_v1_chat_omits_reasoning_when_model_has_no_capability():
+    # A model that exposes no reasoning configuration must NOT send the `reasoning` param;
+    # sending it yields a 400 ("does not expose reasoning configuration").
+    data = {"output": [{"type": "message", "content": "ok"}]}
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.text = json.dumps(data)
+    resp.json.return_value = data
+    # model_supports_reasoning probes /api/v1/models -> return a model with no reasoning key.
+    models = _ok_response(status=200, text=json.dumps(
+        {"data": [{"key": "m", "capabilities": {"vision": False}}]}))
+    with patch("requests.get", return_value=models), \
+         patch("requests.post", return_value=resp) as post:
+        out = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                      [{"role": "user", "content": "hi"}], 0.7, 100,
+                                      reasoning="on")
+    assert out == "ok"
+    body = post.call_args_list[0][1]["json"]
+    assert "reasoning" not in body
+
+
+def test_v1_chat_retries_without_reasoning_on_rejection():
+    # Server rejects `reasoning` for this model -> the client must retry once without it.
+    reject = _ok_response(
+        status=400,
+        text=json.dumps({"error": {"message":
+            "Model does not expose reasoning configuration"}}))
+    ok = MagicMock()
+    ok.status_code = 200
+    ok.text = json.dumps({"output": [{"type": "message", "content": "retried"}]})
+    ok.json.return_value = {"output": [{"type": "message", "content": "retried"}]}
+    # model_supports_reasoning: report that reasoning IS allowed (so it tries to send it).
+    models = _ok_response(status=200, text=json.dumps(
+        {"data": [{"key": "m", "capabilities": {"reasoning": {"allowed_options": ["off", "on"]}}}]}))
+    with patch("requests.get", return_value=models), \
+         patch("requests.post", side_effect=[reject, ok]) as post:
+        out = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                      [{"role": "user", "content": "hi"}], 0.7, 100,
+                                      reasoning="on")
+    assert out == "retried"
+    assert post.call_count == 2
+    assert "reasoning" not in post.call_args_list[1][1]["json"]
+
+
+def test_v1_chat_maps_reasoning_level_to_allowed_value():
+    # gemma allows only off/on -> "high" must be mapped to "on" (strongest allowed).
+    assert lm_http.map_reasoning_level("high", ["off", "on"]) == "on"
+    assert lm_http.map_reasoning_level("off", ["off", "on"]) == "off"
+    # No reasoning capability reported -> omit the param entirely.
+    assert lm_http.map_reasoning_level("on", None) is None
+    assert lm_http.map_reasoning_level("on", []) is None
+
