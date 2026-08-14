@@ -33,7 +33,33 @@ def _load_defaults() -> Dict:
         with open(_PRESETS_DEFAULT_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError):
-        return {"schema_version": CURRENT_SCHEMA_VERSION, "presets": []}
+        return {"schema_version": CURRENT_SCHEMA_VERSION, "presets": [], "defaults": {}}
+
+
+def load_presets_raw() -> Dict:
+    """Read the combined presets file (defaults + presets) without side effects.
+
+    Prefers the user-editable copy in the ComfyUI output directory, falling back to the
+    shipped ``presets_default.json``. Does NOT create or overwrite the user file.
+    """
+    user_path = get_user_presets_path()
+    if os.path.exists(user_path):
+        try:
+            with open(user_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return _load_defaults()
+
+
+def get_defaults() -> Dict:
+    """Return the base default prompts (Writer/Scene Builder/Critic/Describe/face)."""
+    data = load_presets_raw()
+    defaults = data.get("defaults")
+    if not isinstance(defaults, dict):
+        # Backfill from the shipped file so an older user file still gets base prompts.
+        return _load_defaults().get("defaults", {})
+    return defaults
 
 
 def ensure_presets_file():
@@ -51,6 +77,8 @@ def _migrate(data: Dict) -> Dict:
     if not isinstance(data, dict):
         data = {}
     data.setdefault("schema_version", CURRENT_SCHEMA_VERSION)
+    if not isinstance(data.get("defaults"), dict):
+        data["defaults"] = _load_defaults().get("defaults", {})
     presets = data.get("presets")
     if not isinstance(presets, list):
         presets = []
