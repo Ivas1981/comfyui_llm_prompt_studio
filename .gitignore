@@ -25,3 +25,7 @@ __pycache__/
 
 # Runtime cache (persisted model list for the model combo)
 llm_prompt_studio_models_cache.json
+
+# Local tooling / planning (not part of the project)
+.kilo/
+plans/
