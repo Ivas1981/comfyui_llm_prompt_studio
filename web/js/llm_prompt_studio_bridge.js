@@ -85,7 +85,8 @@ app.registerExtension({
         }
         if (isWriter(node) || isCritic(node) || isScene(node)) {
             addButton(node, "⚙ Advanced settings", () => toggleAdvancedSettings(node));
-            setAdvancedCollapsed(node, true);   // collapsed by default
+            // Collapse by default, but defer so the widget DOM rows exist before we hide them.
+            setTimeout(() => setAdvancedCollapsed(node, true), 0);
         }
         if (isSmartSave(node)) {
             addButton(node, "💾 Save prompt to library", () => saveToLibrary(node));

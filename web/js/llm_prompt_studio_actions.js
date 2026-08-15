@@ -17,19 +17,44 @@ import {
 const ADVANCED_WIDGETS = ["context_length", "gpu_offload",
                            "flash_attention", "offload_kv_cache_to_gpu"];
 
+// Return the DOM row element for a widget. Different ComfyUI front-ends expose it
+// under slightly different properties, so we try each known one. Returns null when
+// the widget has no DOM yet (e.g. before it is drawn) — callers must tolerate that.
+function widgetRow(w) {
+    if (!w) return null;
+    if (w.element) return w.element;
+    if (w.inputEl) {
+        // Climb from the input element up to the widget row container.
+        let el = w.inputEl;
+        while (el && el.parentNode && !(el.classList && el.classList.contains("comfy-widget"))) {
+            el = el.parentNode;
+        }
+        return el || w.inputEl.parentNode || null;
+    }
+    return null;
+}
+
 export function setAdvancedCollapsed(node, collapsed) {
+    node._advancedCollapsed = collapsed;
     for (const name of ADVANCED_WIDGETS) {
-        const w = getW(node, name);
-        if (w && w.element) w.element.style.display = collapsed ? "none" : "";
+        const el = widgetRow(getW(node, name));
+        if (el) el.style.display = collapsed ? "none" : "";
     }
     const btn = node.widgets && node.widgets.find(w => w.name === "⚙ Advanced settings");
     if (btn) btn.label = collapsed ? "⚙ Advanced settings ▸" : "⚙ Advanced settings ▾";
+    // Refit the node so a hidden/shown block doesn't leave a stale gap.
+    try {
+        if (typeof node.setSize === "function" && typeof node.computeSize === "function") {
+            node.setSize(node.computeSize());
+        }
+        if (app.graph) app.graph.setDirtyCanvas(true, true);
+    } catch (e) {
+        console.warn("[LLMPromptStudio] Advanced settings reflow failed:", e);
+    }
 }
 
 export function toggleAdvancedSettings(node) {
-    const w = getW(node, "context_length");
-    const collapsed = !w || w.element.style.display === "none";
-    setAdvancedCollapsed(node, !collapsed);
+    setAdvancedCollapsed(node, !node._advancedCollapsed);
 }
 
 // Apply the refreshed model list into a cached node definition. ComfyUI stores the
