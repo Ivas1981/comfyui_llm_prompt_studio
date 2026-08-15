@@ -17,19 +17,34 @@ import {
 const ADVANCED_WIDGETS = ["context_length", "gpu_offload",
                            "flash_attention", "offload_kv_cache_to_gpu"];
 
-// Return the DOM row element for a widget. Different ComfyUI front-ends expose it
-// under slightly different properties, so we try each known one. Returns null when
-// the widget has no DOM yet (e.g. before it is drawn) — callers must tolerate that.
-function widgetRow(w) {
-    if (!w) return null;
-    if (w.element) return w.element;
-    if (w.inputEl) {
-        // Climb from the input element up to the widget row container.
-        let el = w.inputEl;
-        while (el && el.parentNode && !(el.classList && el.classList.contains("comfy-widget"))) {
-            el = el.parentNode;
+// Return the DOM row element for a widget named `name` on `node`. Different ComfyUI
+// front-ends store it under different properties and structures, so we try every known
+// reference on the widget object first, then fall back to locating the row in the node's
+// DOM by its label text (which equals the widget name). Returns null when no row can be
+// found — callers must tolerate that (no crash, just no-op for that widget).
+function widgetRow(node, name) {
+    const w = getW(node, name);
+    if (w) {
+        const refs = [w.element, w.el, w.domElement, w.container, w.inputEl];
+        for (const r of refs) {
+            if (r && r.nodeType === 1) {
+                if (r.classList && r.classList.contains("comfy-widget")) return r;
+                const row = r.closest ? r.closest(".comfy-widget") : (r.parentNode || null);
+                if (row) return row;
+            }
         }
-        return el || w.inputEl.parentNode || null;
+    }
+    // Fallback: walk the node's DOM for a row whose label text is exactly the widget name.
+    const root = node && node.element;
+    if (root && root.querySelectorAll) {
+        const labels = root.querySelectorAll("label, .widget_label, span, div");
+        for (const lab of labels) {
+            if (lab.textContent && lab.textContent.trim() === name) {
+                const row = (lab.closest && lab.closest(".comfy-widget, .widget"))
+                            || lab.parentElement || null;
+                if (row) return row;
+            }
+        }
     }
     return null;
 }
@@ -37,7 +52,7 @@ function widgetRow(w) {
 export function setAdvancedCollapsed(node, collapsed) {
     node._advancedCollapsed = collapsed;
     for (const name of ADVANCED_WIDGETS) {
-        const el = widgetRow(getW(node, name));
+        const el = widgetRow(node, name);
         if (el) el.style.display = collapsed ? "none" : "";
     }
     const btn = node.widgets && node.widgets.find(w => w.name === "⚙ Advanced settings");
