@@ -1,14 +1,20 @@
 import os
 import sys
+import types
 from unittest.mock import MagicMock
 
-# Make the package root importable so `import comfyui_llm_prompt_studio` etc. work in
-# tests. The package lives at <repo>/comfyui_llm_prompt_studio, so its PARENT (the repo
-# root) must be on sys.path, not the package directory itself.
-_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_PROJECT_ROOT = os.path.dirname(_PKG_ROOT)
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
+# Make the `.Testing` directory importable as the package `comfyui_llm_prompt_studio`
+# so the node/helper modules (which use package-relative imports) resolve against this
+# mirror — not the production package on disk. This mirrors the package stub used by
+# `.Testing/research/benchmark_models.py` so `import comfyui_llm_prompt_studio...` works
+# in standalone tests.
+_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .Testing
+_PKG_NAME = "comfyui_llm_prompt_studio"
+if _PKG_NAME not in sys.modules or getattr(sys.modules[_PKG_NAME], "__path__", None) != [_PKG_ROOT]:
+    _pkg = types.ModuleType(_PKG_NAME)
+    _pkg.__path__ = [_PKG_ROOT]
+    _pkg.__package__ = _PKG_NAME
+    sys.modules[_PKG_NAME] = _pkg
 
 # folder_paths is provided by ComfyUI at runtime; stub it for standalone tests.
 if "folder_paths" not in sys.modules:

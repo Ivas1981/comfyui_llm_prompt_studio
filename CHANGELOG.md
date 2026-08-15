@@ -6,7 +6,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [1.0.10] — 2026-08-15
+## [1.0.11] — 2026-08-15
+
+### Added
+- **`load_model_profile` combobox on Writer / Image Critic / Scene Builder.** A always-visible
+  profile selector (right under `model`) applies a recommended sampling profile. `auto` (default)
+  uses a **universal model-size heuristic that needs no hard-coded model list** — the size is read
+  from the model id via the regex `(\d+(?:\.\d+)?)b` (`qwen2.5-14b-instruct` → 14B,
+  `nvidia/nemotron-3-nano-4b` → 4B), then: ≥7B models get `baseline` + structured JSON output,
+  <7B models get `strict`, and an unrecognized size falls back to a safe `baseline`. The other
+  choices (`baseline` / `structured` / `creative` / `strict`) pick a fixed profile, and `custom`
+  keeps the individually-set sampling widgets (full backward compatibility with existing workflows).
+  When a profile is active its sampling params (temperature / top_p / top_k / repeat_penalty /
+  presence_penalty / min_p / reasoning) **override** the individual sampling widgets (the override
+  is logged). A new `nodes/model_recommendations.py` holds the four profiles, the strict
+  JSON-schemas (`WRITER_RESPONSE_SCHEMA` / `CRITIC_RESPONSE_SCHEMA`), and the public
+  `schema_for_kind`, `recommend_for`, `resolve_profile` helpers. Structured (JSON-schema
+  `response_format`) is only ever used for `writer` / `compose` text output and **never** with an
+  image (vision) input or the `describe` stage. The Critic's `chat_completion` call is expanded to
+  forward the profile's sampling parameters (previously it only sent temperature / max_tokens).
+- **Collapsible `Advanced settings` section.** `context_length`, `gpu_offload`, `flash_attention`
+  and `offload_kv_cache_to_gpu` are now grouped into a single collapsible `Advanced settings`
+  section on all three nodes (via ComfyUI's `section` mechanism). On older front-ends that don't
+  support sections the four widgets simply appear inlined — no loss of functionality.
+
+### Changed
+- The default `load_model_profile` is `auto`, so a freshly loaded model now runs with the
+  recommended profile instead of the raw widget values. Switch the combo to `custom` to keep the
+  previous per-widget behavior.
 
 ### Fixed
 - **Native `/api/v1/chat` now tolerates servers that reject optional keys (e.g. `seed`).**

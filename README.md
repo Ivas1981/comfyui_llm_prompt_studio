@@ -35,6 +35,11 @@ No cloud, no API keys required — everything runs on your machine.
 - **Advanced LM Studio v1 options** — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
   `repeat_penalty`, `top_k`, `top_p`, `min_p` are forwarded to LM Studio's native v1 API when
   supported.
+- **Load model profile** — a `load_model_profile` combobox (Writer / Critic / Scene Builder)
+  applies a recommended sampling profile (`auto` picks one from a universal model-size
+  heuristic, with no hard-coded model list). Model-load knobs (`context_length`,
+  `gpu_offload`, `flash_attention`, `offload_kv_cache_to_gpu`) are grouped into a collapsible
+  `Advanced settings` section.
 - **Debug logging** — opt-in (`debug.py`, OFF by default) logs node/HTTP/parse activity with
   API keys and image blobs masked.
 
@@ -128,6 +133,24 @@ Generates an SDXL prompt from an idea.
     always emits an empty negative. Distilled models sample at CFG ~1, where a negative
     prompt is mathematically ignored, so the no-negative prompt rephrases every constraint
     as a positive statement instead.
+  - **`load_model_profile`** (always visible, right under `model`): picks the recommended
+    **sampling + load profile** for the selected model. `auto` (default) applies the
+    profile chosen by a *universal* heuristic — the model size is read from its id
+    (`qwen2.5-14b-instruct` → 14B, `nvidia/nemotron-3-nano-4b` → 4B) and mapped to a
+    profile with **no hard-coded model list**: ≥7B models get `baseline` + structured JSON
+    output, <7B models get `strict`, and unrecognized sizes fall back to a safe `baseline`.
+    The other choices pick a fixed profile (`baseline` / `structured` / `creative` /
+    `strict`), and `custom` keeps your individually-set sampling widgets (full backward
+    compatibility with old workflows). When a profile is active, its sampling parameters
+    (temperature / top_p / top_k / repeat_penalty / presence_penalty / min_p / reasoning)
+    **override** the individual sampling widgets, which are then ignored (this is logged).
+    Structured (JSON-schema `response_format`) is only ever used for `writer` / `compose`
+    text output and **never** with an image (vision) input or the `describe` stage.
+  - **`Advanced settings`** (collapsible section): `context_length`, `gpu_offload`,
+    `flash_attention` and `offload_kv_cache_to_gpu` are grouped into a single collapsible
+    `Advanced settings` section so the model-load knobs stay available but out of the way.
+    (On older ComfyUI front-ends that don't support sections, the four widgets simply show
+    inlined — no loss of functionality.)
   - **`family`** (optional) — wire the Smart Loader's `detected_family` output here to let
     `auto` detect the distilled family automatically. Leave unconnected to use `standard`.
   - Loads the selected model on the LM Studio server **on demand** (via the load API) with
@@ -164,11 +187,16 @@ Generates an SDXL prompt from an idea.
 ### LLM Prompt Studio Image Critic
 
 A vision model scores how well the image matches the prompt.
-  - **Inputs:** `image`, `prompt`, `server_url`, `api_key`, `model`, `context_length`,
-    `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`, `temperature`,
-    `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`, `vision_check`,
-    `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`.
-- **Outputs:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
+  - **Inputs:** `image`, `prompt`, `server_url`, `api_key`, `model`, `load_model_profile`,
+    `context_length`, `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`,
+    `temperature`, `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`,
+    `vision_check`, `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`.
+  - **`load_model_profile`** works exactly as on the Writer (default `auto`, universal
+    size-based recommendation, `custom` keeps the widget values). Because the Critic is
+    always a vision model, its profile expands the `chat_completion` call with the
+    recommended sampling parameters (temperature / top_p / top_k / repeat_penalty /
+    min_p / presence_penalty), but structured JSON output is never used with an image.
+ - **Outputs:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
 - `approved = score >= threshold`. Wire `approved` into Smart Save to gate saving.
 - **Auto-revision loop**: enable `auto_loop` to have the critic automatically feed its
   `revision_notes` back into the Writer and re-queue until the image passes or
@@ -201,11 +229,16 @@ Loads a saved scene from the prompt library.
 
 Two-stage scene construction from an image.
   - **Inputs:** `stage` (`1 - describe` / `2 - compose`), `image`, `server_url`,
-    `api_key`, `model`, `context_length`, `gpu_offload`, `describe_prompt`,
-    `composer_prompt`, `user_changes`, `image_max_size`, `temperature`, `max_tokens`,
-    `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`, `family`,
-    `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
+    `api_key`, `model`, `load_model_profile`, `context_length`, `gpu_offload`,
+    `describe_prompt`, `composer_prompt`, `user_changes`, `image_max_size`, `temperature`,
+    `max_tokens`, `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`,
+    `family`, `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
     `top_k`, `top_p`, `min_p`, `stream`, `generation_view`.
+  - **`load_model_profile`** works as on the Writer. The stage decides the "kind": stage 1
+    (`describe`) is prose from a vision input, so it is always `baseline` with **no**
+    structured output; stage 2 (`compose`) is the JSON writer contract and gets
+    `baseline` + structured for ≥7B models (just like the Writer). `custom` keeps the
+    widget sampling values.
   - **`prompt_mode`** and **`family`** behave exactly as on the Writer: `auto` switches to a
     no-negative composer prompt for distilled checkpoint families when `family` is wired from
     the Smart Loader's `detected_family` output.
