@@ -10,6 +10,7 @@ import {
 import {
     refreshModels, saveToLibrary, refreshScenes, sendToWriter, requeuePrompt,
     reloadPresets, resetPresets, copyPresetsPath,
+    toggleAdvancedSettings, setAdvancedCollapsed,
 } from "./llm_prompt_studio_actions.js";
 
 // Resolve the Writer that actually produces a Critic's `prompt` input: follow the inbound
@@ -81,6 +82,10 @@ app.registerExtension({
             addButton(node, "→ Send to Writer", () => sendToWriter(node));
             // Scene Builder also has a model combo, so give it the same manual refresh.
             addButton(node, "🔄 Refresh models", () => refreshModels(node));
+        }
+        if (isWriter(node) || isCritic(node) || isScene(node)) {
+            addButton(node, "⚙ Advanced settings", () => toggleAdvancedSettings(node));
+            setAdvancedCollapsed(node, true);   // collapsed by default
         }
         if (isSmartSave(node)) {
             addButton(node, "💾 Save prompt to library", () => saveToLibrary(node));

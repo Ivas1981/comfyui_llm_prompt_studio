@@ -11,6 +11,27 @@ import {
 // Button handlers
 // ---------------------------------------------------------------------------
 
+// The four model-load widgets that the "⚙ Advanced settings" button shows/hides.
+// Hiding is done purely via the widget element's display style, so the widget VALUE
+// stays intact (the node still receives context_length / gpu_offload / etc.).
+const ADVANCED_WIDGETS = ["context_length", "gpu_offload",
+                           "flash_attention", "offload_kv_cache_to_gpu"];
+
+export function setAdvancedCollapsed(node, collapsed) {
+    for (const name of ADVANCED_WIDGETS) {
+        const w = getW(node, name);
+        if (w && w.element) w.element.style.display = collapsed ? "none" : "";
+    }
+    const btn = node.widgets && node.widgets.find(w => w.name === "⚙ Advanced settings");
+    if (btn) btn.label = collapsed ? "⚙ Advanced settings ▸" : "⚙ Advanced settings ▾";
+}
+
+export function toggleAdvancedSettings(node) {
+    const w = getW(node, "context_length");
+    const collapsed = !w || w.element.style.display === "none";
+    setAdvancedCollapsed(node, !collapsed);
+}
+
 // Apply the refreshed model list into a cached node definition. ComfyUI stores the
 // combo values in different shapes across versions, so we try each known one and
 // update whichever holds the list. Returns true if something was patched.
@@ -215,7 +236,14 @@ export async function copyPresetsPath(node) {
 export function requeuePrompt() {
     try {
         if (typeof app.queuePrompt === "function") {
-            app.queuePrompt();
+            try {
+                // Modern front-ends expect the serialized graph + options; mirror the built-in
+                // "Queue Prompt" button so auto-revision re-queues correctly.
+                app.queuePrompt(app.graph.serialize(), {});
+            } catch (e) {
+                // Fallback for older front-ends (e.g. 0.19.3) whose queuePrompt takes no args.
+                app.queuePrompt();
+            }
         } else if (typeof api.queuePrompt === "function") {
             api.queuePrompt();
         } else {

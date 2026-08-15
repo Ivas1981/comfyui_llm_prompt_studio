@@ -25,10 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `response_format`) is only ever used for `writer` / `compose` text output and **never** with an
   image (vision) input or the `describe` stage. The Critic's `chat_completion` call is expanded to
   forward the profile's sampling parameters (previously it only sent temperature / max_tokens).
-- **Collapsible `Advanced settings` section.** `context_length`, `gpu_offload`, `flash_attention`
-  and `offload_kv_cache_to_gpu` are now grouped into a single collapsible `Advanced settings`
-  section on all three nodes (via ComfyUI's `section` mechanism). On older front-ends that don't
-  support sections the four widgets simply appear inlined — no loss of functionality.
+- **«⚙ Advanced settings» toggle button.** `context_length`, `gpu_offload`, `flash_attention`
+  and `offload_kv_cache_to_gpu` are now hidden behind a custom **«⚙ Advanced settings»** button
+  (next to `load_model_profile`) on all three nodes. The four model-load widgets are collapsed by
+  default and the button toggles their visibility (label flips ▸/▾). Hiding is done via the widget
+  element only, so the widget **values are preserved** and the node always receives the load
+  params — this works on every ComfyUI front-end, including the 0.19.3 target that does not render
+  native `section` collapsibles.
 
 ### Changed
 - The default `load_model_profile` is `auto`, so a freshly loaded model now runs with the
