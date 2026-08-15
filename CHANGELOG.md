@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [1.0.11] — 2026-08-15
+## [1.0.10] — 2026-08-15
 
 ### Added
 - **`load_model_profile` combobox on Writer / Image Critic / Scene Builder.** A always-visible
