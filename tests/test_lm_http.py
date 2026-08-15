@@ -147,6 +147,53 @@ def test_chat_completion_openai_fallback_forwards_sampling_params():
     assert "min_p" not in body
 
 
+def test_post_v1_chat_drops_unrecognized_seed_and_retries():
+    # A server that rejects `seed` (unrecognized_keys) must not fail the native call: the
+    # key is dropped and the request retried once, successfully.
+    reject = _ok_response(status=400,
+                          text='{"error":{"code":"unrecognized_keys",'
+                               '"message":"Unrecognized key(s) in object: \'seed\'"}}')
+    ok = _ok_response(status=200, text=json.dumps(
+        {"output": [{"type": "message", "content": "ok"}]}))
+    with patch("requests.post", side_effect=[reject, ok]) as post:
+        resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
+                                     {"model": "m", "seed": 0}, 5, False)
+    assert resp.status_code == 200
+    # The retry request omitted the rejected key.
+    assert "seed" not in post.call_args_list[1][1]["json"]
+
+
+def test_post_v1_chat_passes_through_non_key_errors():
+    # A 400 that is NOT an unrecognized_keys rejection is returned unchanged (the caller's
+    # reasoning-rejection / error-enrichment logic decides what to do), with no extra retry.
+    err = _ok_response(status=400, text=json.dumps({"error": {"message": "bad request"}}))
+    with patch("requests.post", return_value=err) as post:
+        resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
+                                     {"model": "m", "seed": 0}, 5, False)
+    assert resp.status_code == 400
+    assert post.call_count == 1
+
+
+def test_chat_completion_native_succeeds_when_seed_rejected():
+    # Native /api/v1/chat rejects `seed` (unrecognized_keys) -> drop it, retry, succeed,
+    # with NO fallback to the OpenAI /chat/completions route.
+    reject = _ok_response(status=400,
+                          text='{"error":{"code":"unrecognized_keys",'
+                               '"message":"Unrecognized key(s) in object: \'seed\'"}}')
+    ok = _ok_response(status=200, text=json.dumps(
+        {"output": [{"type": "message", "content": "native result"}]}))
+    with patch("requests.get", return_value=_models_response([{"key": "m", "capabilities": {}}])), \
+         patch("requests.post", side_effect=[reject, ok]) as post:
+        out = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                      [{"role": "user", "content": "hi"}], 0.7, 100,
+                                      seed=0)
+    assert out == "native result"
+    # Both POSTs are the native /api/v1/chat (retry after dropping seed), no OpenAI call.
+    assert post.call_count == 2
+    assert all("chat/completions" not in c[0][0] for c in post.call_args_list)
+    assert "seed" not in post.call_args_list[1][1]["json"]
+
+
 def test_load_model_success_v1():
     resp = _ok_response(status=200)
     with patch("requests.post", return_value=resp) as post:

@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.10] — 2026-08-15
+
+### Fixed
+- **Native `/api/v1/chat` now tolerates servers that reject optional keys (e.g. `seed`).**
+  `_chat_v1` drops any `unrecognized_keys` body parameter (like `load_model` already does for
+  loads) and retries, so a single unsupported parameter no longer fails the whole call and forces
+  a fallback to the OpenAI path. Fixes `HTTP 400 Unrecognized key(s) in object: 'seed'` seen on
+  some LM Studio builds/models.
+
+---
+
 ## [1.0.9] — 2026-08-14
 
 ### Changed
