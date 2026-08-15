@@ -38,8 +38,9 @@ No cloud, no API keys required — everything runs on your machine.
 - **Load model profile** — a `load_model_profile` combobox (Writer / Critic / Scene Builder)
   applies a recommended sampling profile (`auto` picks one from a universal model-size
   heuristic, with no hard-coded model list). Model-load knobs (`context_length`,
-  `gpu_offload`, `flash_attention`, `offload_kv_cache_to_gpu`) are grouped into a collapsible
-  `Advanced settings` section.
+  `gpu_offload`, `flash_attention`, `offload_kv_cache_to_gpu`) are hidden behind a
+  **«⚙ Advanced settings»** button (next to `load_model_profile`) and collapsed by default;
+  click it to show/hide them.
 - **Debug logging** — opt-in (`debug.py`, OFF by default) logs node/HTTP/parse activity with
   API keys and image blobs masked.
 
@@ -146,11 +147,11 @@ Generates an SDXL prompt from an idea.
     **override** the individual sampling widgets, which are then ignored (this is logged).
     Structured (JSON-schema `response_format`) is only ever used for `writer` / `compose`
     text output and **never** with an image (vision) input or the `describe` stage.
-  - **`Advanced settings`** (collapsible section): `context_length`, `gpu_offload`,
-    `flash_attention` and `offload_kv_cache_to_gpu` are grouped into a single collapsible
-    `Advanced settings` section so the model-load knobs stay available but out of the way.
-    (On older ComfyUI front-ends that don't support sections, the four widgets simply show
-    inlined — no loss of functionality.)
+  - **`Advanced settings`** (button): `context_length`, `gpu_offload`, `flash_attention` and
+    `offload_kv_cache_to_gpu` are hidden behind a **«⚙ Advanced settings»** button (next to
+    `load_model_profile`) and are collapsed by default, so the model-load knobs stay available
+    but out of the way. Click the button to show/hide them (the widget values are preserved,
+    so the node always receives the load params).
   - **`family`** (optional) — wire the Smart Loader's `detected_family` output here to let
     `auto` detect the distilled family automatically. Leave unconnected to use `standard`.
   - Loads the selected model on the LM Studio server **on demand** (via the load API) with
@@ -196,6 +197,9 @@ A vision model scores how well the image matches the prompt.
     always a vision model, its profile expands the `chat_completion` call with the
     recommended sampling parameters (temperature / top_p / top_k / repeat_penalty /
     min_p / presence_penalty), but structured JSON output is never used with an image.
+  - **`Advanced settings`** (button): same as the Writer — `context_length`, `gpu_offload`,
+    `flash_attention` and `offload_kv_cache_to_gpu` are hidden behind a **«⚙ Advanced settings»**
+    button (next to `load_model_profile`), collapsed by default; click it to show/hide them.
  - **Outputs:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
 - `approved = score >= threshold`. Wire `approved` into Smart Save to gate saving.
 - **Auto-revision loop**: enable `auto_loop` to have the critic automatically feed its
@@ -239,6 +243,9 @@ Two-stage scene construction from an image.
     structured output; stage 2 (`compose`) is the JSON writer contract and gets
     `baseline` + structured for ≥7B models (just like the Writer). `custom` keeps the
     widget sampling values.
+  - **`Advanced settings`** (button): same as the Writer — `context_length`, `gpu_offload`,
+    `flash_attention` and `offload_kv_cache_to_gpu` are hidden behind a **«⚙ Advanced settings»**
+    button (next to `load_model_profile`), collapsed by default; click it to show/hide them.
   - **`prompt_mode`** and **`family`** behave exactly as on the Writer: `auto` switches to a
     no-negative composer prompt for distilled checkpoint families when `family` is wired from
     the Smart Loader's `detected_family` output.
