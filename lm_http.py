@@ -959,7 +959,8 @@ def chat_completion(server_url, api_key, model, messages,
                      temperature, max_tokens, timeout=600, seed=None,
                      stream=False, reasoning="off", repeat_penalty=1.0,
                      top_k=None, top_p=None, min_p=None, on_delta=None,
-                     on_reset=None) -> str:
+                     on_reset=None, presence_penalty=None,
+                     frequency_penalty=None, response_format=None) -> str:
     """LM Studio chat completion that prefers the native ``/api/v1/chat`` endpoint.
 
     The native endpoint (which supports ``reasoning``, ``repeat_penalty``,
@@ -983,13 +984,36 @@ def chat_completion(server_url, api_key, model, messages,
     # (Phase 5, optional) would route to the OpenAI path instead. For multimodal requests
     # we fall back to the OpenAI /chat/completions path if native vision is rejected, since
     # not every local server's native vision has been confirmed end-to-end.
+    # A JSON-Schema `response_format` (structured output) is forced onto the OpenAI
+    # /chat/completions path, which supports json_schema reliably; the native path is
+    # not used for structured output so we never combine it with image (vision) input.
     prefer_native = True
+    if response_format is not None:
+        prefer_native = False
+
+    # Track whether any *real* chunk reached the UI. If streaming was requested but the
+    # server emitted no live content (LM Studio streaming disabled/unsupported, or the
+    # deltas arrived empty), we still surface the final text once so generation_view is
+    # not left blank even though the node result is correct.
+    _emitted = {"any": False}
+    def _on_delta(chunk):
+        if chunk:
+            _emitted["any"] = True
+        if on_delta:
+            try:
+                on_delta(chunk)
+            except Exception:
+                pass
+    _delta = _on_delta if stream else on_delta
+
     if prefer_native:
         try:
-            return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
-                            timeout=timeout, seed=seed, stream=stream, reasoning=reasoning,
-                            repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
-                            min_p=min_p, on_delta=on_delta)
+            content = _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
+                                timeout=timeout, seed=seed, stream=stream, reasoning=reasoning,
+                                repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
+                                min_p=min_p, on_delta=_delta,
+                                presence_penalty=presence_penalty,
+                                frequency_penalty=frequency_penalty)
         except Exception as e:  # noqa: BLE001 — graceful fallback to OpenAI-compatible path
             if stream:
                 logger.warning("Native streaming failed (%s); falling back to non-streaming.", e)
@@ -1005,6 +1029,15 @@ def chat_completion(server_url, api_key, model, messages,
             # Vision rejection on the native path is the classic reason to fall back here.
             if has_images:
                 logger.debug("Falling back to OpenAI /chat/completions for vision request.")
+        else:
+            # Native call succeeded. If streaming was requested but the server emitted no
+            # live chunks, surface the final text once so generation_view is not left empty.
+            if stream and not _emitted["any"] and on_delta:
+                try:
+                    on_delta(content)
+                except Exception:
+                    pass
+            return content
 
     # --- OpenAI-compatible path (specialized fallback / structured output) -------------
     body = {"model": model, "messages": messages,
@@ -1020,16 +1053,39 @@ def chat_completion(server_url, api_key, model, messages,
         body["top_k"] = top_k
     if repeat_penalty is not None:
         body["repeat_penalty"] = repeat_penalty
+    if presence_penalty is not None:
+        body["presence_penalty"] = presence_penalty
+    if frequency_penalty is not None:
+        body["frequency_penalty"] = frequency_penalty
+    if response_format is not None:
+        body["response_format"] = response_format
     started = time.time()
-    try:
-        resp = requests.post(
-            f"{server_url.rstrip('/')}/chat/completions",
-            json=body,
-            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
-            timeout=timeout)
-    except requests.RequestException as e:
-        logger.error("Could not reach LM Studio (%s): %s", server_url, e)
-        raise RuntimeError(f"Could not reach LM Studio ({server_url}): {e}")
+    # Some LM Studio builds reject `presence_penalty` / `frequency_penalty` on the OpenAI
+    # path with a 400 `unrecognized_keys`. Drop the rejected penalty and retry once so a
+    # single unsupported param never fails the whole call (mirrors the native v1 retry).
+    penal_keys = ["presence_penalty", "frequency_penalty"]
+    drop_penal = False
+    for _ in range(2):
+        try:
+            resp = requests.post(
+                f"{server_url.rstrip('/')}/chat/completions",
+                json=body,
+                headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+                timeout=timeout)
+        except requests.RequestException as e:
+            logger.error("Could not reach LM Studio (%s): %s", server_url, e)
+            raise RuntimeError(f"Could not reach LM Studio ({server_url}): {e}")
+        if (drop_penal is False and resp.status_code == 400
+                and _is_unrecognized_keys(resp)):
+            rejected = _parse_rejected_keys(resp, set(body.keys()))
+            if any(k in penal_keys for k in rejected):
+                for k in penal_keys:
+                    body.pop(k, None)
+                drop_penal = True
+                logger.debug("OpenAI path dropped unsupported penalty key(s) %s; retrying.",
+                             sorted(rejected & set(penal_keys)))
+                continue
+        break
     if resp.status_code >= 400:
         txt = resp.text or ""
         snippet = txt[:1000] if len(txt) > 1000 else txt
@@ -1181,9 +1237,10 @@ def _post_v1_chat(url, headers, payload, timeout, use_stream):
 
 
 def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
-             timeout=600, seed=None, stream=False, reasoning="off",
-             repeat_penalty=1.0, top_k=None, top_p=None, min_p=None, on_delta=None,
-             skip_reasoning=False) -> str:
+              timeout=600, seed=None, stream=False, reasoning="off",
+              repeat_penalty=1.0, top_k=None, top_p=None, min_p=None, on_delta=None,
+              skip_reasoning=False, presence_penalty=None,
+              frequency_penalty=None) -> str:
     """Call LM Studio's native ``/api/v1/chat`` endpoint (v1-only features + streaming).
 
     Builds the *native* request shape (top-level ``system_prompt`` + typed ``input`` parts),
@@ -1226,6 +1283,10 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
         payload["top_p"] = top_p
     if min_p is not None:
         payload["min_p"] = min_p
+    if presence_penalty is not None:
+        payload["presence_penalty"] = presence_penalty
+    if frequency_penalty is not None:
+        payload["frequency_penalty"] = frequency_penalty
 
     log_http_request("POST", url, headers, payload)
     started = time.time()
@@ -1242,7 +1303,9 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
                 return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
                                 timeout=timeout, seed=seed, stream=False, reasoning=reasoning,
                                 repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
-                                min_p=min_p, on_delta=on_delta, skip_reasoning=True)
+                                min_p=min_p, on_delta=on_delta, skip_reasoning=True,
+                                presence_penalty=presence_penalty,
+                                frequency_penalty=frequency_penalty)
             enriched = _enrich_http_error(model, resp.status_code, resp.text or "", False)
             if enriched is not None:
                 raise RuntimeError(enriched)
@@ -1267,7 +1330,9 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
                 return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
                                 timeout=timeout, seed=seed, stream=False, reasoning=reasoning,
                                 repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
-                                min_p=min_p, on_delta=on_delta, skip_reasoning=True)
+                                min_p=min_p, on_delta=on_delta, skip_reasoning=True,
+                                presence_penalty=presence_penalty,
+                                frequency_penalty=frequency_penalty)
         return result
 
     # Streaming: consume the SSE event stream.
