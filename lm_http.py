@@ -1147,6 +1147,39 @@ def _is_reasoning_rejection(text: str) -> bool:
                  or "invalid" in low and "reasoning" in low))
 
 
+def _post_v1_chat(url, headers, payload, timeout, use_stream):
+    """POST to the native ``/api/v1/chat`` endpoint, resilient to ``unrecognized_keys`` 400s.
+
+    Mirrors :func:`load_model`: if the server rejects optional body keys (e.g. ``seed`` on
+    builds that don't accept it), the rejected keys are dropped from the payload and the
+    request is retried, so a single unsupported parameter no longer fails the whole call and
+    forces a fallback to the OpenAI path. Other 400s are returned unchanged for the caller's
+    reasoning-rejection / error-enrichment handling. Connection errors propagate so the
+    caller's reachability guard can turn them into a clear ``RuntimeError``."""
+    body = dict(payload)
+    last_resp = None
+    for _ in range(_MAX_REJECTED_RETRIES + 1):
+        try:
+            resp = requests.post(url, headers=headers, json=body,
+                                 stream=use_stream, timeout=timeout)
+        except requests.RequestException:
+            raise
+        last_resp = resp
+        if resp.status_code == 400 and _is_unrecognized_keys(resp):
+            dropped = set()
+            for k in _parse_rejected_keys(resp, set(body.keys())):
+                if k in body:
+                    body.pop(k, None)
+                    dropped.add(k)
+            if not dropped:
+                break
+            logger.debug("Native /api/v1/chat dropped unrecognized key(s) %s; retrying.",
+                         sorted(dropped))
+            continue
+        break
+    return last_resp
+
+
 def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
              timeout=600, seed=None, stream=False, reasoning="off",
              repeat_penalty=1.0, top_k=None, top_p=None, min_p=None, on_delta=None,
@@ -1197,13 +1230,9 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
     log_http_request("POST", url, headers, payload)
     started = time.time()
 
-    def _do_post(use_stream):
-        return requests.post(url, headers=headers, json=payload,
-                             stream=use_stream, timeout=timeout)
-
     if not stream:
         try:
-            resp = _do_post(False)
+            resp = _post_v1_chat(url, headers, payload, timeout, False)
         except requests.RequestException as e:
             raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
         if resp.status_code >= 400:
@@ -1243,7 +1272,7 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
 
     # Streaming: consume the SSE event stream.
     try:
-        resp = _do_post(True)
+        resp = _post_v1_chat(url, headers, payload, timeout, True)
     except requests.RequestException as e:
         raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
     if resp.status_code >= 400:
