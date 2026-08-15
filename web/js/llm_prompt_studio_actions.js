@@ -12,48 +12,51 @@ import {
 // ---------------------------------------------------------------------------
 
 // The four model-load widgets that the "⚙ Advanced settings" button shows/hides.
-// Hiding is done purely via the widget element's display style, so the widget VALUE
-// stays intact (the node still receives context_length / gpu_offload / etc.).
 const ADVANCED_WIDGETS = ["context_length", "gpu_offload",
                            "flash_attention", "offload_kv_cache_to_gpu"];
 
-// Return the DOM row element for a widget named `name` on `node`. Different ComfyUI
-// front-ends store it under different properties and structures, so we try every known
-// reference on the widget object first, then fall back to locating the row in the node's
-// DOM by its label text (which equals the widget name). Returns null when no row can be
-// found — callers must tolerate that (no crash, just no-op for that widget).
-function widgetRow(node, name) {
+// Hide/show a single widget named `name` on `node`.
+//
+// ComfyUI has two very different front-ends and we must support both:
+//  - Modern (Nodes 2.0 / Vue): widgets are rendered by Vue components, so `widget.element`
+//    is `undefined` and `element.style.display` is ignored. The renderer reads the canonical
+//    `hidden` / `options.hidden` flags, so we set those to collapse the widget + its layout.
+//  - Legacy (canvas / DOM widgets, e.g. 0.19.x): `widget.element` exists, so we also flip
+//    `element.style.display` as belt-and-braces. The VALUE is always preserved (hiding never
+//    clears it), so the node still receives context_length / gpu_offload / etc.
+//
+// `computeSize` is overridden to [0, -4] while hidden (collapsing the layout gap) and
+// restored from the cache when shown again.
+const _advOrig = {};   // "<nodeId>:<name>" -> original computeSize
+
+function setWidgetHidden(node, name, hidden) {
     const w = getW(node, name);
-    if (w) {
-        const refs = [w.element, w.el, w.domElement, w.container, w.inputEl];
-        for (const r of refs) {
-            if (r && r.nodeType === 1) {
-                if (r.classList && r.classList.contains("comfy-widget")) return r;
-                const row = r.closest ? r.closest(".comfy-widget") : (r.parentNode || null);
-                if (row) return row;
-            }
+    if (!w) return;
+    const key = node.id + ":" + name;
+    if (hidden) {
+        if (!_advOrig[key] && typeof w.computeSize === "function") {
+            _advOrig[key] = w.computeSize.bind(w);
         }
+        w.hidden = true;
+        if (w.options) w.options.hidden = true;
+        if (typeof w.computeSize === "function") w.computeSize = () => [0, -4];
+    } else {
+        const orig = _advOrig[key];
+        w.hidden = false;
+        if (w.options) w.options.hidden = false;
+        if (orig) w.computeSize = orig;
     }
-    // Fallback: walk the node's DOM for a row whose label text is exactly the widget name.
-    const root = node && node.element;
-    if (root && root.querySelectorAll) {
-        const labels = root.querySelectorAll("label, .widget_label, span, div");
-        for (const lab of labels) {
-            if (lab.textContent && lab.textContent.trim() === name) {
-                const row = (lab.closest && lab.closest(".comfy-widget, .widget"))
-                            || lab.parentElement || null;
-                if (row) return row;
-            }
-        }
+    // Belt-and-braces for legacy front-ends that own the DOM element directly.
+    for (const k of ["element", "inputEl"]) {
+        const el = w[k];
+        if (el && el.style) el.style.display = hidden ? "none" : "";
     }
-    return null;
 }
 
 export function setAdvancedCollapsed(node, collapsed) {
     node._advancedCollapsed = collapsed;
     for (const name of ADVANCED_WIDGETS) {
-        const el = widgetRow(node, name);
-        if (el) el.style.display = collapsed ? "none" : "";
+        setWidgetHidden(node, name, collapsed);
     }
     const btn = node.widgets && node.widgets.find(w => w.name === "⚙ Advanced settings");
     if (btn) btn.label = collapsed ? "⚙ Advanced settings ▸" : "⚙ Advanced settings ▾";
