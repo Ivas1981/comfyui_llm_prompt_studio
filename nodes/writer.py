@@ -8,6 +8,7 @@ from ..model_meta import is_no_negative_family
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ..presets import apply_preset_to_prompts, get_preset_by_name
 from ..stream_push import push_stream_chunk
+from .model_recommendations import resolve_profile
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._defaults import (DEFAULT_SYSTEM, DEFAULT_SYSTEM_NO_NEGATIVE,
                         FACE_PROMPT_INSTRUCTION, FACE_PROMPT_INSTRUCTION_NO_NEGATIVE,
@@ -66,8 +67,13 @@ class LLMPromptStudioWriter:
                 "server_url": ("STRING", {"default": "http://localhost:1234/v1"}),
                 "api_key": ("STRING", {"default": ""}),
                 "model": (combo_models(),),
-                "context_length": ("INT", {"default": 8192, "min": 512, "max": 131072, "step": 512}),
-                "gpu_offload": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "load_model_profile": (["auto", "baseline", "structured", "creative", "strict", "custom"],
+                                       {"default": "auto",
+                                        "tooltip": "auto = recommended profile from the benchmark for this model"}),
+                "context_length": ("INT", {"default": 8192, "min": 512, "max": 131072, "step": 512,
+                                          "section": ("Advanced settings",)}),
+                "gpu_offload": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                                         "section": ("Advanced settings",)}),
                 "system_prompt": ("STRING", {"multiline": True, "default": DEFAULT_SYSTEM}),
                 "idea": ("STRING", {"multiline": True, "default": ""}),
                 "revision_notes": ("STRING", {"multiline": True, "default": ""}),
@@ -84,9 +90,11 @@ class LLMPromptStudioWriter:
                 "style_preset": (_preset_names(), {"default": "— none —",
                                  "tooltip": "Apply a style preset's system prompt and style tags"}),
                 "flash_attention": ("BOOLEAN", {"default": False,
-                                    "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage"}),
+                                    "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage",
+                                    "section": ("Advanced settings",)}),
                 "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
-                                          "tooltip": "Store KV cache in GPU memory (faster) vs CPU RAM (lower VRAM)"}),
+                                          "tooltip": "Store KV cache in GPU memory (faster) vs CPU RAM (lower VRAM)",
+                                          "section": ("Advanced settings",)}),
                 "reasoning": (["off", "low", "medium", "high", "on"], {"default": "off",
                              "tooltip": "Reasoning level for thinking models"}),
                 "repeat_penalty": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 2.0, "step": 0.05,
@@ -120,7 +128,8 @@ class LLMPromptStudioWriter:
                  prompt_mode="auto", family="", unique_id=None,
                  style_preset="— none —", flash_attention=None,
                  offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
-                 top_k=0, top_p=1.0, min_p=0.0, stream=False, generation_view=""):
+                 top_k=0, top_p=1.0, min_p=0.0, stream=False, generation_view="",
+                 load_model_profile="auto"):
         _t0 = time.time()
         log_node_enter("Writer", unique_id, {
             "server_url": server_url, "model": model, "idea": idea,
@@ -131,22 +140,25 @@ class LLMPromptStudioWriter:
             "style_preset": style_preset, "stream": stream, "reasoning": reasoning,
         })
         try:
-            return self._run(server_url, api_key, model, context_length, gpu_offload, system_prompt,
+            return self._run(server_url, api_key, model, context_length,
+                             gpu_offload, system_prompt,
                              idea, revision_notes, temperature, max_tokens, seed,
                              reuse_last_prompt, generate_face_prompts, max_field_retries,
                              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
                              style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
-                             repeat_penalty, top_k, top_p, min_p, stream)
+                             repeat_penalty, top_k, top_p, min_p, stream,
+                             load_model_profile)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
 
     def _run(self, server_url, api_key, model, context_length, gpu_offload, system_prompt, idea,
-             revision_notes, temperature, max_tokens, seed,
-             reuse_last_prompt, generate_face_prompts, max_field_retries,
-             face_prompt_instruction, prompt_mode, family, unique_id, _t0,
-             style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
-             repeat_penalty, top_k, top_p, min_p, stream):
+              revision_notes, temperature, max_tokens, seed,
+              reuse_last_prompt, generate_face_prompts, max_field_retries,
+              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
+              style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
+              repeat_penalty, top_k, top_p, min_p, stream,
+              load_model_profile="auto"):
         # Reuse mode: return the cached prompt without calling the LLM. The key is the node
         # id + prompt_mode so a mode switch still regenerates, but `family` is intentionally
         # excluded: it is driven by the loaded checkpoint, and with reuse on we want the same
@@ -229,6 +241,25 @@ class LLMPromptStudioWriter:
         top_p_v = top_p if (top_p is not None and 0.0 < top_p < 1.0) else None
         min_p_v = min_p if (min_p is not None and min_p > 0.0) else None
         repeat_penalty_v = repeat_penalty if repeat_penalty != 1.0 else None
+
+        # Resolve the "load_model_profile" choice into concrete sampling params. "custom"
+        # keeps the widget-derived values above (full backward compatibility); any other
+        # choice overrides the individual sampling widgets with the recommended profile.
+        _resolved = resolve_profile(load_model_profile, model, "writer", has_image=False)
+        if _resolved["params"] is not None:
+            logger.info("Writer node %s: profile '%s' overrides widget sampling params",
+                        unique_id, _resolved["profile"])
+            temperature = _resolved["params"]["temperature"]
+            top_p_v = _resolved["params"]["top_p"]
+            top_k_v = _resolved["params"]["top_k"]
+            min_p_v = _resolved["params"]["min_p"]
+            repeat_penalty_v = _resolved["params"]["repeat_penalty"]
+            presence_penalty_v = _resolved["params"]["presence_penalty"]
+            reasoning = _resolved["params"]["reasoning"]
+            response_format = _resolved["response_format"]
+        else:
+            presence_penalty_v = None
+            response_format = None
         on_delta = (lambda chunk: push_stream_chunk(unique_id, chunk)) if stream else None
         on_reset = (lambda: push_stream_reset(unique_id)) if stream else None
 
@@ -249,6 +280,8 @@ class LLMPromptStudioWriter:
                                 stream=stream, reasoning=reasoning,
                                 repeat_penalty=repeat_penalty_v, top_k=top_k_v,
                                 top_p=top_p_v, min_p=min_p_v,
+                                presence_penalty=presence_penalty_v,
+                                response_format=response_format,
                                 on_delta=on_delta, on_reset=on_reset)
         parsed = parse_prompt_json(raw, allow_plain_text_fallback=False)
 
@@ -268,11 +301,13 @@ class LLMPromptStudioWriter:
                 f"You omitted the required JSON field(s): {', '.join(missing)}. "
                 f"Respond again with a COMPLETE JSON object containing ALL required fields.")
             raw_new = chat_completion(server_url, api_key, model, messages,
-                                        temperature, max_tokens, seed=seed,
-                                        stream=stream, reasoning=reasoning,
-                                        repeat_penalty=repeat_penalty_v, top_k=top_k_v,
-                                        top_p=top_p_v, min_p=min_p_v,
-                                        on_delta=on_delta, on_reset=on_reset)
+                                         temperature, max_tokens, seed=seed,
+                                         stream=stream, reasoning=reasoning,
+                                         repeat_penalty=repeat_penalty_v, top_k=top_k_v,
+                                         top_p=top_p_v, min_p=min_p_v,
+                                         presence_penalty=presence_penalty_v,
+                                         response_format=response_format,
+                                         on_delta=on_delta, on_reset=on_reset)
             raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                    f"missing {', '.join(missing)}]\n{raw_new}")
             parsed = parse_prompt_json(raw_new)

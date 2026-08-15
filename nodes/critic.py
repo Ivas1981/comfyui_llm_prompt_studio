@@ -8,6 +8,7 @@ from ..lm_http import chat_completion, ensure_model_loaded, resolve_vision
 from ..parsing import parse_critic_json
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._defaults import DEFAULT_CRITIC
+from .model_recommendations import resolve_profile
 
 logger = logging.getLogger("llm_prompt_studio")
 
@@ -24,8 +25,13 @@ class LLMPromptStudioCritic:
                 "server_url": ("STRING", {"default": "http://localhost:1234/v1"}),
                 "api_key": ("STRING", {"default": ""}),
                 "model": (combo_models(),),
-                "context_length": ("INT", {"default": 16384, "min": 512, "max": 131072, "step": 512}),
-                "gpu_offload": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "load_model_profile": (["auto", "baseline", "structured", "creative", "strict", "custom"],
+                                       {"default": "auto",
+                                        "tooltip": "auto = recommended profile from the benchmark for this model"}),
+                "context_length": ("INT", {"default": 16384, "min": 512, "max": 131072, "step": 512,
+                                          "section": ("Advanced settings",)}),
+                "gpu_offload": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                                         "section": ("Advanced settings",)}),
                 "critic_prompt": ("STRING", {"multiline": True, "default": DEFAULT_CRITIC}),
                 "threshold": ("INT", {"default": 7, "min": 0, "max": 10}),
                 "image_max_size": ("INT", {"default": 1024, "min": 256, "max": 2048, "step": 64}),
@@ -37,9 +43,11 @@ class LLMPromptStudioCritic:
                 "vision_check": ("BOOLEAN", {"default": True}),
                 "revision_view": ("STRING", {"multiline": True, "default": ""}),
                 "flash_attention": ("BOOLEAN", {"default": False,
-                                    "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage"}),
+                                    "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage",
+                                    "section": ("Advanced settings",)}),
                 "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
-                                          "tooltip": "Store KV cache in GPU memory (faster) vs CPU RAM (lower VRAM)"}),
+                                          "tooltip": "Store KV cache in GPU memory (faster) vs CPU RAM (lower VRAM)",
+                                          "section": ("Advanced settings",)}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -52,7 +60,8 @@ class LLMPromptStudioCritic:
                  critic_prompt, threshold, image_max_size, temperature, max_tokens,
                  clear_notes_on_approve, auto_loop, max_retries,
                   vision_check=True, revision_view="",
-                  flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None):
+                  flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None,
+                  load_model_profile="auto"):
         _t0 = time.time()
         log_node_enter("Critic", unique_id, {
             "server_url": server_url, "model": model, "threshold": threshold,
@@ -60,11 +69,12 @@ class LLMPromptStudioCritic:
             "max_tokens": max_tokens, "vision_check": vision_check,
         })
         try:
-            return self._run(image, prompt, server_url, api_key, model, context_length, gpu_offload,
+            return self._run(image, prompt, server_url, api_key, model, context_length,
+                             gpu_offload,
                              critic_prompt, threshold, image_max_size, temperature, max_tokens,
                              clear_notes_on_approve, auto_loop, max_retries,
                              vision_check, revision_view, flash_attention,
-                             offload_kv_cache_to_gpu, unique_id, _t0)
+                             offload_kv_cache_to_gpu, unique_id, _t0, load_model_profile)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
@@ -73,7 +83,8 @@ class LLMPromptStudioCritic:
               critic_prompt, threshold, image_max_size, temperature, max_tokens,
               clear_notes_on_approve, auto_loop, max_retries,
               vision_check=True, revision_view="",
-              flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None, _t0=None):
+              flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None, _t0=None,
+              load_model_profile="auto"):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -100,8 +111,24 @@ class LLMPromptStudioCritic:
                  "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
             ]},
         ]
-        raw = chat_completion(server_url, api_key, model, messages,
-                               temperature, max_tokens)
+        # Resolve the "load_model_profile" choice. The Critic is always a vision model, so
+        # `has_image=True` here and `response_format` is never produced. "custom" keeps the
+        # old behavior (only temperature/max_tokens are sent); any other choice expands the
+        # call with the recommended profile's sampling params.
+        _resolved = resolve_profile(load_model_profile, model, "critic", has_image=True)
+        if _resolved["params"] is not None:
+            logger.info("Critic node %s: profile '%s' overrides widget sampling params",
+                        unique_id, _resolved["profile"])
+            p = _resolved["params"]
+            raw = chat_completion(server_url, api_key, model, messages,
+                                   p["temperature"], max_tokens,
+                                   repeat_penalty=p["repeat_penalty"], top_k=p["top_k"],
+                                   top_p=p["top_p"], min_p=p["min_p"],
+                                   presence_penalty=p["presence_penalty"],
+                                   response_format=_resolved["response_format"])
+        else:
+            raw = chat_completion(server_url, api_key, model, messages,
+                                   temperature, max_tokens)
         score, verdict, notes = parse_critic_json(raw)
         approved = score >= threshold
 
