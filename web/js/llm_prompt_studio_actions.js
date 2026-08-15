@@ -62,10 +62,12 @@ export function setAdvancedCollapsed(node, collapsed) {
     }
     const btn = node.widgets && node.widgets.find(w => w.name === "⚙ Advanced settings");
     if (btn) btn.label = collapsed ? "⚙ Advanced settings ▸" : "⚙ Advanced settings ▾";
-    // Refit the node so a hidden/shown block doesn't leave a stale gap.
+    // Refit the node so a hidden/shown block doesn't leave a stale gap. Keep the current
+    // width so the node is never squished horizontally; only the height follows the layout.
     try {
-        if (typeof node.setSize === "function" && typeof node.computeSize === "function") {
-            node.setSize(node.computeSize());
+        if (typeof node.computeSize === "function" && typeof node.setSize === "function") {
+            const sz = node.computeSize();
+            node.setSize([node.size[0], sz[1]]);
         }
         if (app.graph) app.graph.setDirtyCanvas(true, true);
     } catch (e) {
