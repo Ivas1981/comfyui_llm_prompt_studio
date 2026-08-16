@@ -747,8 +747,7 @@ The project (`lm_http.py`) already integrates LM Studio and:
   differences like `gpu_offload` vs `gpuOffload` across LM Studio versions).
 - Converts OpenAI `image_url` content parts into native `{"type":"image","data_url":...}`
   items when calling `/api/v1/chat`.
-- Supports streaming with a watchdog (`LLM_PROMPT_STUDIO_STREAM_WATCHDOG_SEC`) and
-  JSON‑Schema `response_format` for structured outputs.
+- Supports JSON‑Schema `response_format` for structured outputs.
 
 When extending the project, prefer the **native v1** endpoints for richer metadata
 (MCP, reasoning, stats, stateful `response_id`) and the **OpenAI‑compatible** layer
