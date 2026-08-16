@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [1.1.0] — Unreleased
+## [1.1.0] — 2026-08-16
 
 ### Removed
 - **Live streaming.** The `stream` widget, the `generation_view` display widget, the SSE
@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and `test_stream_ws_push.py` are gone; `test_lm_http_stream.py` now covers the non-streaming
   native `/api/v1/chat` path only. This removes the SSE-no-activity watchdog and the streaming
   fallback, simplifying the code paths and the websocket bridge.
+
+### Breaking Changes
+- **Live streaming is gone.** The `stream` / `generation_view` widgets, the SSE consumer
+  (`_consume_sse`), the `on_delta` callback, the websocket bridge push path, the
+  `STREAM_WATCHDOG_SEC` env var, and `test_stream_ws_push.py` no longer exist. Existing workflows
+  that relied on the streaming view will simply regenerate the full result at completion.
+- **`load_model_profile` is now always present** (default `auto`) on Writer / Image Critic / Scene
+  Builder. Old workflows saved without this widget will load with the recommended `auto` profile
+  applied until you explicitly choose `custom`.
+- **System/style prompts now live only in `presets_default.json`.** The editable `prompts.json`
+  file was deleted; the base prompts are read from `presets_default.json` via `nodes/_defaults.py`.
 
 ## [1.0.10] — 2026-08-15
 
