@@ -44,9 +44,23 @@ No cloud, no API keys required — everything runs on your machine.
 
 ---
 
+## Breaking Changes in 1.1.0
+
+- **Live streaming removed.** The `stream` / `generation_view` widgets, the SSE consumer
+  (`_consume_sse`), the `on_delta` callback, the websocket bridge push path, the
+  `STREAM_WATCHDOG_SEC` env var, and `test_stream_ws_push.py` are gone. Generation now returns
+  the full prompt/description once, at completion — there is no live-token view anymore.
+- **`load_model_profile` is now always present** (default `auto`) on Writer / Image Critic /
+  Scene Builder. Workflows saved before this widget existed will load with the recommended `auto`
+  profile applied until you choose `custom`.
+- **System/style prompts now live only in `presets_default.json`.** The editable `prompts.json`
+  file was deleted; base prompts are read from `presets_default.json` via `nodes/_defaults.py`.
+
+---
+
 ## Requirements
 
-- ComfyUI (recent version).
+- ComfyUI — **recommended and tested on ComfyUI 0.19.3 (classic)**.
 - Python packages: `requests`, `numpy`, `pillow` (declared in `requirements.txt`;
   usually already present in a ComfyUI environment).
 - **LM Studio** running a local server (default `http://localhost:1234/v1`).
@@ -84,6 +98,8 @@ No cloud, no API keys required — everything runs on your machine.
 comfyui_llm_prompt_studio/
 ├── __init__.py               # logging setup + node registration
 ├── constants.py              # shared placeholder constants
+├── debug.py                  # DEBUG_LEVEL / masked debug logging
+├── presets.py                # preset loading / migration
 ├── lm_http.py                # HTTP client, model cache, SSRF guard
 ├── combos.py                 # combo lists (models / checkpoints / LoRA / VAE)
 ├── parsing.py                # JSON extraction / salvage / slugify
@@ -95,6 +111,7 @@ comfyui_llm_prompt_studio/
 ├── nodes/
 │   ├── __init__.py           # node mappings
 │   ├── _defaults.py          # loads base `defaults` from presets_default.json
+│   ├── model_recommendations.py  # sampling profiles + JSON schemas + resolve_profile
 │   ├── writer.py
 │   ├── critic.py
 │   ├── smart_save.py
