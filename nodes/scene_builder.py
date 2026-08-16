@@ -7,7 +7,6 @@ from ..imaging import image_to_base64
 from ..lm_http import chat_completion, ensure_model_loaded, resolve_vision
 from ..model_meta import is_no_negative_family
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
-from ..stream_push import push_stream_chunk, push_stream_reset
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._defaults import DEFAULT_COMPOSER, DEFAULT_COMPOSER_NO_NEGATIVE, DEFAULT_DESCRIBE
 from .model_recommendations import resolve_profile
@@ -78,11 +77,7 @@ class LLMPromptStudioSceneBuilder:
                 "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01,
                           "tooltip": "Nucleus sampling (1.0 = off)"}),
                 "min_p": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
-                          "tooltip": "Minimum probability floor (0.0 = off)"}),
-                "stream": ("BOOLEAN", {"default": False,
-                            "tooltip": "Enable streaming to see generation in real-time"}),
-                "generation_view": ("STRING", {"multiline": True, "default": "",
-                                     "tooltip": "Live generation output (when streaming is enabled)"}),
+                           "tooltip": "Minimum probability floor (0.0 = off)"}),
             },
             "optional": {
                 "family": ("STRING", {"default": ""}),
@@ -98,14 +93,14 @@ class LLMPromptStudioSceneBuilder:
                   max_tokens, max_field_retries=2, vision_check=True, description_view="",
                    prompt_mode="auto", family="", unique_id=None,
                    flash_attention=None, offload_kv_cache_to_gpu=None, reasoning="off",
-                   repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0, stream=False,
-                   generation_view="", load_model_profile="auto"):
+                   repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
+                   load_model_profile="auto"):
         _t0 = time.time()
         log_node_enter("Scene Builder", unique_id, {
             "stage": stage, "server_url": server_url, "model": model,
             "image_max_size": image_max_size, "temperature": temperature,
-            "max_tokens": max_tokens, "prompt_mode": prompt_mode, "family": family,
-            "stream": stream, "reasoning": reasoning,
+             "max_tokens": max_tokens, "prompt_mode": prompt_mode, "family": family,
+             "reasoning": reasoning,
         })
         try:
             return self._run(stage, image, server_url, api_key, model, context_length,
@@ -113,8 +108,8 @@ class LLMPromptStudioSceneBuilder:
                              image_max_size, temperature, max_tokens, max_field_retries,
                              vision_check, description_view, prompt_mode, family, unique_id, _t0,
                              flash_attention, offload_kv_cache_to_gpu, reasoning,
-                             repeat_penalty, top_k, top_p, min_p, stream,
-                             load_model_profile)
+                              repeat_penalty, top_k, top_p, min_p,
+                              load_model_profile)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
@@ -123,8 +118,8 @@ class LLMPromptStudioSceneBuilder:
               describe_prompt, composer_prompt, user_changes, image_max_size, temperature,
               max_tokens, max_field_retries, vision_check, description_view, prompt_mode, family,
               unique_id, _t0, flash_attention, offload_kv_cache_to_gpu, reasoning,
-              repeat_penalty, top_k, top_p, min_p, stream,
-              load_model_profile="auto"):
+               repeat_penalty, top_k, top_p, min_p,
+               load_model_profile="auto"):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -168,9 +163,6 @@ class LLMPromptStudioSceneBuilder:
         else:
             presence_penalty_v = None
             response_format = None
-        on_delta = (lambda chunk: push_stream_chunk(unique_id, chunk)) if stream else None
-        on_reset = (lambda: push_stream_reset(unique_id)) if stream else None
-
         # Stage 1: describe the image (no JSON here, plain text from the model)
         if stage.startswith("1"):
             b64 = image_to_base64(image, image_max_size)
@@ -183,12 +175,11 @@ class LLMPromptStudioSceneBuilder:
                 ]},
             ]
             raw = chat_completion(server_url, api_key, model, messages,
-                                    temperature, max_tokens, stream=stream,
+                                    temperature, max_tokens,
                                     reasoning=reasoning, repeat_penalty=repeat_penalty_v,
                                     top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
                                     presence_penalty=presence_penalty_v,
-                                    response_format=response_format,
-                                    on_delta=on_delta, on_reset=on_reset)
+                                    response_format=response_format)
             description = raw.strip()
             log_node_exit("Scene Builder", unique_id, {"stage": 1, "desc_len": len(description)},
                           (time.time() - _t0) * 1000)
@@ -233,12 +224,11 @@ class LLMPromptStudioSceneBuilder:
             {"role": "user", "content": user_text},
         ]
         raw = chat_completion(server_url, api_key, model, messages,
-                                 temperature, max_tokens, stream=stream,
+                                 temperature, max_tokens,
                                  reasoning=reasoning, repeat_penalty=repeat_penalty_v,
                                  top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
                                  presence_penalty=presence_penalty_v,
-                                 response_format=response_format,
-                                 on_delta=on_delta, on_reset=on_reset)
+                                 response_format=response_format)
         parsed = parse_prompt_json(raw)
 
         # Field-retry: if the model omitted required JSON fields, re-ask it (up to
@@ -257,12 +247,11 @@ class LLMPromptStudioSceneBuilder:
                 f"You omitted the required JSON field(s): {', '.join(missing)}. "
                 f"Respond again with a COMPLETE JSON object containing ALL required fields.")
             raw_new = chat_completion(server_url, api_key, model, messages,
-                                         temperature, max_tokens, stream=stream,
-                                         reasoning=reasoning, repeat_penalty=repeat_penalty_v,
-                                         top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
-                                         presence_penalty=presence_penalty_v,
-                                         response_format=response_format,
-                                  on_delta=on_delta, on_reset=on_reset)
+                                          temperature, max_tokens,
+                                          reasoning=reasoning, repeat_penalty=repeat_penalty_v,
+                                          top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
+                                          presence_penalty=presence_penalty_v,
+                                          response_format=response_format)
             raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                     f"missing {', '.join(missing)}]\n{raw_new}")
             parsed = parse_prompt_json(raw_new)

@@ -16,14 +16,10 @@ Manual / smoke checks for the major features. Automated coverage lives in `pytes
 ## Phase 2 — LM Studio v1 API
 - [ ] Model loads via the native `/api/v1/models/load` endpoint (flash attention / KV-cache GPU
       offload honored when supported); legacy endpoints are used as fallback.
-- [ ] `stream = true` fills `generation_view` **live** during generation.
 - [ ] `reasoning` ("low".."on") is honored on a thinking model (via the v1 `/api/v1/chat` path).
 - [ ] `repeat_penalty` visibly affects output when set away from 1.0.
 - [ ] `instance_id` from a successful load is stored for later use.
 - [ ] Backward compatible: defaults reproduce the old OpenAI `/chat/completions` behavior.
-- [ ] A stalled stream (no SSE for ~30s) or connection drop falls back to a normal completion
-      instead of hanging/erroring the node.
-- [ ] A server `error` SSE event is surfaced as `RuntimeError`.
 
 ## Phase 3 — Style presets
 - [ ] First node run creates `llm_prompt_studio_presets.json` from `presets_default.json`.
@@ -40,7 +36,7 @@ Manual / smoke checks for the major features. Automated coverage lives in `pytes
 
 ## Phase 4 — Tests
 - [ ] `python -m pytest tests/ -v` is green (CI matrix py3.10 / 3.11).
-- [ ] `test_debug.py`, `test_presets.py`, `test_lm_http_stream.py`, `test_parsing_property.py`,
-      `test_stream_ws_push.py` all present and passing.
+- [ ] `test_debug.py`, `test_presets.py`, `test_lm_http_stream.py`, `test_parsing_property.py`
+      all present and passing.
 - [ ] `node --check` passes on `web/js/llm_prompt_studio_actions.js` and
       `web/js/llm_prompt_studio_bridge.js`.

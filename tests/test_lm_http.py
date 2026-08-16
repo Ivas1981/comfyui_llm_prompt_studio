@@ -157,7 +157,7 @@ def test_post_v1_chat_drops_unrecognized_seed_and_retries():
         {"output": [{"type": "message", "content": "ok"}]}))
     with patch("requests.post", side_effect=[reject, ok]) as post:
         resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
-                                     {"model": "m", "seed": 0}, 5, False)
+                                     {"model": "m", "seed": 0}, 5)
     assert resp.status_code == 200
     # The retry request omitted the rejected key.
     assert "seed" not in post.call_args_list[1][1]["json"]
@@ -169,7 +169,7 @@ def test_post_v1_chat_passes_through_non_key_errors():
     err = _ok_response(status=400, text=json.dumps({"error": {"message": "bad request"}}))
     with patch("requests.post", return_value=err) as post:
         resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
-                                     {"model": "m", "seed": 0}, 5, False)
+                                     {"model": "m", "seed": 0}, 5)
     assert resp.status_code == 400
     assert post.call_count == 1
 

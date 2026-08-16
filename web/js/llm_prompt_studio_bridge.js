@@ -208,40 +208,4 @@ api.addEventListener("executed", (e) => {
     }
 });
 
-// --- Live streaming: append streamed chunks to the node's generation_view widget ---
-api.addEventListener("llm_prompt_studio.stream", (e) => {
-    const d = e.detail || {};
-    const node = app.graph.getNodeById(d.node_id);
-    if (!node) return;
-    const w = getW(node, "generation_view");
-    if (w) {
-        w.value = (w.value || "") + (d.chunk || "");
-        app.graph.setDirtyCanvas(true, true);
-    }
-});
-
-// --- Streaming reset: clear generation_view before a fallback result is shown, so a
-//     failed stream doesn't leave stale/partial text behind. ---
-api.addEventListener("llm_prompt_studio.stream_reset", (e) => {
-    const d = e.detail || {};
-    const node = app.graph.getNodeById(d.node_id);
-    if (!node) return;
-    const w = getW(node, "generation_view");
-    if (w) {
-        w.value = "";
-        app.graph.setDirtyCanvas(true, true);
-    }
-});
-
-// Reset generation_view at the start of each node execution so streams don't accumulate.
-api.addEventListener("executing", (e) => {
-    const d = e.detail || {};
-    const id = d.node;
-    if (id == null) return;
-    const node = app.graph.getNodeById(id);
-    if (!node) return;
-    const w = getW(node, "generation_view");
-    if (w) w.value = "";
-});
-
 console.log("[LLMPromptStudio.Bridge] extension loaded");

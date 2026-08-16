@@ -30,8 +30,6 @@ No cloud, no API keys required — everything runs on your machine.
   size settings.
 - **Style presets** — pick from 14 built-in styles (Photorealism, Cinematic, Anime, 3D Render,
   …); a preset appends its style tags to the prompt and can override the system prompt.
-- **Live streaming** — with `stream` enabled, generated tokens appear in the node's
-  `generation_view` in real time over the ComfyUI websocket.
 - **Advanced LM Studio v1 options** — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
   `repeat_penalty`, `top_k`, `top_p`, `min_p` are forwarded to LM Studio's native v1 API when
   supported.
@@ -125,9 +123,9 @@ Generates an SDXL prompt from an idea.
   - **Inputs:** `server_url`, `api_key`, `model`, `context_length`, `gpu_offload`,
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
-    `face_prompt_instruction`, `prompt_mode`, `family`, `style_preset`, `stream`,
+    `face_prompt_instruction`, `prompt_mode`, `family`, `style_preset`,
     `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`, `generation_view`.
+    `top_k`, `top_p`, `min_p`.
   - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
     to a no-negative system prompt when the checkpoint family is distilled (DMD / LCM /
     Turbo / Hyper / Lightning / Flash); `standard` always emits a negative; `no_negative`
@@ -177,11 +175,9 @@ Generates an SDXL prompt from an idea.
   generated prompt (and override the system prompt when the system-prompt widget is left at
   default). Presets that opt out of no-negative mode are skipped automatically in that mode.
   Use "Reload presets" / "Reset to defaults" in the node menu to manage them.
-- **Live streaming** (`stream`): when enabled, generated tokens are pushed to `generation_view`
-  in real time over the ComfyUI websocket instead of appearing only at the end.
 - **Advanced options** (`reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
   `repeat_penalty`, `top_k`, `top_p`, `min_p`): forwarded to LM Studio's native v1 API when the
-  server supports them (or when streaming is on). Leaving them at defaults keeps the old
+  server supports them. Leaving them at defaults keeps the old
   OpenAI-compatible behavior. `reasoning` enables thinking-model reasoning; `flash_attention` /
   `offload_kv_cache_to_gpu` are model-load options.
 
@@ -237,7 +233,7 @@ Two-stage scene construction from an image.
     `describe_prompt`, `composer_prompt`, `user_changes`, `image_max_size`, `temperature`,
     `max_tokens`, `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`,
     `family`, `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`, `stream`, `generation_view`.
+    `top_k`, `top_p`, `min_p`.
   - **`load_model_profile`** works as on the Writer. The stage decides the "kind": stage 1
     (`describe`) is prose from a vision input, so it is always `baseline` with **no**
     structured output; stage 2 (`compose`) is the JSON writer contract and gets
@@ -420,25 +416,18 @@ The rotating log is written to `llm_prompt_studio.log` in the ComfyUI output dir
 logging is active. API keys (Bearer tokens, `api_key` fields) and base64 image blobs are masked
 or truncated and never written in full.
 
-### Live streaming & advanced LM Studio options
+### Native LM Studio v1 API & advanced options
 
-Enable `stream` on the **Writer** (text-only) to push generated tokens to its `generation_view`
-widget in real time over the ComfyUI websocket. Streaming uses LM Studio's native v1 API and is
-only available for text prompts; **vision / image** requests (e.g. the Image Critic, which is
-always a vision model) use the non-streaming OpenAI path, so the Critic has no `generation_view`.
-If a streaming request fails mid-way, the `generation_view` is reset and the full non-streaming
-result is shown exactly once (no partial text left behind).
-
-The advanced widgets — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
-`repeat_penalty`, `top_k`, `top_p`, `min_p` — are forwarded to LM Studio's native v1 API
-(`/api/v1/chat` for sampling, `/api/v1/models/load` for `flash_attention` /
-`offload_kv_cache_to_gpu`). The native `/api/v1/chat` endpoint is the single path for text, vision,
-streaming and reasoning: it sends the system prompt as a top-level `system_prompt`, renders message
-content as typed `input` parts (text + `data_url` images), and sets `store: false` so LM Studio keeps
-no server-side conversation state. `reasoning` is only sent when the model actually exposes it
-(detected via `capabilities.reasoning.allowed_options`); if a server rejects it, the call retries once
-without it. The OpenAI `/chat/completions` route is kept only as a graceful fallback (e.g. when native
-vision is rejected). Model loads are resilient: if a server rejects an optional load parameter
+The nodes call LM Studio's native `/api/v1/chat` endpoint (and `/api/v1/models/load` for
+`flash_attention` / `offload_kv_cache_to_gpu`) for both text and vision prompts. The native
+endpoint sends the system prompt as a top-level `system_prompt`, renders message content as typed
+`input` parts (text + `data_url` images), and sets `store: false` so LM Studio keeps no server-side
+conversation state. The advanced widgets — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
+`repeat_penalty`, `top_k`, `top_p`, `min_p` — are forwarded to those endpoints when the server
+supports them. `reasoning` is only sent when the model actually exposes it (detected via
+`capabilities.reasoning.allowed_options`); if a server rejects it, the call retries once without it.
+The OpenAI `/chat/completions` route is kept only as a graceful fallback (e.g. when native vision is
+rejected). Model loads are resilient: if a server rejects an optional load parameter
 (e.g. `gpu_offload` on some builds), that key is dropped and the load still succeeds; before loading
 a model, **every currently loaded instance is unloaded via its `instance_id`**, so only the selected
 model remains resident.
