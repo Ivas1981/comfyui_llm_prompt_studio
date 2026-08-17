@@ -48,7 +48,7 @@ WRITER_RESPONSE_SCHEMA = {
         "strict": True,
         "schema": {
             "type": "object",
-            "required": ["positive", "negative", "scene_name"],
+            "required": ["positive", "scene_name"],
             "properties": {
                 "positive": {"type": "string"},
                 "negative": {"type": "string"},

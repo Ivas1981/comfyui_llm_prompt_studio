@@ -146,12 +146,12 @@ All nodes live under the **`LLM Prompt Studio`** category.
 ### LLM Prompt Studio Writer
 
 Generates an SDXL prompt from an idea.
-  - **Inputs:** `server_url`, `api_key`, `model`, `context_length`, `gpu_offload`,
+  - **Inputs:** `server_url`, `api_key`, `model`, `load_model_profile`, `context_length`, `gpu_offload`,
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
     `face_prompt_instruction`, `prompt_mode`, `family`, `style_preset`,
     `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`.
+    `top_k`, `top_p`, `min_p`, `server_status`.
   - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
     to a no-negative system prompt when the checkpoint family is distilled (DMD / LCM /
     Turbo / Hyper / Lightning / Flash, **or** a distillation LoRA applied to a base checkpoint —
@@ -172,11 +172,11 @@ Generates an SDXL prompt from an idea.
     **override** the individual sampling widgets, which are then ignored (this is logged).
     Structured (JSON-schema `response_format`) is only ever used for `writer` / `compose`
     text output and **never** with an image (vision) input or the `describe` stage.
-  - **`Advanced settings`** (button): `context_length`, `gpu_offload`, `flash_attention` and
-    `offload_kv_cache_to_gpu` are hidden behind a **«⚙ Advanced settings»** button (next to
-    `load_model_profile`) and are collapsed by default, so the model-load knobs stay available
-    but out of the way. Click the button to show/hide them (the widget values are preserved,
-    so the node always receives the load params).
+  - **`Advanced settings`** (button): `context_length`, `gpu_offload`, `flash_attention`,
+    `offload_kv_cache_to_gpu` **and the sampling widgets** `temperature`, `max_tokens`,
+    `repeat_penalty`, `top_k`, `top_p`, `min_p` are hidden behind a **«⚙ Advanced settings»**
+    button (next to `load_model_profile`) and are collapsed by default. Click the button to
+    show/hide them (the widget values are preserved, so the node always receives the params).
   - **`family`** (optional) — wire the Smart Loader's `detected_family` output here to let
     `auto` detect the distilled family automatically. Because the Smart Loader folds an applied
     distillation LoRA into `detected_family`, a base checkpoint with a DMD/LCM/Turbo/… LoRA also
@@ -223,8 +223,10 @@ A vision model scores how well the image matches the prompt.
     recommended sampling parameters (temperature / top_p / top_k / repeat_penalty /
     min_p / presence_penalty), but structured JSON output is never used with an image.
   - **`Advanced settings`** (button): same as the Writer — `context_length`, `gpu_offload`,
-    `flash_attention` and `offload_kv_cache_to_gpu` are hidden behind a **«⚙ Advanced settings»**
-    button (next to `load_model_profile`), collapsed by default; click it to show/hide them.
+    `flash_attention`, `offload_kv_cache_to_gpu` **and the sampling widgets** `temperature`,
+    `max_tokens`, `repeat_penalty`, `top_k`, `top_p`, `min_p` are hidden behind a
+    **«⚙ Advanced settings»** button (next to `load_model_profile`), collapsed by default;
+    click it to show/hide them.
  - **Outputs:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
 - `approved = score >= threshold`. Wire `approved` into Smart Save to gate saving.
 - **Auto-revision loop**: enable `auto_loop` to have the critic automatically feed its
@@ -269,8 +271,10 @@ Two-stage scene construction from an image.
     `baseline` + structured for ≥7B models (just like the Writer). `custom` keeps the
     widget sampling values.
   - **`Advanced settings`** (button): same as the Writer — `context_length`, `gpu_offload`,
-    `flash_attention` and `offload_kv_cache_to_gpu` are hidden behind a **«⚙ Advanced settings»**
-    button (next to `load_model_profile`), collapsed by default; click it to show/hide them.
+    `flash_attention`, `offload_kv_cache_to_gpu` **and the sampling widgets** `temperature`,
+    `max_tokens`, `repeat_penalty`, `top_k`, `top_p`, `min_p` are hidden behind a
+    **«⚙ Advanced settings»** button (next to `load_model_profile`), collapsed by default;
+    click it to show/hide them.
   - **`prompt_mode`** and **`family`** behave exactly as on the Writer: `auto`
     switches to a no-negative composer prompt for distilled checkpoint families (wired `family`),
     which the Smart Loader reports including the case of a distillation LoRA applied to a base

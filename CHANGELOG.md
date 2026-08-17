@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.3] — 2026-08-17
+
+### Fixed
+- **`WRITER_RESPONSE_SCHEMA` required a non-empty `negative` even in no-negative (distilled)
+  mode.** The strict JSON schema at `nodes/model_recommendations.py` no longer lists `negative`
+  as required, so a structured-output (≥7B `auto` / `structured`) request does not push the
+  model to fabricate a negative at CFG~1. The Writer still force-blanks `negative` in
+  no-negative mode, and standard mode keeps re-asking for it via field-retry
+  (`require_negative=True`).
+- **`load_model_profile` tooltip was misleading.** It claimed the `auto` profile came "from the
+  benchmark for this model", but the recommendation is a universal size heuristic with no
+  hard-coded model list. The tooltip now says so on Writer / Image Critic / Scene Builder.
+
+### Changed
+- **README now lists every Writer input and documents the full Advanced-settings collapse.**
+  `load_model_profile` and `server_status` were added to the Writer's Inputs list, and the
+  Advanced-settings description now states that the sampling widgets (`temperature`, `max_tokens`,
+  `repeat_penalty`, `top_k`, `top_p`, `min_p`) collapse along with the load knobs (this already
+  matched `web/js/llm_prompt_studio_actions.js` `ADVANCED_WIDGETS`).
+- **`reasoning` is now part of the collapsed Advanced-settings block** (`ADVANCED_WIDGETS` in
+  `web/js/llm_prompt_studio_actions.js`), so it hides with the other sampling knobs.
+
+### Added
+- **Explicit logging of the resolved sampling profile.** The Writer logs the effective profile
+  name and final sampling parameters (temperature / top_p / top_k / min_p / repeat_penalty /
+  presence_penalty / reasoning / structured flag) after `load_model_profile` resolution.
+
 ## [1.1.1] — 2026-08-17
 
 ### Fixed

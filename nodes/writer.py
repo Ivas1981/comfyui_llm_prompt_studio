@@ -68,7 +68,7 @@ class LLMPromptStudioWriter:
                 "model": (combo_models(),),
                 "load_model_profile": (["auto", "baseline", "structured", "creative", "strict", "custom"],
                                        {"default": "auto",
-                                        "tooltip": "auto = recommended profile from the benchmark for this model"}),
+                                         "tooltip": "auto = recommended profile from a universal model-size heuristic (no benchmark list)"}),
                 "context_length": ("INT", {"default": 8192, "min": 512, "max": 131072, "step": 512}),
                 "gpu_offload": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "system_prompt": ("STRING", {"multiline": True, "default": DEFAULT_SYSTEM}),
@@ -255,6 +255,12 @@ class LLMPromptStudioWriter:
         else:
             presence_penalty_v = None
             response_format = None
+        logger.debug("Writer node %s effective sampling: profile=%s temperature=%s top_p=%s "
+                     "top_k=%s min_p=%s repeat_penalty=%s presence_penalty=%s reasoning=%s "
+                     "structured=%s",
+                     unique_id, _resolved["profile"], temperature, top_p_v, top_k_v, min_p_v,
+                     repeat_penalty_v, presence_penalty_v, reasoning,
+                     bool(response_format))
 
         messages = [
             {"role": "system", "content": effective_system},

@@ -15,7 +15,7 @@ import {
 const ADVANCED_WIDGETS = ["context_length", "gpu_offload",
                            "flash_attention", "offload_kv_cache_to_gpu",
                            "temperature", "max_tokens", "repeat_penalty",
-                           "top_k", "top_p", "min_p"];
+                           "top_k", "top_p", "min_p", "reasoning"];
 
 // Hide/show a single widget named `name` on `node`.
 //

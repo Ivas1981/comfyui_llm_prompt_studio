@@ -47,7 +47,7 @@ class LLMPromptStudioSceneBuilder:
                 "model": (combo_models(),),
                 "load_model_profile": (["auto", "baseline", "structured", "creative", "strict", "custom"],
                                        {"default": "auto",
-                                        "tooltip": "auto = recommended profile from the benchmark for this model"}),
+                                         "tooltip": "auto = recommended profile from a universal model-size heuristic (no benchmark list)"}),
                 "context_length": ("INT", {"default": 16384, "min": 512, "max": 131072, "step": 512}),
                 "gpu_offload": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "describe_prompt": ("STRING", {"multiline": True,
