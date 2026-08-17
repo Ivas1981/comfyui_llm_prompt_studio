@@ -25,7 +25,12 @@ No cloud, no API keys required — everything runs on your machine.
 - **Scene Builder** — two-stage: describe an image with a vision model, then compose a
   new prompt from that description (+ your edits).
 - **Smart Loader** — loads a checkpoint, auto-detects its distillation family
-  (DMD / LCM / Turbo / Hyper / Lightning / Flash) and conditionally applies a distillation LoRA.
+  (DMD / LCM / Turbo / Hyper / Lightning / Flash, plus `schnell`/`tcd`/`pcm` mapped to their base
+  families) and conditionally applies a distillation LoRA. It also exposes `detected_family_info`
+  with the detection provenance (`filename` / `metadata` / `lora_metadata` / `base` / `override`).
+- **LM Studio server-status indicator** — Writer / Image Critic / Scene Builder show a live
+  `server_status` widget (`● Connected — <N> models` / `● Server down`), polled from the pack's
+  status route every few seconds.
 - **Multi-CLIP SDXL** — encodes up to four SDXL prompt pairs with one CLIP and shared
   size settings.
 - **Style presets** — pick from 14 built-in styles (Photorealism, Cinematic, Anime, 3D Render,
@@ -275,10 +280,13 @@ Two-stage scene construction from an image.
 Loads a checkpoint and handles distillation LoRA automatically.
 - **Inputs:** `ckpt_name`, `family_override`, `lora_name`, `apply_lora`,
   `strength_model`, `vae_user`.
-- **Outputs:** `MODEL`, `CLIP`, `VAE_MODEL`, `VAE_USER`, `detected_family`.
+- **Outputs:** `MODEL`, `CLIP`, `VAE_MODEL`, `VAE_USER`, `detected_family`, `detected_family_info`.
 - Detects the checkpoint family from the filename + safetensors metadata:
-  `base`, `dmd`, `lcm`, `turbo`, `hyper`, `lightning`, `flash`. `family_override`
-  forces it.
+  `base`, `dmd`, `lcm`, `turbo`, `hyper`, `lightning`, `flash` (plus `schnell`/`tcd` → `turbo`,
+  `pcm` → `lcm`). `family_override` forces it.
+- `detected_family_info` is a STRING describing **why** that family was chosen, e.g.
+  `family: turbo | source: filename` — useful when wiring `detected_family` into the Writer's
+  `family` input and confirming the detector picked the right family.
 - `apply_lora`: **`auto`** applies the LoRA only for `base` (non-distilled) models,
   **`always`** forces it, **`never`** skips it.
 - `VAE_USER` falls back to the checkpoint's built-in VAE when `vae_user = [none]`.
@@ -450,8 +458,15 @@ a model, **every currently loaded instance is unloaded via its `instance_id`**, 
 model remains resident.
 
 The model list is cached **per LM Studio server URL** (the cache key is the URL only — the API
-key is never persisted). **🔄 Refresh models** populates the combo for that server; each node
-patches only its own server's list, so multiple servers don't cross-contaminate.
+  key is never persisted). **🔄 Refresh models** populates the combo for that server; each node
+  patches only its own server's list, so multiple servers don't cross-contaminate. The same
+  refresh no longer overwrites the model you currently have selected.
+
+**Live server status.** Writer / Image Critic / Scene Builder show a `server_status` display widget
+(enabled by default) that polls the pack's `GET /llm_prompt_studio/status` route every few seconds
+and reports `● Connected — <N> models` (with the live model count) or `● Server down`. Embedding
+models returned by LM Studio's model list are filtered out, so they never appear as chat models in
+the combo.
 
 ---
 

@@ -3,7 +3,7 @@ from aiohttp import web
 from server import PromptServer
 
 from .library import load_library, resolve_library_path, save_prompt_to_library
-from .lm_http import cache_models, fetch_models
+from .lm_http import cache_models, fetch_models, server_status
 
 
 @PromptServer.instance.routes.post("/llm_prompt_studio/models")
@@ -20,6 +20,22 @@ async def llm_prompt_studio_models(request):
         return web.json_response({"models": models})
     except Exception as e:
         return web.json_response({"models": [], "error": str(e)})
+
+
+@PromptServer.instance.routes.get("/llm_prompt_studio/status")
+async def llm_prompt_studio_status(request):
+    """Report LM Studio reachability and what is loaded, for the front-end indicator.
+
+    Reads ``server_url`` / ``api_key`` from the query string (or falls back to the
+    default local server). ``server_status`` never raises, so this route always
+    returns a JSON object the JS widget can render directly."""
+    server_url = request.query.get("server_url", "http://localhost:1234/v1")
+    api_key = request.query.get("api_key", "")
+    try:
+        status = server_status(server_url, api_key)
+    except Exception as e:  # noqa: BLE001 — never let the route crash
+        status = {"reachable": False, "loaded_models": [], "error": str(e)}
+    return web.json_response(status)
 
 
 @PromptServer.instance.routes.post("/llm_prompt_studio/library/save")

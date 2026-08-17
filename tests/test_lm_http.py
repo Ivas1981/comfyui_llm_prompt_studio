@@ -107,6 +107,27 @@ def test_fetch_models_handles_nonjson_native_then_openai():
 
 
 
+def test_fetch_models_filters_embedding_models():
+    # Embedding models are not chat models and must not appear in the model combo, even
+    # when LM Studio's native /api/v1/models list mixes them in with a "type": "embedding".
+    resp = _ok_response(text=json.dumps({"data": [
+        {"key": "chat-model", "id": "chat-model"},
+        {"key": "embed-model", "type": "embedding"},
+    ]}))
+    with patch("requests.get", return_value=resp):
+        assert lm_http.fetch_models(LOCAL_V1) == ["chat-model"]
+
+
+def test_fetch_models_filters_embedding_models_openai_fallback():
+    native = _ok_response(status=404, text="not found")
+    openai = _ok_response(text=json.dumps({"data": [
+        {"id": "chat-model"},
+        {"id": "embed-model", "type": "embedding"},
+    ]}))
+    with patch("requests.get", side_effect=[native, openai]):
+        assert lm_http.fetch_models(LOCAL_V1) == ["chat-model"]
+
+
 def test_chat_completion_handles_nonjson_response():
     resp = MagicMock()
     resp.status_code = 200

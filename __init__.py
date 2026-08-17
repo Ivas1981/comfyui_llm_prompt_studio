@@ -8,6 +8,10 @@ if not _logger.handlers:
     _logger.addHandler(_handler)
     _logger.setLevel(logging.INFO)
 
+# Register the web directory up front so the JS bridge (status polling, model refresh,
+# family widgets) loads even if a node import fails partially.
+WEB_DIRECTORY = "./web"
+
 # Register nodes first so a failure in the (optional) HTTP routes can never wipe the
 # whole node pack. Each step is isolated so we surface the precise failure.
 try:
@@ -18,7 +22,6 @@ except Exception:
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
 else:
-    WEB_DIRECTORY = "./web"
     _logger.info("Package loaded: Writer, Critic, Smart Save, Library Loader, "
                  "Scene Builder, Smart Loader, Multi-CLIP SDXL.")
 

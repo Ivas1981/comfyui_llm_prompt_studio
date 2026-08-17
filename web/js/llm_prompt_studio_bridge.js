@@ -10,7 +10,7 @@ import {
 import {
     refreshModels, saveToLibrary, refreshScenes, sendToWriter, requeuePrompt,
     reloadPresets, resetPresets, copyPresetsPath,
-    toggleAdvancedSettings, setAdvancedCollapsed,
+    toggleAdvancedSettings, setAdvancedCollapsed, pollServerStatus,
 } from "./llm_prompt_studio_actions.js";
 
 // Resolve the Writer that actually produces a Critic's `prompt` input: follow the inbound
@@ -99,6 +99,7 @@ app.registerExtension({
         // runs after the graph is fully built.
         if (isWriter(node) || isCritic(node) || isScene(node)) {
             setTimeout(() => refreshModels(node), 400);
+            setTimeout(() => pollServerStatus(node), 400);
         }
     },
 });
@@ -184,13 +185,16 @@ api.addEventListener("executed", (e) => {
         }
     }
 
-    // --- Smart Loader: detected family in the title ---
+    // --- Smart Loader: detected family in the title + provenance widget ---
     if (isSmartLoader(node)) {
         const family = output.family ? output.family[0] : "";
+        const info = output.family_info ? output.family_info[0] : "";
         if (family) {
             node.title = "LLM Prompt Studio Smart Loader — family: " + family;
             app.graph.setDirtyCanvas(true, true);
         }
+        const fiw = getW(node, "detected_family_info");
+        if (fiw && info) fiw.value = info;
     }
 
     // --- Scene Builder: show stage results in the view widgets ---

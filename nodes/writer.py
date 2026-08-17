@@ -103,6 +103,10 @@ class LLMPromptStudioWriter:
             },
             "optional": {
                 "family": ("STRING", {"default": ""}),
+                "server_status": ("STRING", {"default": "",
+                                             "multiline": False,
+                                             "tooltip": "Live LM Studio server status "
+                                                        "(reachable / loaded model), refreshed automatically"}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -118,8 +122,9 @@ class LLMPromptStudioWriter:
                  max_field_retries=2, face_prompt_instruction="",
                  prompt_mode="auto", family="", unique_id=None,
                  style_preset="— none —", flash_attention=None,
-                 offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
-                  top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto"):
+                  offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
+                   top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto",
+                   server_status=""):
         _t0 = time.time()
         log_node_enter("Writer", unique_id, {
             "server_url": server_url, "model": model, "idea": idea,

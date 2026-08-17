@@ -20,7 +20,7 @@ def _json(**fields):
 
 
 def _run(chat_side_effect, generate_face_prompts=False, max_field_retries=2,
-         face_prompt_instruction=""):
+         face_prompt_instruction="", prompt_mode="auto", family=""):
     with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
          patch.object(writer, "chat_completion", side_effect=chat_side_effect) as call:
         result = writer.LLMPromptStudioWriter().execute(
@@ -29,7 +29,7 @@ def _run(chat_side_effect, generate_face_prompts=False, max_field_retries=2,
             revision_notes="", temperature=0.7, max_tokens=512, seed=0,
             reuse_last_prompt=False, generate_face_prompts=generate_face_prompts,
             max_field_retries=max_field_retries, face_prompt_instruction=face_prompt_instruction,
-            unique_id="1")
+            prompt_mode=prompt_mode, family=family, unique_id="1")
     return result, call
 
 
@@ -91,6 +91,29 @@ def test_runtime_error_when_positive_empty():
     seq = [_json(negative="b", scene_name="s")] * 3
     with pytest.raises(RuntimeError):
         _run(seq, max_field_retries=2)
+
+
+def test_no_negative_mode_keeps_face_negative_empty():
+    # Reported bug: face_negative was still generated in no-negative mode. The node must
+    # force it (and the negative) empty regardless of what the model returned, because the
+    # negative is inert at CFG~1.
+    result, _ = _run([_json(positive="a cat", negative="b", scene_name="s",
+                            face_positive="fp", face_negative="fn")],
+                     generate_face_prompts=True, prompt_mode="no_negative")
+    assert result[5] == ""   # face_negative forced empty
+    assert result[1] == ""   # negative forced empty
+    assert result[4] == "fp"  # face_positive preserved
+
+
+def test_auto_mode_distilled_family_keeps_face_negative_empty():
+    # In auto mode a distilled checkpoint family (e.g. turbo) must drive no_negative on,
+    # so face_negative is empty even without an explicit prompt_mode override. This is the
+    # path that broke when family detection returned "base" for names like *_Turbo_*.
+    result, _ = _run([_json(positive="a cat", negative="b", scene_name="s",
+                            face_positive="fp", face_negative="fn")],
+                     generate_face_prompts=True, prompt_mode="auto", family="turbo")
+    assert result[5] == ""
+    assert result[1] == ""
 
 
 def test_raw_marker_on_retry():

@@ -14,6 +14,13 @@ def test_parse_size():
     assert mr._parse_size("") is None
 
 
+def test_parse_size_takes_last_match():
+    # When several size hints appear, the LAST (most specific, full model) wins, not the
+    # first fragment — e.g. a MoE id "llama-3.2-8x3b-…-18.4b" must yield 18.4, not 3.0.
+    assert mr._parse_size("llama-3.2-8x3b-instruct-18.4b") == 18.4
+    assert mr._parse_size("mixtral-8x7b-math-22b") == 22.0
+
+
 def test_recommend_for_baseline_structured_on_large():
     rec = mr.recommend_for("qwen2.5-14b-instruct", "writer")
     assert rec == {"profile": "baseline", "structured": True}

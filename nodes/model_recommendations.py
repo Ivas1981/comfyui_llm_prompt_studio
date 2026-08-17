@@ -88,10 +88,10 @@ def _parse_size(model_id):
     """
     if not model_id:
         return None
-    m = _SIZE_RE.search(model_id)
-    if not m:
+    matches = _SIZE_RE.findall(model_id)
+    if not matches:
         return None
-    return float(m.group(1))
+    return float(matches[-1])
 
 
 def schema_for_kind(kind):

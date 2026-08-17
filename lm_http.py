@@ -35,6 +35,7 @@ __all__ = [
     "load_model",
     "ensure_model_loaded",
     "chat_completion",
+    "server_status",
 ]
 
 # Server+model pairs for which a v1 load option key was rejected (e.g. `gpu_offload` on
@@ -232,6 +233,10 @@ def _parse_native_models(data) -> list:
     for m in models:
         if not isinstance(m, dict):
             continue
+        # Skip embedding models: they are not chat models and must not appear in the
+        # model combo (LM Studio's native list mixes them in with a "type": "embedding").
+        if m.get("type") == "embedding":
+            continue
         mid = m.get("key") or m.get("id")
         if mid:
             ids.append(str(mid))
@@ -267,7 +272,8 @@ def fetch_models(server_url: str, api_key: str = "", timeout: int = 5) -> list:
         snippet = (resp.text or '')[:1000]
         logger.error("Invalid JSON returned by %s: %s", server_url, snippet)
         raise RuntimeError(f"Invalid JSON from model server {server_url}: {snippet}")
-    return [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
+    return [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")
+            and m.get("type") != "embedding"]
 
 
 def _store_model_cache(server_url: str, models):
@@ -897,6 +903,44 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     else:
         _server_loaded[server_url] = fingerprint  # record the exact loaded config
         _last_loaded[slot] = fingerprint
+
+
+def server_status(server_url: str, api_key: str = "", timeout: int = 5) -> dict:
+    """Describe the local LM Studio server's availability and what is loaded.
+
+    Returns ``{"reachable": bool, "loaded_models": [ids], "error": str|None}``. Never
+    raises: any failure (unreachable host, timeout, non-200, bad JSON) yields
+    ``reachable=False`` with the reason in ``error`` so the front-end can show a clear
+    "server down" indicator without special-casing exceptions."""
+    try:
+        base = _server_root(validate_server_url(server_url))
+    except ValueError as e:
+        return {"reachable": False, "loaded_models": [], "error": str(e)}
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        resp = requests.get(f"{base}/api/v1/models", headers=headers, timeout=timeout)
+    except requests.RequestException as e:
+        return {"reachable": False, "loaded_models": [], "error": str(e)}
+    if resp.status_code != 200:
+        return {"reachable": False, "loaded_models": [],
+                "error": f"HTTP {resp.status_code}"}
+    try:
+        data = resp.json()
+    except ValueError:
+        return {"reachable": False, "loaded_models": [], "error": "invalid JSON from server"}
+    models = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(models, list):
+        models = data.get("models") if isinstance(data, dict) else None
+    loaded = []
+    if isinstance(models, list):
+        for entry in models:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("loaded_instances"):
+                key = entry.get("key") or entry.get("id")
+                if key:
+                    loaded.append(str(key))
+    return {"reachable": True, "loaded_models": loaded, "error": None}
 
 
 def _serialize_message_content(content):

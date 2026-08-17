@@ -81,6 +81,10 @@ class LLMPromptStudioSceneBuilder:
             },
             "optional": {
                 "family": ("STRING", {"default": ""}),
+                "server_status": ("STRING", {"default": "",
+                                             "multiline": False,
+                                             "tooltip": "Live LM Studio server status "
+                                                        "(reachable / loaded model), refreshed automatically"}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -93,8 +97,8 @@ class LLMPromptStudioSceneBuilder:
                   max_tokens, max_field_retries=2, vision_check=True, description_view="",
                    prompt_mode="auto", family="", unique_id=None,
                    flash_attention=None, offload_kv_cache_to_gpu=None, reasoning="off",
-                   repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
-                   load_model_profile="auto"):
+                    repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
+                    load_model_profile="auto", server_status=""):
         _t0 = time.time()
         log_node_enter("Scene Builder", unique_id, {
             "stage": stage, "server_url": server_url, "model": model,

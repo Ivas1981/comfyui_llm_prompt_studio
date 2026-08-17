@@ -6,6 +6,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.1] — 2026-08-17
+
+### Fixed
+- **`face_negative` was non-empty in no-negative (distilled) mode.** When `prompt_mode` was
+  `auto`/`no_negative`, the Writer (`nodes/writer.py`) and Scene Builder (`nodes/scene_builder.py`)
+  force-reset `face_negative` to empty once the no-negative composer is chosen, matching the
+  already-empty `negative`. Previously a stale `face_negative` leaked into the prompt even though
+  `negative` was empty, contradicting CFG~1 (negative-ignored) sampling.
+- **Checkpoint family detection missed several distilled families.** `model_meta.py` now maps
+  `schnell`, `tcd` and `pcm` to their base distilled families (SD1.5 `schnell`/`tcd` → `turbo`;
+  `pcm` → `lcm`), and the free-text metadata hint key is corrected from `"tags"` to `"tag"`. An
+  uppercase family token at/after the boundary is unconditionally accepted, and the `flash_attention`
+  guard no longer suppresses a real family match.
+
+### Added
+- **Smart Loader `detected_family_info` output.** `nodes/smart_loader.py` now also returns
+  `detected_family_info` (STRING) describing the provenance of the detected family, e.g.
+  `family: turbo | source: filename` / `source: metadata` / `source: lora_metadata` /
+  `source: base` / `source: override`. The `model_meta.detect_checkpoint_family_info()` helper
+  returns `(family, source)` and is exported in `model_meta.__all__`.
+- **LM Studio server-status indicator.** Writer / Image Critic / Scene Builder gained an optional
+  `server_status` STRING widget that polls `GET /llm_prompt_studio/status` every 3 s (via
+  `lm_http.server_status()` and the new `pollServerStatus` action) and shows `● Connected — <N>
+  models` or `● Server down`. The route is added to `server_routes.py`; `refreshModels` no longer
+  clobbers the user's current model selection.
+- **Embedding models are filtered out of the model combo.** `lm_http.fetch_models` /
+  `_parse_native_models` now skip any entry whose `"type": "embedding"` (on both the native
+  `/api/v1/models` path and the OpenAI `/v1/models` fallback), so text/embedding models from LM
+  Studio no longer appear as chat models.
+
+### Changed
+- **`model_recommendations._parse_size` takes the last size match.** The universal size heuristic
+  now reads the trailing `(\d+(?:\.\d+)?)b` capture (e.g. `nvidia/nemotron-3-nano-4b` → 4B) instead
+  of the first, so a misleading leading number in the model id no longer mis-sizes the profile.
+- **`WEB_DIRECTORY` is set before the node modules are imported** in `__init__.py`, so the JS assets
+  are registered even if an early node import touches web-loading code.
+- **CI / requirements cleanup.** `.github/workflows/python-tests.yml` now runs on Python 3.10 and
+  3.11 (was a malformed `3.1` float); `requirements.txt` no longer pins `hypothesis` (tests don't
+  use it).
+
+---
+
 ## [1.1.0] — 2026-08-16
 
 ### Removed
