@@ -6,6 +6,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.4] — 2026-08-17
+
+Correctness review of the `update3`/`update4` assessment (`plans/update3.md`,
+`plans/update4.md`). All claims were verified against the source; this release
+applies the valid fixes and explicitly ignores the non-bug items.
+
+### Fixed
+- **Writer reuse cache key was too narrow (B1).** `nodes/writer.py` cached by
+  `(unique_id, prompt_mode)` only, so changing `style_preset`/`system_prompt`/`idea`/
+  `revision_notes`/`generate_face_prompts`/`face_prompt_instruction` silently returned a
+  stale prompt. The cache key now includes those inputs. `family` stays deliberately
+  excluded so a checkpoint swap still carries the prompts over in reuse mode.
+- **Family detection blanket-skipped every `flash` match when `flash_attention` appeared
+  anywhere (B2).** In `model_meta.py` the `flash` family is now skipped only for the exact
+  `flash_attention` substring occurrence, so a real Flash checkpoint (e.g. `FlashSDXL`,
+  `SDXLFlash`) is still detected correctly.
+- **Native v1 HTTP error ignored image context (B3).** `lm_http.py` hardcoded
+  `has_images=False` into `_enrich_http_error`; `_chat_v1` now derives `has_images` from the
+  request messages so the "model does not support image inputs" hint fires for vision
+  rejections.
+- **Field-retry silently fell back to plain text (B4).** The retry `parse_prompt_json` calls
+  in `nodes/writer.py` and `nodes/scene_builder.py` now pass `allow_plain_text_fallback=False`
+  to match the initial call (a malformed retry answer must not be treated as a valid prompt).
+- **Scene Builder stage-1 `prompt_view` output was empty (D1).** Stage 1 now returns the
+  description in the `prompt_view` slot (`("", "", "", description, description)`).
+- **Duplicated NSFW sentence in the Anime preset (C1).** `presets_default.json` had the
+  "Explicit and intimate content is fully authorized…" sentence twice in both the standard
+  and no-negative Anime variants; the duplicate is removed.
+
+### Changed
+- **`_is_reasoning_rejection` clarified (B5).** Parentheses make the operator precedence of
+  the `and`/`or` vision-rejection checks explicit (no behaviour change).
+
+### Removed
+- **Unused `require_face_negative` parameter (D2).** `parsing.find_missing_fields` no longer
+  accepts the dead parameter; it had no real callers and face fields are intentionally not
+  treated as missing.
+
+### Docs
+- **`combos.combo_models` comment corrected (D3).** The "scoped to its own server_url" claim
+  was inaccurate: `INPUT_TYPES` can only express the default `DEFAULT_SERVER`, so the per-URL
+  cache is reached with that default at build time and the node's real `server_url` is applied
+  via the widget at runtime.
+- **`update4` items #1–#8 were reviewed and ignored.** #3 (unconditional LoRA detection in
+  Smart Loader) is FALSE — detection is already guarded by
+  `if should_apply and lora_name and lora_name != "[none]"`; #1, #2, #4, #5, #6, #7, #8 are
+  intentional/by-design and require no change.
+
 ## [1.1.3] — 2026-08-17
 
 ### Fixed

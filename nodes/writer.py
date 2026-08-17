@@ -155,10 +155,13 @@ class LLMPromptStudioWriter:
                repeat_penalty, top_k, top_p, min_p,
                  load_model_profile="auto"):
         # Reuse mode: return the cached prompt without calling the LLM. The key is the node
-        # id + prompt_mode so a mode switch still regenerates, but `family` is intentionally
+        # id + prompt_mode so a mode switch still regenerates. `family` is intentionally
         # excluded: it is driven by the loaded checkpoint, and with reuse on we want the same
-        # prompts to carry over when the user swaps to a different checkpoint.
-        cache_key = (unique_id, prompt_mode)
+        # prompts to carry over when the user swaps to a different checkpoint. The remaining
+        # fields are the inputs that actually shape the generated prompt, so a change to any
+        # of them must bypass the cache and regenerate.
+        cache_key = (unique_id, prompt_mode, style_preset, system_prompt,
+                     idea, revision_notes, generate_face_prompts, face_prompt_instruction)
         # Reuse mode: return cached result without calling the LLM
         if reuse_last_prompt:
             cached = _prompt_cache.get(cache_key)
@@ -307,7 +310,7 @@ class LLMPromptStudioWriter:
                                           response_format=response_format)
             raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                    f"missing {', '.join(missing)}]\n{raw_new}")
-            parsed = parse_prompt_json(raw_new)
+            parsed = parse_prompt_json(raw_new, allow_plain_text_fallback=False)
 
         positive, negative, scene_name, face_positive, face_negative = parsed
 

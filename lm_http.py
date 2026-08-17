@@ -1189,9 +1189,9 @@ def _is_reasoning_rejection(text: str) -> bool:
     low = (text or "").lower()
     return ("reasoning" in low
             and ("does not expose reasoning" in low
-                 or "not support" in low and "reasoning" in low
-                 or "is not supported" in low and "reasoning" in low
-                 or "invalid" in low and "reasoning" in low))
+                 or ("not support" in low and "reasoning" in low)
+                 or ("is not supported" in low and "reasoning" in low)
+                 or ("invalid" in low and "reasoning" in low)))
 
 
 def _post_v1_chat(url, headers, payload, timeout):
@@ -1242,6 +1242,12 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+
+    # Whether the request carries image (vision) inputs — used to surface a clear
+    # "model does not support image inputs" error on vision rejection.
+    has_images = any(
+        isinstance(m.get("content"), list)
+        for m in messages if isinstance(m, dict))
 
     system_prompt, input_parts = _build_native_chat_input(messages)
 
@@ -1294,7 +1300,7 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
                             min_p=min_p, skip_reasoning=True,
                             presence_penalty=presence_penalty,
                             frequency_penalty=frequency_penalty)
-        enriched = _enrich_http_error(model, resp.status_code, resp.text or "", False)
+        enriched = _enrich_http_error(model, resp.status_code, resp.text or "", has_images)
         if enriched is not None:
             raise RuntimeError(enriched)
         raise RuntimeError(

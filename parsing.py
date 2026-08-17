@@ -151,17 +151,16 @@ def parse_critic_json(text: str):
 
 
 def find_missing_fields(parsed_tuple, require_face: bool = False,
-                        require_negative: bool = True,
-                        require_face_negative: bool = True):
+                        require_negative: bool = True):
     """Return the names of empty critical fields in a `parse_prompt_json` tuple.
 
     `parsed_tuple` is (positive, negative, scene_name, face_positive, face_negative).
     `positive` and `scene_name` are always critical. `negative` is critical when
-    `require_negative` is True. `require_face`/`require_face_negative` are accepted for API
-    compatibility but face fields are intentionally NOT treated as missing: the prompts
-    explicitly allow empty `face_positive`/`face_negative` when no face is present, and
-    empty-vs-absent is indistinguishable after JSON parsing, so retrying on them is futile
-    (the Writer/Scene Builder fall back to the main prompts instead)."""
+    `require_negative` is True. `require_face` is accepted for API compatibility but face
+    fields are intentionally NOT treated as missing: the prompts explicitly allow empty
+    `face_positive`/`face_negative` when no face is present, and empty-vs-absent is
+    indistinguishable after JSON parsing, so retrying on them is futile (the Writer/Scene
+    Builder fall back to the main prompts instead)."""
     positive, negative, scene_name, _fp, _fn = parsed_tuple
     critical = ["positive", "scene_name"]
     if require_negative:

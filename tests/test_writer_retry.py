@@ -123,3 +123,38 @@ def test_raw_marker_on_retry():
     ]
     result, _ = _run(seq, max_field_retries=2)
     assert result[2].startswith("[FIELD RETRY 1/2: missing scene_name]")
+
+
+def test_reuse_cache_key_excludes_family_but_includes_inputs():
+    # B1 regression: the reuse cache key must widen beyond (unique_id, prompt_mode) so a
+    # change to style_preset/system_prompt/idea/etc. regenerates, while `family` stays
+    # excluded (it is driven by the loaded checkpoint and should carry across swaps).
+    writer._prompt_cache.clear()
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+         patch.object(writer, "chat_completion",
+                      return_value=_json(positive="p", negative="n", scene_name="s")) as call, \
+         patch.object(writer, "get_preset_by_name", return_value=None):
+        base = dict(server_url="http://localhost:1234/v1", api_key="", model="m",
+                    context_length=8192, gpu_offload=1.0, system_prompt="SYS",
+                    revision_notes="", temperature=0.7, max_tokens=512, seed=0,
+                    reuse_last_prompt=True, generate_face_prompts=False, max_field_retries=2,
+                    face_prompt_instruction="", prompt_mode="auto", unique_id="B1")
+
+        writer.LLMPromptStudioWriter().execute(family="turbo", idea="cat",
+                                               style_preset="— none —", **base)
+        assert call.call_count == 1
+
+        # Same inputs, different family -> still cached (family is NOT part of the key).
+        writer.LLMPromptStudioWriter().execute(family="base", idea="cat",
+                                               style_preset="— none —", **base)
+        assert call.call_count == 1
+
+        # Different idea -> must regenerate (idea IS part of the key).
+        writer.LLMPromptStudioWriter().execute(family="turbo", idea="dog",
+                                               style_preset="— none —", **base)
+        assert call.call_count == 2
+
+        # Different style_preset -> must regenerate (style_preset IS part of the key).
+        writer.LLMPromptStudioWriter().execute(family="turbo", idea="dog",
+                                               style_preset="Anime / Manga", **base)
+        assert call.call_count == 3

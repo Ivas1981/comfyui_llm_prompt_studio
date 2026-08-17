@@ -181,25 +181,28 @@ def detect_checkpoint_family(ckpt_name: str) -> str:
         meta = read_safetensors_metadata(full_path)
         if meta:
             text += " " + _meta_text(meta)
-    flash_present = "flash_attention" in text.lower()
-    family, _ = _first_family(text, skip_flash=flash_present)
+    family, _ = _first_family(text)
     return family or "base"
 
 
-def _first_family(text: str, skip_flash: bool = False):
+def _first_family(text: str):
     """Return ``(family, pos)`` for the earliest matching distillation marker in ``text``.
 
     Mirrors the single-shot detector: case-aware boundaries, position-based earliest win,
-    and a guard that skips the ``flash`` family whenever ``flash_attention`` appears in the
-    scanned text (it is an attention mechanism, not a distilled Flash model). Returns
+    and a guard that skips only the ``flash`` occurrence that is part of the word
+    ``flash_attention`` (an attention mechanism, not a distilled Flash model). A standalone
+    flash marker (e.g. ``FlashSDXL``, ``SDXLFlash``, ``flash_4``) is still detected. Returns
     ``(None, None)`` when nothing matches."""
     best_family = None
     best_pos = None
     for family, rx in _FAMILY_TOKEN_RE.items():
-        if family == "flash" and skip_flash:
-            continue
         for m in rx.finditer(text):
             if not _boundary_ok(text, m.start(), m.end()):
+                continue
+            # Skip only the "flash" inside "flash_attention"; a real Flash checkpoint marker
+            # (which passes the boundary check) must still be detected.
+            if family == "flash" and \
+               text[m.start():m.start() + len("flash_attention")].lower() == "flash_attention":
                 continue
             pos = m.start()
             if best_pos is None or pos < best_pos:
@@ -232,12 +235,11 @@ def detect_checkpoint_family_info(ckpt_name: str):
         meta = read_safetensors_metadata(full_path)
         if meta:
             meta_text = _meta_text(meta)
-    flash_present = "flash_attention" in (name + " " + meta_text).lower()
-    family, _ = _first_family(name, skip_flash=flash_present)
+    family, _ = _first_family(name)
     if family:
         return family, "filename"
     if meta_text:
-        family, _ = _first_family(meta_text, skip_flash=flash_present)
+        family, _ = _first_family(meta_text)
         if family:
             return family, "metadata"
     return "base", "base"

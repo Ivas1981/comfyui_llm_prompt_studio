@@ -188,7 +188,7 @@ class LLMPromptStudioSceneBuilder:
             log_node_exit("Scene Builder", unique_id, {"stage": 1, "desc_len": len(description)},
                           (time.time() - _t0) * 1000)
             return {"ui": {"description": [description]},
-                    "result": ("", "", "", "", description)}
+                    "result": ("", "", "", description, description)}
 
         # Stage 2: compose the prompt from the description
         if not description_view.strip():
@@ -232,8 +232,8 @@ class LLMPromptStudioSceneBuilder:
                                  reasoning=reasoning, repeat_penalty=repeat_penalty_v,
                                  top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
                                  presence_penalty=presence_penalty_v,
-                                 response_format=response_format)
-        parsed = parse_prompt_json(raw)
+                                  response_format=response_format)
+        parsed = parse_prompt_json(raw, allow_plain_text_fallback=False)
 
         # Field-retry: if the model omitted required JSON fields, re-ask it (up to
         # max_field_retries times) for a complete answer before falling back. In no-negative
@@ -258,7 +258,7 @@ class LLMPromptStudioSceneBuilder:
                                           response_format=response_format)
             raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                     f"missing {', '.join(missing)}]\n{raw_new}")
-            parsed = parse_prompt_json(raw_new)
+            parsed = parse_prompt_json(raw_new, allow_plain_text_fallback=False)
 
         positive, negative, scene_name, _fp, _fn = parsed
 
