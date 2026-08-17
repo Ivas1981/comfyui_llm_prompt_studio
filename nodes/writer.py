@@ -124,7 +124,7 @@ class LLMPromptStudioWriter:
                  style_preset="— none —", flash_attention=None,
                   offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
                    top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto",
-                   server_status=""):
+                     server_status=""):
         _t0 = time.time()
         log_node_enter("Writer", unique_id, {
             "server_url": server_url, "model": model, "idea": idea,
@@ -141,8 +141,8 @@ class LLMPromptStudioWriter:
                              reuse_last_prompt, generate_face_prompts, max_field_retries,
                              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
                              style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
-                              repeat_penalty, top_k, top_p, min_p,
-                              load_model_profile)
+               repeat_penalty, top_k, top_p, min_p,
+                 load_model_profile)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
@@ -153,7 +153,7 @@ class LLMPromptStudioWriter:
               face_prompt_instruction, prompt_mode, family, unique_id, _t0,
               style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
                repeat_penalty, top_k, top_p, min_p,
-               load_model_profile="auto"):
+                 load_model_profile="auto"):
         # Reuse mode: return the cached prompt without calling the LLM. The key is the node
         # id + prompt_mode so a mode switch still regenerates, but `family` is intentionally
         # excluded: it is driven by the loaded checkpoint, and with reuse on we want the same
@@ -193,7 +193,7 @@ class LLMPromptStudioWriter:
         else:
             no_negative = is_no_negative_family(family)
         logger.info("Writer node %s prompt mode: %s (family=%r) -> no_negative=%s",
-                    unique_id, prompt_mode, family, no_negative)
+                     unique_id, prompt_mode, family, no_negative)
 
         # Drop a preset that opts out of no-negative mode, then optionally override the
         # system prompt with the preset's when the user hasn't customized it.

@@ -26,11 +26,15 @@ No cloud, no API keys required — everything runs on your machine.
   new prompt from that description (+ your edits).
 - **Smart Loader** — loads a checkpoint, auto-detects its distillation family
   (DMD / LCM / Turbo / Hyper / Lightning / Flash, plus `schnell`/`tcd`/`pcm` mapped to their base
-  families) and conditionally applies a distillation LoRA. It also exposes `detected_family_info`
-  with the detection provenance (`filename` / `metadata` / `lora_metadata` / `base` / `override`).
+  families) and conditionally applies a distillation LoRA. It exposes `detected_family` (the
+  **effective** family — a distilled LoRA applied to a base checkpoint folds its family in, so
+  no-negative mode auto-enables downstream) and `detected_family_info` with the detection provenance
+  (`filename` / `metadata` / `base` / `override`). The widget shows the checkpoint's **own** family
+  and a notification when a distillation LoRA was applied, e.g.
+  `family: base | source: filename | LoRA applied: dmd_lora.safetensors (distilled: dmd)`.
 - **LM Studio server-status indicator** — Writer / Image Critic / Scene Builder show a live
-  `server_status` widget (`● Connected — <N> models` / `● Server down`), polled from the pack's
-  status route every few seconds.
+  `server_status` widget (`● Connected — <loaded model names>` / `● Connected (no model loaded)` /
+  `● Server down`), polled from the pack's status route every few seconds.
 - **Multi-CLIP SDXL** — encodes up to four SDXL prompt pairs with one CLIP and shared
   size settings.
 - **Style presets** — pick from 14 built-in styles (Photorealism, Cinematic, Anime, 3D Render,
@@ -150,10 +154,11 @@ Generates an SDXL prompt from an idea.
     `top_k`, `top_p`, `min_p`.
   - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
     to a no-negative system prompt when the checkpoint family is distilled (DMD / LCM /
-    Turbo / Hyper / Lightning / Flash); `standard` always emits a negative; `no_negative`
-    always emits an empty negative. Distilled models sample at CFG ~1, where a negative
-    prompt is mathematically ignored, so the no-negative prompt rephrases every constraint
-    as a positive statement instead.
+    Turbo / Hyper / Lightning / Flash, **or** a distillation LoRA applied to a base checkpoint —
+    the Smart Loader folds the LoRA family into `detected_family`); `standard` always emits a
+    negative; `no_negative` always emits an empty negative. Distilled models sample at CFG ~1,
+    where a negative prompt is mathematically ignored, so the no-negative prompt rephrases every
+    constraint as a positive statement instead.
   - **`load_model_profile`** (always visible, right under `model`): picks the recommended
     **sampling + load profile** for the selected model. `auto` (default) applies the
     profile chosen by a *universal* heuristic — the model size is read from its id
@@ -173,7 +178,9 @@ Generates an SDXL prompt from an idea.
     but out of the way. Click the button to show/hide them (the widget values are preserved,
     so the node always receives the load params).
   - **`family`** (optional) — wire the Smart Loader's `detected_family` output here to let
-    `auto` detect the distilled family automatically. Leave unconnected to use `standard`.
+    `auto` detect the distilled family automatically. Because the Smart Loader folds an applied
+    distillation LoRA into `detected_family`, a base checkpoint with a DMD/LCM/Turbo/… LoRA also
+    engages no-negative mode. Leave unconnected to use `standard`.
   - Loads the selected model on the LM Studio server **on demand** (via the load API) with
     `context_length` (default 8192), `gpu_offload` (1.0 = max GPU) and the advanced load options
     (`flash_attention`, `offload_kv_cache_to_gpu`), and **unloads every model currently resident
@@ -264,9 +271,10 @@ Two-stage scene construction from an image.
   - **`Advanced settings`** (button): same as the Writer — `context_length`, `gpu_offload`,
     `flash_attention` and `offload_kv_cache_to_gpu` are hidden behind a **«⚙ Advanced settings»**
     button (next to `load_model_profile`), collapsed by default; click it to show/hide them.
-  - **`prompt_mode`** and **`family`** behave exactly as on the Writer: `auto` switches to a
-    no-negative composer prompt for distilled checkpoint families when `family` is wired from
-    the Smart Loader's `detected_family` output.
+  - **`prompt_mode`** and **`family`** behave exactly as on the Writer: `auto`
+    switches to a no-negative composer prompt for distilled checkpoint families (wired `family`),
+    which the Smart Loader reports including the case of a distillation LoRA applied to a base
+    checkpoint (it folds the LoRA family into `detected_family`).
 - **Outputs:** `positive`, `negative`, `scene_name`, `prompt_view`, `description`.
   Stage 1 puts the vision description into `description`; stage 2 composes the prompt.
 - **`max_field_retries`** (default 2): in stage 2, if the model's JSON omits required
@@ -464,7 +472,8 @@ The model list is cached **per LM Studio server URL** (the cache key is the URL 
 
 **Live server status.** Writer / Image Critic / Scene Builder show a `server_status` display widget
 (enabled by default) that polls the pack's `GET /llm_prompt_studio/status` route every few seconds
-and reports `● Connected — <N> models` (with the live model count) or `● Server down`. Embedding
+and reports `● Connected — <loaded model names>`, `● Connected (no model loaded)`, or
+`● Server down`. Embedding
 models returned by LM Studio's model list are filtered out, so they never appear as chat models in
 the combo.
 

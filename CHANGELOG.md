@@ -10,10 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - **`face_negative` was non-empty in no-negative (distilled) mode.** When `prompt_mode` was
-  `auto`/`no_negative`, the Writer (`nodes/writer.py`) and Scene Builder (`nodes/scene_builder.py`)
-  force-reset `face_negative` to empty once the no-negative composer is chosen, matching the
-  already-empty `negative`. Previously a stale `face_negative` leaked into the prompt even though
-  `negative` was empty, contradicting CFG~1 (negative-ignored) sampling.
+  `auto`/`no_negative`, the Writer (`nodes/writer.py`) force-resets both `face_negative` and
+  `negative` to empty once the no-negative composer is chosen (the negative is inert at CFG~1 and
+  must stay consistent). Previously a stale `face_negative` leaked into the prompt even though
+  `negative` was empty, contradicting CFG~1 (negative-ignored) sampling. Scene Builder
+  (`nodes/scene_builder.py`) only exposes `positive`/`negative` outputs — its face fields are parsed
+  but not surfaced — so it resets `negative` to empty in no-negative mode, but has no `face_negative`
+  output that could leak.
 - **Checkpoint family detection missed several distilled families.** `model_meta.py` now maps
   `schnell`, `tcd` and `pcm` to their base distilled families (SD1.5 `schnell`/`tcd` → `turbo`;
   `pcm` → `lcm`), and the free-text metadata hint key is corrected from `"tags"` to `"tag"`. An
@@ -23,14 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - **Smart Loader `detected_family_info` output.** `nodes/smart_loader.py` now also returns
   `detected_family_info` (STRING) describing the provenance of the detected family, e.g.
-  `family: turbo | source: filename` / `source: metadata` / `source: lora_metadata` /
-  `source: base` / `source: override`. The `model_meta.detect_checkpoint_family_info()` helper
+  `family: turbo | source: filename` / `source: metadata` / `source: base` / `source: override`.
+  `detected_family` reports the checkpoint's own family only (a distillation LoRA loaded on a
+  base checkpoint does not change it). The `model_meta.detect_checkpoint_family_info()` helper
   returns `(family, source)` and is exported in `model_meta.__all__`.
 - **LM Studio server-status indicator.** Writer / Image Critic / Scene Builder gained an optional
   `server_status` STRING widget that polls `GET /llm_prompt_studio/status` every 3 s (via
-  `lm_http.server_status()` and the new `pollServerStatus` action) and shows `● Connected — <N>
-  models` or `● Server down`. The route is added to `server_routes.py`; `refreshModels` no longer
-  clobbers the user's current model selection.
+  `lm_http.server_status()` and the new `pollServerStatus` action) and shows `● Connected — <loaded
+  model names>`, `● Connected (no model loaded)`, or `● Server down`. The route is added to
+  `server_routes.py`; `refreshModels` no longer clobbers the user's current model selection.
 - **Embedding models are filtered out of the model combo.** `lm_http.fetch_models` /
   `_parse_native_models` now skip any entry whose `"type": "embedding"` (on both the native
   `/api/v1/models` path and the OpenAI `/v1/models` fallback), so text/embedding models from LM
@@ -44,7 +48,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   are registered even if an early node import touches web-loading code.
 - **CI / requirements cleanup.** `.github/workflows/python-tests.yml` now runs on Python 3.10 and
   3.11 (was a malformed `3.1` float); `requirements.txt` no longer pins `hypothesis` (tests don't
-  use it).
+   use it).
+
+---
+
+## [1.1.2] — 2026-08-17
+
+### Changed
+- **`detected_family` now folds a distilled LoRA into the effective family.** When Smart Loader
+  applies a distillation LoRA (DMD / LCM / Turbo / Hyper / Lightning / Flash, or `schnell`/`tcd`/`pcm`)
+  on top of a base checkpoint, `detected_family` reports the LoRA's family (the effective distilled
+  family) so Writer / Scene Builder enable no-negative mode automatically. The checkpoint's own family
+  no longer overrides an applied distilled LoRA.
+
+### Added
+- **Smart Loader widget shows the original checkpoint family + a distilled-LoRA notification.**
+  `detected_family_info` displays the checkpoint's true family and detection source
+  (`family: base | source: filename`), and appends ` | LoRA applied: <name> (distilled: <family>)`
+  when a distillation LoRA was applied. The user always sees the real checkpoint family while the
+  downstream `detected_family` value already carries the effective (LoRA-folded) family — no extra
+  `distilled` output/input is needed; wire `detected_family` into the Writer / Scene Builder `family`
+  input as before.
 
 ---
 

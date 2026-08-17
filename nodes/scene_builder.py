@@ -98,7 +98,7 @@ class LLMPromptStudioSceneBuilder:
                    prompt_mode="auto", family="", unique_id=None,
                    flash_attention=None, offload_kv_cache_to_gpu=None, reasoning="off",
                     repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
-                    load_model_profile="auto", server_status=""):
+                     load_model_profile="auto", server_status=""):
         _t0 = time.time()
         log_node_enter("Scene Builder", unique_id, {
             "stage": stage, "server_url": server_url, "model": model,
@@ -113,7 +113,7 @@ class LLMPromptStudioSceneBuilder:
                              vision_check, description_view, prompt_mode, family, unique_id, _t0,
                              flash_attention, offload_kv_cache_to_gpu, reasoning,
                               repeat_penalty, top_k, top_p, min_p,
-                              load_model_profile)
+                               load_model_profile)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
@@ -123,7 +123,7 @@ class LLMPromptStudioSceneBuilder:
               max_tokens, max_field_retries, vision_check, description_view, prompt_mode, family,
               unique_id, _t0, flash_attention, offload_kv_cache_to_gpu, reasoning,
                repeat_penalty, top_k, top_p, min_p,
-               load_model_profile="auto"):
+                 load_model_profile="auto"):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -204,7 +204,7 @@ class LLMPromptStudioSceneBuilder:
         else:
             no_negative = is_no_negative_family(family)
         logger.info("Scene Builder prompt mode: %s (family=%r) -> no_negative=%s",
-                    prompt_mode, family, no_negative)
+                     prompt_mode, family, no_negative)
 
         # Mirror the Writer: only switch to the no-negative composer when we are actually in
         # no-negative mode; otherwise keep the standard composer verbatim so a real negative

@@ -47,8 +47,8 @@ class LLMPromptStudioSmartLoader:
             model, clip, vae_model = out[:3]
 
             # Checkpoint family: manual override wins, otherwise detection by name + metadata.
-            # This (not the LoRA) drives the auto-apply decision below, so a distillation LoRA
-            # is still only auto-added to a non-distilled (base) checkpoint.
+            # This drives the LoRA auto-apply decision below, so a distillation LoRA is still
+            # only auto-added to a non-distilled (base) checkpoint.
             if family_override != "auto":
                 ckpt_family = family_override
                 ckpt_source = "override"
@@ -58,22 +58,32 @@ class LLMPromptStudioSmartLoader:
             # LoRA is applied when forced, or in auto mode for non-distilled (base) models
             should_apply = (apply_lora == "always") or \
                            (apply_lora == "auto" and ckpt_family == "base")
+            applied_distilled_lora = False
+            lora_family = "base"
             if should_apply and lora_name and lora_name != "[none]":
                 lora_path = folder_paths.get_full_path("loras", lora_name)
                 lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
                 model, _ = comfy.sd.load_lora_for_models(
                     model, clip, lora, strength_model, 0)
-
-            # Reported family: when a distillation LoRA was actually applied it makes the
-            # effective model distilled, so surface that to downstream nodes (e.g. the Writer's
-            # no-negative auto-detection). Falls back to the checkpoint family otherwise.
-            detected = ckpt_family
-            source = ckpt_source
-            if should_apply and lora_name and lora_name != "[none]":
+                # A distillation LoRA (dmd/lcm/turbo/hyper/lightning/flash) applied on top of a
+                # base checkpoint makes the whole pipeline distilled, so it drives no-negative
+                # mode downstream.
                 lora_family = detect_checkpoint_family(lora_name)
                 if lora_family != "base":
-                    detected = lora_family
-                    source = "lora_metadata"
+                    applied_distilled_lora = True
+
+            # Effective family (with the distillation LoRA folded in) drives downstream
+            # no-negative auto mode. When a base checkpoint gets a distilled LoRA, the effective
+            # family becomes the LoRA's family; otherwise it stays the checkpoint's own family.
+            detected = lora_family if (should_apply and applied_distilled_lora) else ckpt_family
+            source = ckpt_source
+
+            # The visible widget shows the ORIGINAL checkpoint family plus a notification when a
+            # distillation LoRA was applied (so the user always sees the true checkpoint family,
+            # not the LoRA's), while `detected_family` above already carries the effective family.
+            lora_note = ""
+            if should_apply and applied_distilled_lora:
+                lora_note = " | LoRA applied: %s (distilled: %s)" % (lora_name, lora_family)
 
             # User VAE falls back to the built-in one when nothing is selected
             if vae_user and vae_user != "[none]":
@@ -82,7 +92,8 @@ class LLMPromptStudioSmartLoader:
             else:
                 vae_user_obj = vae_model
 
-            # Human-readable provenance for the UI widget ("family: turbo | source: filename").
-            family_info = "family: %s | source: %s" % (detected, source)
+            # Human-readable provenance for the UI widget: original checkpoint family, detection
+            # source, and — when relevant — a note that a distillation LoRA was applied.
+            family_info = "family: %s | source: %s%s" % (ckpt_family, source, lora_note)
             return {"ui": {"family": [detected], "family_info": [family_info]},
                     "result": (model, clip, vae_model, vae_user_obj, detected, family_info)}
