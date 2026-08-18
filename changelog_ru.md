@@ -6,6 +6,33 @@
 
 ---
 
+## [1.1.5] — 2026-08-18
+
+Добавлены ноды **LLM Prompt Studio Smart Parameters**, которые рекомендуют параметры KSampler
+(steps / cfg / sampler / scheduler) по определённому семейству чекпоинта.
+
+### Добавлено
+- **Нода `LLM Prompt Studio Smart Parameters`** — выдаёт `steps`, `cfg`, `sampler_name`,
+  `scheduler` (COMBO) и `info`, подключаемые напрямую к обычному `KSampler`. Полная обратная
+  совместимость: список шедулеров не содержит AYS/GITS.
+- **Нода `LLM Prompt Studio Smart Parameters (Efficient)`** — те же выходы, но COMBO шедулера
+  также включает `AYS SD1 / AYS SDXL / AYS SVD / GITS`, поэтому линкуется к Efficient KSampler
+  (jags111). Для дистиллированных семейств рекомендует `AYS SDXL` на пресетах balanced/speed.
+- Рекомендованные параметры для `base`, `lightning`, `hyper`, `dmd`, `turbo`, `lcm`, `tcd`,
+  `pcm`, `flash`, `schnell` по трём пресетам (`balanced` / `speed` / `quality`) в
+  `nodes/_distilled_presets.py` (чистый Python, без импорта `comfy` — тестируется headless).
+- **Роут `GET /llm_prompt_studio/sampler_params`** возвращает рекомендацию для заданных
+  `family` / `preset` / `ckpt` / `target`; веб-интерфейс вызывает его для автозаполнения виджетов.
+- Автозаполнение в вебе: при создании и при изменении `detected_family` / `family_override` /
+  `preset` / `ckpt_name` нода запрашивает рекомендации и заполняет редактируемые виджеты — кроме
+  случая ручного редактирования виджета (dirty-флаг сохраняется). Сентинел `auto` внедряется в
+  сохранённые workflow, чтобы загрузка никогда не выдавала «Value not in list».
+
+### Удалено
+- Ничего.
+
+---
+
 ## [1.1.4] — 2026-08-17
 
 Обзор корректности оценки `update3`/`update4` (`plans/update3.md`, `plans/update4.md`).

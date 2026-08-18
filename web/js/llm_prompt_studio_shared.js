@@ -53,6 +53,19 @@ export function isSmartLoader(node) {
               getW(node, "ckpt_name"));
 }
 
+export function isSmartParams(node) {
+    if (cls(node) === "LLMPromptStudioSmartParameters" ||
+        cls(node) === "LLMPromptStudioSmartParametersEfficient") return true;
+    return !!(getW(node, "preset") && getW(node, "family_override") &&
+              getW(node, "sampler_name") && getW(node, "scheduler"));
+}
+
+// The Efficient variant exposes AYS/GITS schedulers; the standard one does not.
+export function smartParamsTarget(node) {
+    return cls(node) === "LLMPromptStudioSmartParametersEfficient"
+        ? "efficient" : "standard";
+}
+
 // ---------------------------------------------------------------------------
 // API wrappers
 // ---------------------------------------------------------------------------

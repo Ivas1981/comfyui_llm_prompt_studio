@@ -95,6 +95,26 @@ async def llm_prompt_studio_library_scenes(request):
         return web.json_response({"scenes": [], "error": str(e)})
 
 
+@PromptServer.instance.routes.get("/llm_prompt_studio/sampler_params")
+async def llm_prompt_studio_sampler_params(request):
+    """Recommend sampler parameters for a checkpoint family / preset / target.
+
+    Query params: ``family``, ``preset`` (balanced|speed|quality), ``ckpt`` (filename),
+    ``target`` (standard|efficient). ``target`` is chosen by the front-end from the node
+    type so the returned scheduler list matches the destination KSampler exactly.
+    """
+    family = request.query.get("family", "")
+    preset = request.query.get("preset", "balanced")
+    ckpt = request.query.get("ckpt", "")
+    target = request.query.get("target", "standard")
+    try:
+        from .nodes._distilled_presets import recommend
+        rec = recommend(family, preset, ckpt or "", target=target or "standard")
+        return web.json_response(rec)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
 @PromptServer.instance.routes.post("/llm_prompt_studio/library/scene")
 async def llm_prompt_studio_library_scene(request):
     try:

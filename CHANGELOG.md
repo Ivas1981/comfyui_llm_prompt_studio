@@ -6,6 +6,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.5] — 2026-08-18
+
+Added the **LLM Prompt Studio Smart Parameters** nodes that recommend KSampler parameters
+(steps / cfg / sampler / scheduler) from the detected checkpoint family.
+
+### Added
+- **`LLM Prompt Studio Smart Parameters`** node — emits `steps`, `cfg`, `sampler_name`,
+  `scheduler` (COMBO) and `info` connectable directly into a standard `KSampler`. Full
+  backward compatibility: the scheduler list contains no AYS/GITS.
+- **`LLM Prompt Studio Smart Parameters (Efficient)`** node — same outputs but the scheduler
+  COMBO also exposes `AYS SD1 / AYS SDXL / AYS SVD / GITS`, so it links to an Efficient
+  KSampler (jags111). For distilled families it recommends `AYS SDXL` at the balanced/speed
+  presets.
+- Per-family recommended parameters for `base`, `lightning`, `hyper`, `dmd`, `turbo`, `lcm`,
+  `tcd`, `pcm`, `flash`, `schnell` across three presets (`balanced` / `speed` / `quality`),
+  in `nodes/_distilled_presets.py` (pure Python, no `comfy` import — unit-testable headless).
+- **`GET /llm_prompt_studio/sampler_params`** route returning the recommendation for a given
+  `family` / `preset` / `ckpt` / `target`; the web UI calls it to autofill the widgets.
+- Web autofill: on creation and whenever `detected_family` / `family_override` / `preset` /
+  `ckpt_name` change, the node fetches recommendations and fills the editable widgets — unless
+  a widget has been manually edited (dirty-flag), which is preserved. The `auto` sentinel is
+  injected into saved workflows so loading never trips "Value not in list".
+
+### Removed
+- Nothing.
+
+---
+
 ## [1.1.4] — 2026-08-17
 
 Correctness review of the `update3`/`update4` assessment (`plans/update3.md`,

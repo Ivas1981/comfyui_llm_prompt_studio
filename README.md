@@ -31,7 +31,10 @@ No cloud, no API keys required — everything runs on your machine.
   no-negative mode auto-enables downstream) and `detected_family_info` with the detection provenance
   (`filename` / `metadata` / `base` / `override`). The widget shows the checkpoint's **own** family
   and a notification when a distillation LoRA was applied, e.g.
-  `family: base | source: filename | LoRA applied: dmd_lora.safetensors (distilled: dmd)`.
+   `family: base | source: filename | LoRA applied: dmd_lora.safetensors (distilled: dmd)`.
+- **Smart Parameters** — recommends KSampler `steps` / `cfg` / `sampler` / `scheduler` from the
+  detected checkpoint family (wired from the Smart Loader's `detected_family`); emits them as COMBO
+  outputs that plug straight into a standard or Efficient `KSampler`.
 - **LM Studio server-status indicator** — Writer / Image Critic / Scene Builder show a live
   `server_status` widget (`● Connected — <loaded model names>` / `● Connected (no model loaded)` /
   `● Server down`), polled from the pack's status route every few seconds.
@@ -304,6 +307,35 @@ Loads a checkpoint and handles distillation LoRA automatically.
 - `VAE_USER` falls back to the checkpoint's built-in VAE when `vae_user = [none]`.
   Use `VAE_USER` downstream so the output is never empty.
 - The node title shows the detected family.
+
+### LLM Prompt Studio Smart Parameters
+
+Recommends KSampler parameters from the checkpoint family so you don't have to look them up.
+There are **two** variants because ComfyUI validates a COMBO output by its *exact* option list
+at link time, so a single node cannot switch its scheduler list at runtime:
+
+- **LLM Prompt Studio Smart Parameters** → wire into a **standard `KSampler`**. The
+  `scheduler` COMBO is the standard list (no AYS/GITS) for full backward compatibility.
+- **LLM Prompt Studio Smart Parameters (Efficient)** → wire into an **Efficient KSampler**
+  (jags111). Its `scheduler` COMBO additionally exposes `AYS SD1 / AYS SDXL / AYS SVD / GITS`;
+  for distilled families it recommends **`AYS SDXL`** at the `balanced`/`speed` presets.
+
+Both variants share the same inputs/outputs:
+- **Inputs:** `family_override` (auto / family), `preset` (`balanced` / `speed` / `quality`),
+  `steps`, `cfg`, `sampler_name`, `scheduler`, plus optional `detected_family`
+  (wire the Smart Loader's `detected_family` output here) and `ckpt_name`.
+- **Outputs:** `steps` (INT), `cfg` (FLOAT), `sampler_name` (COMBO), `scheduler` (COMBO), `info`
+  (STRING).
+- The effective family is `detected_family` if wired (it already folds in a distillation LoRA),
+  otherwise `family_override` (or `base`). Recommended values come from a per-family table;
+  for known Lightning/Hyper checkpoints the step count can also be read from the filename
+  (`SDXL-Lightning_4step` → 4 steps). The efficient node swaps in `AYS SDXL` for distilled
+  families at the low-step presets.
+- **Sentinels:** leave `steps`/`cfg` at `0`/`-1.0` and `sampler_name`/`scheduler` at `auto`
+  to use the recommendation. Any value you type manually overrides the recommendation and is
+  preserved on reload (the web UI only autofills widgets you have not edited).
+- The web UI autofills the widgets from the `/llm_prompt_studio/sampler_params` route when the
+  family/preset/checkpoint changes.
 
 ### LLM Prompt Studio Multi-CLIP SDXL
 

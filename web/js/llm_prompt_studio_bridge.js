@@ -4,6 +4,7 @@ import { api } from "/scripts/api.js";
 import {
     getW,
     isWriter, isCritic, isSmartSave, isLoader, isScene, isSmartLoader,
+    isSmartParams, smartParamsTarget, getJSON,
     lastSaveData, loopCounters,
 } from "./llm_prompt_studio_shared.js";
 
@@ -30,6 +31,86 @@ function upstreamWriter(criticNode) {
 }
 
 // ---------------------------------------------------------------------------
+// Smart Parameters: recommend sampler params and autofill (unless user edited)
+// ---------------------------------------------------------------------------
+const SP_EDITABLE = ["steps", "cfg", "sampler_name", "scheduler"];
+const SP_TRIGGERS = ["family_override", "preset", "detected_family", "ckpt_name"];
+
+async function autoFillParams(node) {
+    const famW = getW(node, "family_override");
+    const presetW = getW(node, "preset");
+    const detectedW = getW(node, "detected_family");
+    const ckptW = getW(node, "ckpt_name");
+    const target = smartParamsTarget(node);
+    // detected_family (when wired from Smart Loader) drives the effective family.
+    const family = (detectedW && detectedW.value) ? detectedW.value
+                 : (famW ? famW.value : "auto");
+    const params = new URLSearchParams({
+        family: family || "auto",
+        preset: presetW ? presetW.value : "balanced",
+        ckpt: ckptW ? ckptW.value : "",
+        target: target,
+    });
+    let rec;
+    try {
+        rec = await getJSON("/llm_prompt_studio/sampler_params?" + params.toString());
+    } catch (e) {
+        return;  // server unreachable — leave widgets as-is
+    }
+    if (!rec || rec.error) return;
+    node._sp_applying = true;
+    try {
+        const setIfClean = (name, val) => {
+            const w = getW(node, name);
+            if (!w || w._sp_dirty) return;
+            w.value = val;
+        };
+        setIfClean("steps", rec.steps);
+        setIfClean("cfg", rec.cfg);
+        setIfClean("sampler_name", rec.sampler);
+        setIfClean("scheduler", rec.scheduler);
+    } finally {
+        node._sp_applying = false;
+    }
+    app.graph.setDirtyCanvas(true, true);
+}
+
+function setupSmartParams(node) {
+    if (node._sp_setup) return;
+    node._sp_setup = true;
+    // Mark a widget dirty only on genuine user edits (not our programmatic fills).
+    for (const name of SP_EDITABLE) {
+        const w = getW(node, name);
+        if (!w) continue;
+        w._sp_dirty = false;
+        const orig = w.callback;
+        w.callback = function () {
+            if (!node._sp_applying) w._sp_dirty = true;
+            if (orig) return orig.apply(this, arguments);
+        };
+    }
+    // Recompute recommendations when an input that affects them changes.
+    for (const name of SP_TRIGGERS) {
+        const w = getW(node, name);
+        if (!w) continue;
+        const orig = w.callback;
+        w.callback = function () {
+            const r = orig ? orig.apply(this, arguments) : undefined;
+            setTimeout(() => autoFillParams(node), 0);
+            return r;
+        };
+    }
+    // When detected_family is connected/disconnected, the effective family changes.
+    const origConn = node.onConnectionsChange;
+    node.onConnectionsChange = function (type, index, connected, link_info) {
+        if (origConn) origConn.apply(this, arguments);
+        setTimeout(() => autoFillParams(node), 0);
+    };
+    // Initial fill once the graph is built.
+    setTimeout(() => autoFillParams(node), 400);
+}
+
+// ---------------------------------------------------------------------------
 // Button registration
 // ---------------------------------------------------------------------------
 function addButton(node, label, handler) {
@@ -47,7 +128,9 @@ app.registerExtension({
     // even when the server list hasn't arrived.
     beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (!["LLMPromptStudioWriter", "LLMPromptStudioCritic",
-              "LLMPromptStudioSceneBuilder"].includes(nodeData.name)) {
+              "LLMPromptStudioSceneBuilder",
+              "LLMPromptStudioSmartParameters",
+              "LLMPromptStudioSmartParametersEfficient"].includes(nodeData.name)) {
             return;
         }
         const configure = nodeType.prototype.configure;
@@ -61,6 +144,15 @@ app.registerExtension({
                     vi++;
                     if (w.name === "model" && w.options && Array.isArray(w.options.values)
                             && v != null && !w.options.values.includes(v)) {
+                        w.options.values = w.options.values.concat(v);
+                    }
+                    // Smart Parameters: a saved workflow may store the "auto" sentinel in
+                    // the sampler_name/scheduler combos; inject it so validation passes
+                    // before the server list (for efficient: AYS/GITS) is populated.
+                    if ((w.name === "sampler_name" || w.name === "scheduler")
+                            && w.options && Array.isArray(w.options.values)
+                            && v != null && !w.options.values.includes(v)
+                            && typeof v === "string" && v !== "") {
                         w.options.values = w.options.values.concat(v);
                     }
                 }
@@ -93,6 +185,9 @@ app.registerExtension({
         }
         if (isLoader(node)) {
             addButton(node, "🔄 Refresh scene list", () => refreshScenes(node));
+        }
+        if (isSmartParams(node)) {
+            setupSmartParams(node);
         }
         // Auto-populate the model list on creation so a saved workflow whose model is not
         // yet in the combo validates without requiring a manual Refresh first. Deferred so it

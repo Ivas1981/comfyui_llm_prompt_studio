@@ -23,6 +23,31 @@ if "folder_paths" not in sys.modules:
     _fp.get_output_directory.return_value = os.path.join(_PKG_ROOT, "tests", "_output")
     sys.modules["folder_paths"] = _fp
 
+# comfy.samplers is needed by the Smart Parameters node at import time (it builds the
+# COMBO option tuples from KSampler.SAMPLERS / KSampler.SCHEDULERS). Stub it for
+# standalone tests so ``import comfyui_llm_prompt_studio.nodes`` does not require a full
+# ComfyUI install. The stub exposes the real option lists (a representative subset) so
+# RETURN_TYPES / INPUT_TYPES can be validated without a GPU.
+if "comfy" not in sys.modules or "comfy.samplers" not in sys.modules:
+    _comfy = sys.modules.get("comfy", types.ModuleType("comfy"))
+    _samplers = types.ModuleType("comfy.samplers")
+
+    class _KSampler:
+        SAMPLERS = (
+            "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms",
+            "dpmpp_2s_ancestral", "dpmpp_2m", "dpmpp_sde", "dpmpp_2m_sde",
+            "dpmpp_3m_sde", "ddpm", "lcm", "ddim", "uni_pc", "uni_pc_bh2",
+        )
+        SCHEDULERS = (
+            "normal", "karras", "exponential", "sgm_uniform", "simple",
+            "ddim_uniform", "beta", "linear_quadratic", "kl_optimal",
+        )
+
+    _samplers.KSampler = _KSampler
+    _comfy.samplers = _samplers
+    sys.modules["comfy"] = _comfy
+    sys.modules["comfy.samplers"] = _samplers
+
 # The on-disk model cache lives inside the package directory and is read by ComfyUI at
 # node-load time. Tests that exercise ensure_model_loaded() call remember_model(), which
 # would otherwise persist the test model id (e.g. "m") into that file and pollute the real
