@@ -36,9 +36,9 @@ No cloud, no API keys required — everything runs on your machine.
    `detected_architecture` / `detected_architecture_info`; wire `detected_architecture` into the
    Writer / Scene Builder `architecture` input to tailor token style and negatives per base model
    (SDXL generation is unchanged when the input is left empty).
-- **Smart Parameters** — recommends KSampler `steps` / `cfg` / `sampler` / `scheduler` from the
-  detected checkpoint family (wired from the Smart Loader's `detected_family`); emits them as COMBO
-  outputs that plug straight into a standard or Efficient `KSampler`.
+ - **Smart Parameters** — recommends KSampler `steps` / `cfg` / `sampler` / `scheduler` from the
+   detected checkpoint family (wired from the Smart Loader's `detected_family`); emits them as COMBO
+   outputs that plug straight into a `KSampler` (one full scheduler list including AYS SD1/SDXL/SVD and GITS).
 - **LM Studio server-status indicator** — Writer / Image Critic / Scene Builder show a live
   `server_status` widget (`● Connected — <loaded model names>` / `● Connected (no model loaded)` /
   `● Server down`), polled from the pack's status route every few seconds.
@@ -318,28 +318,29 @@ Loads a checkpoint and handles distillation LoRA automatically.
 
 ### LLM Prompt Studio Smart Parameters
 
-Recommends KSampler parameters from the checkpoint family so you don't have to look them up.
-There are **two** variants because ComfyUI validates a COMBO output by its *exact* option list
-at link time, so a single node cannot switch its scheduler list at runtime:
+Recommends KSampler `steps` / `cfg` / `sampler` / `scheduler` from the checkpoint family so you
+don't have to look them up. There is a **single** node — it uses one full scheduler list
+(standard ComfyUI schedulers plus `AYS SD1` / `AYS SDXL` / `AYS SVD` / `GITS`) that the studio's
+own KSampler supports, so no `target`/"Efficient" split is needed.
 
-- **LLM Prompt Studio Smart Parameters** → wire into a **standard `KSampler`**. The
-  `scheduler` COMBO is the standard list (no AYS/GITS) for full backward compatibility.
-- **LLM Prompt Studio Smart Parameters (Efficient)** → wire into an **Efficient KSampler**
-  (jags111). Its `scheduler` COMBO additionally exposes `AYS SD1 / AYS SDXL / AYS SVD / GITS`;
-  for distilled families it recommends **`AYS SDXL`** at the `balanced`/`speed` presets.
-
-Both variants share the same inputs/outputs:
-- **Inputs:** `family_override` (auto / family), `preset` (`balanced` / `speed` / `quality`),
+- **Inputs:** `family_override` (auto / family), `preset` (`user` / `balanced` / `speed` / `quality`),
   `steps`, `cfg`, `sampler_name`, `scheduler`, plus optional `detected_family`
   (wire the Smart Loader's `detected_family` output here), `ckpt_name`, and `architecture`
   (wire the Smart Loader's `detected_architecture` output here).
 - **Outputs:** `steps` (INT), `cfg` (FLOAT), `sampler_name` (COMBO), `scheduler` (COMBO), `info`
   (STRING).
-- The effective family is `detected_family` if wired (it already folds in a distillation LoRA),
-  otherwise `family_override` (or `base`). Recommended values come from a per-family table;
-  for known Lightning/Hyper checkpoints the step count can also be read from the filename
-  (`SDXL-Lightning_4step` → 4 steps). The efficient node swaps in `AYS SDXL` for distilled
-  families at the low-step presets.
+- **Presets:** `user` passes your widget values through unchanged; `balanced` / `speed` / `quality`
+  pick a recommended steps/cfg/sampler row (quality = highest step count, speed = lowest).
+- **Family detection:** the effective family is resolved in this order — `detected_family` (if
+  wired, from the Smart Loader; it already folds in a distillation LoRA), then `family_override`,
+  then auto-detection from the checkpoint **filename**, its safetensors **metadata**, and its
+  **parent folder name** (so a generically-named file inside a `Lightning/` folder is still
+  recognized). For known Lightning/Hyper checkpoints the step count can also be read from the
+  filename (`SDXL-Lightning_4step` → 4 steps).
+- **AYS SDXL for distilled families:** for distilled families (lightning, hyper, dmd, turbo, lcm,
+  tcd, pcm, flash, schnell) the node recommends **`AYS SDXL`** at the `balanced`/`speed` presets;
+  any family present in `model_meta.FAMILY_MARKERS` that has no hand-written row gets sane generic
+  distilled defaults automatically.
 - **Architecture awareness:** when the resolved family is `base` and a known `architecture` is
   wired in (SD1.5 / Pony / Illustrious / Flux / SD3), the node recommends that base
   architecture's own sampler defaults (e.g. Flux → 24 steps, cfg 1.0, euler/simple; SD1.5 →

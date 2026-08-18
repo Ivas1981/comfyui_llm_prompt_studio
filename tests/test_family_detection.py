@@ -21,6 +21,30 @@ def _detect(name, metadata, tmp_path):
         return model_meta.detect_checkpoint_family(name)
 
 
+def test_detect_family_from_parent_folder(tmp_path):
+    # A generically-named file inside a family-named folder is still recognized because
+    # detect_checkpoint_family() scans the immediate parent folder name.
+    folder = tmp_path / "Lightning"
+    folder.mkdir()
+    fake = folder / "model.safetensors"
+    fake.write_bytes(b"")
+    with patch.object(model_meta, "read_safetensors_metadata", return_value={}), \
+         patch.object(model_meta.folder_paths, "get_full_path", return_value=str(fake)):
+        assert model_meta.detect_checkpoint_family("model.safetensors") == "lightning"
+
+
+def test_detect_family_from_parent_folder(tmp_path):
+    # A generically-named file inside a family-named folder is still recognized because
+    # detect_checkpoint_family() scans the immediate parent folder name.
+    folder = tmp_path / "Lightning"
+    folder.mkdir()
+    fake = folder / "model.safetensors"
+    fake.write_bytes(b"")
+    with patch.object(model_meta, "read_safetensors_metadata", return_value={}), \
+         patch.object(model_meta.folder_paths, "get_full_path", return_value=str(fake)):
+        assert model_meta.detect_checkpoint_family("model.safetensors") == "lightning"
+
+
 def test_flash_resolves_when_flash_attention_in_metadata(tmp_path):
     # B2 regression: a real Flash checkpoint whose metadata mentions flash_attention must
     # still resolve to "flash". The old code blanket-skipped every flash match whenever

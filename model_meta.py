@@ -295,6 +295,12 @@ def detect_checkpoint_family(ckpt_name: str) -> str:
         # own metadata is also consulted instead of only its filename.
         full_path = folder_paths.get_full_path("loras", ckpt_name)
     if full_path and os.path.isfile(full_path):
+        # Append the immediate parent folder name so a generically-named file inside a
+        # family-named folder (e.g. ``models/checkpoints/Lightning/model.safetensors``) is
+        # still recognized. Only the immediate parent is scanned to limit false hits.
+        parent = os.path.basename(os.path.dirname(full_path))
+        if parent:
+            text += " " + parent
         meta = read_safetensors_metadata(full_path)
         if meta:
             text += " " + _meta_text(meta)

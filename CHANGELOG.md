@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.8] — 2026-08-18
+
+Family-aware distilled sampler presets for the Smart Parameters node, plus checkpoint
+family auto-detection and clearer node UI hints.
+
+### Added
+- **Distilled sampler presets.** The Smart Parameters node now recommends steps/cfg/sampler
+  per checkpoint family (lightning, hyper, dmd, turbo, lcm, tcd, pcm, flash, schnell) and
+  switches distilled families to the **AYS SDXL** scheduler at the `balanced`/`speed`
+  presets (the studio KSampler supports AYS natively). The `target`/"Efficient" bifurcation
+  was removed — one full scheduler list (standard + AYS SD1/SDXL/SVD + GITS) is used
+  everywhere.
+- **Generic distilled fallback.** Any family present in `model_meta.FAMILY_MARKERS` gets sane
+  distilled defaults automatically, even without a hand-written preset row.
+- **Family auto-detection by path.** `detect_checkpoint_family()` now also scans the
+  checkpoint's parent folder name, so generically-named files inside a family-named folder
+  are still recognized.
+- **Node self-detection.** When no `detected_family`/`family_override` is given, the node
+  auto-detects the family from the checkpoint filename, metadata, and folder.
+- **Node UI hints.** Added a node `DESCRIPTION` and tooltips on the family/preset/ckpt_name
+  inputs.
+
+### Changed
+- Smart Parameters `sampler_params` route and web autofill updated for the unified
+  scheduler list (no `target`).
+
 ## [1.1.7] — 2026-08-18
 
 Made every node behave correctly with non-SDXL checkpoints (SD1.5 / SD3 / Flux / Pony /

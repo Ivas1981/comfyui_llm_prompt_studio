@@ -33,7 +33,7 @@ async def llm_prompt_studio_status(request):
     api_key = request.query.get("api_key", "")
     try:
         status = server_status(server_url, api_key)
-    except Exception as e:  # noqa: BLE001 — never let the route crash
+    except Exception as e:  # noqa: BLE001 - never let the route crash
         status = {"reachable": False, "loaded_models": [], "error": str(e)}
     return web.json_response(status)
 
@@ -97,21 +97,20 @@ async def llm_prompt_studio_library_scenes(request):
 
 @PromptServer.instance.routes.get("/llm_prompt_studio/sampler_params")
 async def llm_prompt_studio_sampler_params(request):
-    """Recommend sampler parameters for a checkpoint family / preset / target.
+    """Recommend sampler parameters for a checkpoint family / preset.
 
-    Query params: ``family``, ``preset`` (balanced|speed|quality), ``ckpt`` (filename),
-    ``target`` (standard|efficient). ``target`` is chosen by the front-end from the node
-    type so the returned scheduler list matches the destination KSampler exactly.
+    Query params: ``family``, ``preset`` (balanced|speed|quality|user),
+    ``ckpt`` (filename), ``arch`` (base architecture). The studio KSampler supports
+    the full scheduler list (standard + AYS SD1/SDXL/SVD + GITS), so there is no
+    ``target`` parameter - the returned scheduler always matches the destination.
     """
     family = request.query.get("family", "")
     preset = request.query.get("preset", "balanced")
     ckpt = request.query.get("ckpt", "")
-    target = request.query.get("target", "standard")
     arch = request.query.get("arch", "")
     try:
         from .nodes._distilled_presets import recommend
-        rec = recommend(family, preset, ckpt or "", target=target or "standard",
-                        architecture=arch or "")
+        rec = recommend(family, preset, ckpt or "", architecture=arch or "")
         return web.json_response(rec)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)

@@ -4,7 +4,7 @@ import { api } from "/scripts/api.js";
 import {
     getW,
     isWriter, isCritic, isSmartSave, isLoader, isScene, isSmartLoader,
-    isSmartParams, smartParamsTarget, getJSON,
+    isSmartParams, getJSON,
     lastSaveData, loopCounters,
 } from "./llm_prompt_studio_shared.js";
 
@@ -37,25 +37,27 @@ const SP_EDITABLE = ["steps", "cfg", "sampler_name", "scheduler"];
 const SP_TRIGGERS = ["family_override", "preset", "detected_family", "ckpt_name"];
 
 async function autoFillParams(node) {
-    const famW = getW(node, "family_override");
     const presetW = getW(node, "preset");
+    // The "user" preset means "use whatever the user typed" - never overwrite it.
+    const preset = presetW ? presetW.value : "user";
+    if (preset === "user") return;
+
+    const famW = getW(node, "family_override");
     const detectedW = getW(node, "detected_family");
     const ckptW = getW(node, "ckpt_name");
-    const target = smartParamsTarget(node);
     // detected_family (when wired from Smart Loader) drives the effective family.
     const family = (detectedW && detectedW.value) ? detectedW.value
                  : (famW ? famW.value : "auto");
     const params = new URLSearchParams({
         family: family || "auto",
-        preset: presetW ? presetW.value : "balanced",
+        preset: preset,
         ckpt: ckptW ? ckptW.value : "",
-        target: target,
     });
     let rec;
     try {
         rec = await getJSON("/llm_prompt_studio/sampler_params?" + params.toString());
     } catch (e) {
-        return;  // server unreachable — leave widgets as-is
+        return;  // server unreachable - leave widgets as-is
     }
     if (!rec || rec.error) return;
     node._sp_applying = true;
@@ -129,8 +131,7 @@ app.registerExtension({
     beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (!["LLMPromptStudioWriter", "LLMPromptStudioCritic",
               "LLMPromptStudioSceneBuilder",
-              "LLMPromptStudioSmartParameters",
-              "LLMPromptStudioSmartParametersEfficient"].includes(nodeData.name)) {
+              "LLMPromptStudioSmartParameters"].includes(nodeData.name)) {
             return;
         }
         const configure = nodeType.prototype.configure;
@@ -148,7 +149,7 @@ app.registerExtension({
                     }
                     // Smart Parameters: a saved workflow may store the "auto" sentinel in
                     // the sampler_name/scheduler combos; inject it so validation passes
-                    // before the server list (for efficient: AYS/GITS) is populated.
+                    // before the server list (full scheduler list) is populated.
                     if ((w.name === "sampler_name" || w.name === "scheduler")
                             && w.options && Array.isArray(w.options.values)
                             && v != null && !w.options.values.includes(v)
@@ -163,28 +164,28 @@ app.registerExtension({
 
     nodeCreated(node) {
         if (isWriter(node) || isCritic(node)) {
-            addButton(node, "🔄 Refresh models", () => refreshModels(node));
+            addButton(node, "Refresh models", () => refreshModels(node));
         }
         if (isWriter(node)) {
-            addButton(node, "🎨 Reload presets", () => reloadPresets(node));
-            addButton(node, "♻️ Reset presets", () => resetPresets(node));
-            addButton(node, "📋 Copy presets path", () => copyPresetsPath(node));
+            addButton(node, "Reload presets", () => reloadPresets(node));
+            addButton(node, "Reset presets", () => resetPresets(node));
+            addButton(node, "Copy presets path", () => copyPresetsPath(node));
         }
         if (isScene(node)) {
-            addButton(node, "→ Send to Writer", () => sendToWriter(node));
+            addButton(node, "-> Send to Writer", () => sendToWriter(node));
             // Scene Builder also has a model combo, so give it the same manual refresh.
-            addButton(node, "🔄 Refresh models", () => refreshModels(node));
+            addButton(node, "Refresh models", () => refreshModels(node));
         }
         if (isWriter(node) || isCritic(node) || isScene(node)) {
-            addButton(node, "⚙ Advanced settings", () => toggleAdvancedSettings(node));
+            addButton(node, "Advanced settings", () => toggleAdvancedSettings(node));
             // Collapse by default, but defer so the widget DOM rows exist before we hide them.
             setTimeout(() => setAdvancedCollapsed(node, true), 0);
         }
         if (isSmartSave(node)) {
-            addButton(node, "💾 Save prompt to library", () => saveToLibrary(node));
+            addButton(node, "Save prompt to library", () => saveToLibrary(node));
         }
         if (isLoader(node)) {
-            addButton(node, "🔄 Refresh scene list", () => refreshScenes(node));
+            addButton(node, "Refresh scene list", () => refreshScenes(node));
         }
         if (isSmartParams(node)) {
             setupSmartParams(node);
@@ -218,8 +219,8 @@ api.addEventListener("executed", (e) => {
         const approved = output.approved ? output.approved[0] : false;
         const notes = output.revision_notes ? output.revision_notes[0] : "";
         if (score !== null && score !== undefined) {
-            node.title = "LLM Prompt Studio Image Critic — score " + score +
-                         (approved ? "  ✓ approved" : "  ✗ rejected");
+            node.title = "LLM Prompt Studio Image Critic - score " + score +
+                         (approved ? "  approved" : "  rejected");
         }
         const rv = getW(node, "revision_view");
         if (rv) rv.value = notes;
@@ -285,7 +286,7 @@ api.addEventListener("executed", (e) => {
         const family = output.family ? output.family[0] : "";
         const info = output.family_info ? output.family_info[0] : "";
         if (family) {
-            node.title = "LLM Prompt Studio Smart Loader — family: " + family;
+            node.title = "LLM Prompt Studio Smart Loader - family: " + family;
             app.graph.setDirtyCanvas(true, true);
         }
         const fiw = getW(node, "detected_family_info");

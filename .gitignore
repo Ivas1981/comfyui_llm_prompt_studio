@@ -33,3 +33,7 @@ plans/
 # Local-only working folders (kept on disk, never pushed to GitHub)
 research/
 docs/TestModels.md
+
+# Model weights (downloaded at runtime: YOLO face detectors, latent upscalers, …).
+# Never commit these large binaries.
+models/

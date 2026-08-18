@@ -1,9 +1,9 @@
 import { api } from "/scripts/api.js";
 
-// Placeholders — MUST match the values in constants.py
-export const PH_DOWN   = "— server unavailable —";
-export const PH_EMPTY  = "— no models on server —";
-export const LIB_EMPTY = "— library is empty —";
+// Placeholders - MUST match the values in constants.py
+export const PH_DOWN   = "- server unavailable -";
+export const PH_EMPTY  = "- no models on server -";
+export const LIB_EMPTY = "- library is empty -";
 
 // ---------------------------------------------------------------------------
 // Widget / node helpers
@@ -54,16 +54,9 @@ export function isSmartLoader(node) {
 }
 
 export function isSmartParams(node) {
-    if (cls(node) === "LLMPromptStudioSmartParameters" ||
-        cls(node) === "LLMPromptStudioSmartParametersEfficient") return true;
+    if (cls(node) === "LLMPromptStudioSmartParameters") return true;
     return !!(getW(node, "preset") && getW(node, "family_override") &&
               getW(node, "sampler_name") && getW(node, "scheduler"));
-}
-
-// The Efficient variant exposes AYS/GITS schedulers; the standard one does not.
-export function smartParamsTarget(node) {
-    return cls(node) === "LLMPromptStudioSmartParametersEfficient"
-        ? "efficient" : "standard";
 }
 
 // ---------------------------------------------------------------------------

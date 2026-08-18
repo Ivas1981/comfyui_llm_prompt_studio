@@ -6,7 +6,7 @@ the ``smart_parameters`` nodes and by the ``/llm_prompt_studio/sampler_params`` 
 
 ``FAMILIES`` mirrors ``model_meta.FAMILY_MARKERS`` (dmd, lcm, turbo, hyper, lightning,
 flash, schnell, tcd, pcm) plus ``"base"``. If ``model_meta.FAMILY_MARKERS`` ever gains
-a key, add it here too — the two definitions must stay in sync.
+a key, add it here too - the two definitions must stay in sync.
 """
 
 import re
@@ -15,12 +15,13 @@ __all__ = [
     "PRESETS",
     "FAMILIES",
     "DISTILLED_FAMILIES",
+    "GENERIC_DISTILLED",
     "RECOMMENDATIONS",
     "ARCHITECTURE_RECOMMENDATIONS",
     "recommend",
 ]
 
-PRESETS = ("balanced", "speed", "quality")
+PRESETS = ("user", "balanced", "speed", "quality")
 
 # Keep in sync with model_meta.FAMILY_MARKERS (plus the synthetic "base").
 FAMILIES = (
@@ -38,11 +39,17 @@ FAMILIES = (
 
 DISTILLED_FAMILIES = frozenset(FAMILIES) - {"base"}
 
+# Template row for a distilled family that has no hand-written ``RECOMMENDATIONS`` row
+# (e.g. a family present in ``model_meta.FAMILY_MARKERS`` but not yet mirrored here). Keeps
+# sane low-step distilled defaults so detection of any known family always yields usable
+# params. ``(steps, cfg, sampler, scheduler, note)``.
+GENERIC_DISTILLED = (4, 1.0, "euler", "sgm_uniform", "")
+
 # (steps, cfg, sampler, scheduler, note) per family per preset.
-# Samplers belong to comfy.samplers.KSampler.SAMPLERS; schedulers are the STANDARD
-# ComfyUI scheduler list (no AYS/GITS) so they validate against BOTH the standard and
-# the efficient KSampler. The efficient node swaps in "AYS SDXL" for distilled families
-# at balanced/speed (see recommend()).
+# Samplers belong to comfy.samplers.KSampler.SAMPLERS; schedulers use the FULL list
+# (standard ComfyUI schedulers plus AYS SD1/SDXL/SVD and GITS) because the studio's
+# own KSampler node supports the whole list. For distilled families the recommendation
+# switches to "AYS SDXL" at the low-step presets (see recommend()).
 RECOMMENDATIONS = {
     "base": {
         "balanced": (30, 6.0, "dpmpp_2m", "karras", ""),
@@ -76,11 +83,11 @@ RECOMMENDATIONS = {
     },
     "tcd": {
         "balanced": (8, 1.0, "euler_ancestral", "sgm_uniform",
-                     "For best results use the custom TCDScheduler (ComfyUI-TCD)."),
+                      "For best results use the custom TCDScheduler (ComfyUI-TCD)."),
         "speed":    (4, 0.7, "euler_ancestral", "sgm_uniform",
-                     "For best results use the custom TCDScheduler (ComfyUI-TCD)."),
+                      "For best results use the custom TCDScheduler (ComfyUI-TCD)."),
         "quality":  (12, 1.5, "dpmpp_sde", "sgm_uniform",
-                     "For best results use the custom TCDScheduler (ComfyUI-TCD)."),
+                      "For best results use the custom TCDScheduler (ComfyUI-TCD)."),
     },
     "pcm": {
         "balanced": (4, 1.5, "euler", "sgm_uniform", "Do NOT use the lcm sampler."),
@@ -90,12 +97,12 @@ RECOMMENDATIONS = {
     "flash": {
         "balanced": (4, 1.0, "euler", "sgm_uniform", ""),
         "speed":    (1, 1.0, "euler", "normal", ""),
-        "quality":  (4, 2.0, "dpmpp_sde", "karras", ""),
+        "quality":  (4, 2.0, "dpmpp_2m", "karras", ""),
     },
     "schnell": {
         "balanced": (4, 1.0, "euler", "sgm_uniform", ""),
         "speed":    (1, 1.0, "euler", "normal", ""),
-        "quality":  (4, 2.0, "dpmpp_sde", "karras", ""),
+        "quality":  (4, 2.0, "dpmpp_2m", "karras", ""),
     },
 }
 
@@ -103,8 +110,8 @@ RECOMMENDATIONS = {
 # resolved family is "base" (a non-distilled checkpoint) so a base Flux/SD3/SD1.5 does not
 # silently receive SDXL defaults (which wash out those architectures). Distilled families
 # keep priority and are never overridden by this table. Each sub-row is (steps, cfg, sampler,
-# scheduler) per preset; the sampler/scheduler values validate against BOTH standard and
-# efficient KSampler lists (no AYS/GITS), mirroring RECOMMENDATIONS.
+# scheduler) per preset; the scheduler values belong to the FULL scheduler list (no AYS/GITS
+# for these base presets), mirroring RECOMMENDATIONS.
 ARCHITECTURE_RECOMMENDATIONS = {
     "sdxl": {
         "balanced": (30, 6.0, "dpmpp_2m", "karras"),
@@ -179,25 +186,38 @@ def _steps_from_ckpt(ckpt_name: str, distilled: bool) -> int:
     return max(1, min(100, n))
 
 
-def recommend(family="", preset="balanced", ckpt_name="", target="standard",
-               architecture="") -> dict:
+def recommend(family="", preset="balanced", ckpt_name="", architecture="") -> dict:
     """Return recommended sampler params for a checkpoint family.
 
-    Returns ``{"family", "preset", "target", "steps", "cfg", "sampler",
-    "scheduler", "note"}``. ``target`` is ``"standard"`` (broader default) or
-    ``"efficient"`` (Efficient KSampler, which adds AYS/GITS schedulers).
+    Returns ``{"family", "preset", "steps", "cfg", "sampler", "scheduler", "note"}``.
 
-    When the resolved family is ``"base"`` and a known ``architecture`` is supplied, the
-    architecture's own recommended steps/cfg/sampler/scheduler override the base defaults
-    (the preset still selects the sub-row), so a base Flux/SD3/SD1.5 does not receive SDXL
-    defaults. Distilled families keep priority — a non-base family is never overridden.
+    The studio uses a single full scheduler list everywhere (standard schedulers plus
+    AYS SD1/SDXL/SVD and GITS), so there is no ``target`` parameter. For distilled
+    families at the ``balanced`` / ``speed`` presets the scheduler is "AYS SDXL" (which
+    the studio KSampler supports natively).
+
+    When the resolved family is ``"base"`` and a source checkpoint architecture is
+    supplied, the architecture's own recommended steps/cfg/sampler/scheduler override
+    the base defaults (the preset still selects the sub-row), so a base Flux/SD3/SD1.5
+    does not receive SDXL defaults. Distilled families keep priority - a non-base family
+    is never overridden.
     """
-    fam, is_known = _family_key(family)
+    if preset == "user":
+        preset = "balanced"
     if preset not in PRESETS:
         preset = "balanced"
+    fam, is_known = _family_key(family)
     distilled = fam in DISTILLED_FAMILIES
 
-    table = RECOMMENDATIONS.get(fam, RECOMMENDATIONS["base"])
+    table = RECOMMENDATIONS.get(fam)
+    if table is None:
+        # A family in FAMILIES but without a hand-written row. Distilled families get the
+        # generic low-step distilled template; otherwise fall back to the base row. This
+        # keeps any family present in model_meta.FAMILY_MARKERS backed by sane params.
+        if distilled:
+            table = dict.fromkeys(("balanced", "speed", "quality"), GENERIC_DISTILLED)
+        else:
+            table = RECOMMENDATIONS["base"]
     steps_t, cfg, sampler, scheduler, note = table.get(
         preset, RECOMMENDATIONS["base"][preset]
     )
@@ -222,16 +242,15 @@ def recommend(family="", preset="balanced", ckpt_name="", target="standard",
     name_steps = _steps_from_ckpt(ckpt_name, distilled)
     steps = name_steps if name_steps else steps_t
 
-    # Efficient KSampler exposes AYS; for distilled families use AYS SDXL at the
+    # The studio KSampler supports AYS, so distilled families use AYS SDXL at the
     # low-step presets (balancing speed). quality keeps karras/sgm_uniform, which
-    # exist in both scheduler lists.
-    if target == "efficient" and distilled and preset in ("balanced", "speed"):
+    # exist in the standard scheduler list.
+    if distilled and preset in ("balanced", "speed"):
         scheduler = "AYS SDXL"
 
     return {
         "family": fam,
         "preset": preset,
-        "target": target or "standard",
         "steps": steps,
         "cfg": cfg,
         "sampler": sampler,

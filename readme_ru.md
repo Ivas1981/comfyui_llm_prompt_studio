@@ -321,28 +321,31 @@ comfyui_llm_prompt_studio/
 
 ### LLM Prompt Studio Smart Parameters (Умные параметры)
 
-Рекомендует параметры KSampler по семейству чекпоинта, чтобы не искать их вручную. Существует
-**две** вариации, потому что ComfyUI проверяет COMBO-выход по *точному* списку опций во время
-линковки, и одна нода не может переключать список шедулеров на лету:
+Рекомендует параметры KSampler (`steps` / `cfg` / `sampler` / `scheduler`) по семейству чекпоинта,
+чтобы не искать их вручную. Существует **одна** нода — она использует единый полный список
+шедулеров (стандартные шедулеры ComfyUI плюс `AYS SD1` / `AYS SDXL` / `AYS SVD` / `GITS`), который
+поддерживает собственный KSampler студии, поэтому никакого разделения на `target`/«Efficient» не
+нужно.
 
-- **LLM Prompt Studio Smart Parameters** → подключайте к **обычному `KSampler`**. COMBO
-  `scheduler` — стандартный список (без AYS/GITS) для полной обратной совместимости.
-- **LLM Prompt Studio Smart Parameters (Efficient)** → подключайте к **Efficient KSampler**
-  (jags111). Его COMBO `scheduler` дополнительно включает `AYS SD1 / AYS SDXL / AYS SVD / GITS`;
-  для дистиллированных семейств рекомендует **`AYS SDXL`** на пресетах `balanced`/`speed`.
-
-Обе вариации имеют одинаковые входы/выходы:
-- **Входы:** `family_override` (auto / семейство), `preset` (`balanced` / `speed` / `quality`),
+- **Входы:** `family_override` (auto / семейство), `preset` (`user` / `balanced` / `speed` / `quality`),
   `steps`, `cfg`, `sampler_name`, `scheduler`, плюс опциональные `detected_family`
   (подключите сюда выход `detected_family` Smart Loader), `ckpt_name` и `architecture`
   (подключите выход `detected_architecture` Smart Loader).
 - **Выходы:** `steps` (INT), `cfg` (FLOAT), `sampler_name` (COMBO), `scheduler` (COMBO), `info`
   (STRING).
-- Эффективное семейство — это `detected_family`, если подключено (оно уже включает дистиллированную
-  LoRA), иначе `family_override` (или `base`). Рекомендованные значения берутся из таблицы по
-  семействам; для известных чекпоинтов Lightning/Hyper число шагов также считывается из имени файла
-  (`SDXL-Lightning_4step` → 4 шага). Эффективная нода подставляет `AYS SDXL` для дистиллированных
-  семейств на низкошаговых пресетах.
+- **Пресеты:** `user` пропускает введённые значения виджетов без изменений; `balanced` / `speed` /
+  `quality` выбирают рекомендованную строку steps/cfg/sampler (quality — максимум шагов, speed —
+  минимум).
+- **Определение семейства:** эффективное семейство определяется в таком порядке — `detected_family`
+  (если подключено, от Smart Loader; уже включает дистиллированную LoRA), затем `family_override`,
+  затем автоопределение по **имени файла** чекпоинта, его метаданным safetensors и **имени родительской
+  папки** (поэтому файл с общим именем внутри папки `Lightning/` всё равно распознаётся). Для
+  известных чекпоинтов Lightning/Hyper число шагов также считывается из имени файла
+  (`SDXL-Lightning_4step` → 4 шага).
+- **AYS SDXL для дистиллированных семейств:** для дистиллированных семейств (lightning, hyper, dmd,
+  turbo, lcm, tcd, pcm, flash, schnell) нода рекомендует **`AYS SDXL`** на пресетах `balanced`/`speed`;
+  любое семейство из `model_meta.FAMILY_MARKERS`, у которого нет собственной строки, автоматически
+  получает разумные общие дистиллированные значения по умолчанию.
 - **Учёт архитектуры:** когда эффективное семейство — `base` и подключена известная `architecture`
   (SD1.5 / Pony / Illustrious / Flux / SD3), нода рекомендует собственные параметры сэмплера этой
   базовой архитектуры (например, Flux → 24 шага, cfg 1.0, euler/simple; SD1.5 → cfg 7.0) вместо

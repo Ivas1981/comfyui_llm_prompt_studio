@@ -5,8 +5,9 @@ from .library_loader import LLMPromptStudioLibraryLoader
 from .scene_builder import LLMPromptStudioSceneBuilder
 from .smart_loader import LLMPromptStudioSmartLoader
 from .multi_clip import LLMPromptStudioMultiClipSDXL
-from .smart_parameters import (LLMPromptStudioSmartParameters,
-                               LLMPromptStudioSmartParametersEfficient)
+from .smart_parameters import LLMPromptStudioSmartParameters
+from .ksampler_hiresfix import LLMPromptStudioKSamplerHiresFix
+from .face_detailer import LLMPromptStudioFaceDetailer
 
 NODE_CLASS_MAPPINGS = {
     "LLMPromptStudioWriter": LLMPromptStudioWriter,
@@ -17,7 +18,8 @@ NODE_CLASS_MAPPINGS = {
     "LLMPromptStudioSmartLoader": LLMPromptStudioSmartLoader,
     "LLMPromptStudioMultiClipSDXL": LLMPromptStudioMultiClipSDXL,
     "LLMPromptStudioSmartParameters": LLMPromptStudioSmartParameters,
-    "LLMPromptStudioSmartParametersEfficient": LLMPromptStudioSmartParametersEfficient,
+    "LLMPromptStudioKSamplerHiresFix": LLMPromptStudioKSamplerHiresFix,
+    "LLMPromptStudioFaceDetailer": LLMPromptStudioFaceDetailer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -29,5 +31,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LLMPromptStudioSmartLoader": "LLM Prompt Studio Smart Loader",
     "LLMPromptStudioMultiClipSDXL": "LLM Prompt Studio Smart Multi-Clip",
     "LLMPromptStudioSmartParameters": "LLM Prompt Studio Smart Parameters",
-    "LLMPromptStudioSmartParametersEfficient": "LLM Prompt Studio Smart Parameters (Efficient)",
+    "LLMPromptStudioKSamplerHiresFix": "LLM Prompt Studio KSampler (Hires Fix)",
+    "LLMPromptStudioFaceDetailer": "LLM Prompt Studio Face Detailer",
 }
