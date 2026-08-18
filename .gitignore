@@ -34,6 +34,5 @@ plans/
 research/
 docs/TestModels.md
 
-# Model weights (downloaded at runtime: YOLO face detectors, latent upscalers, …).
-# Never commit these large binaries.
-models/
+# Model weights are committed so users get them without manual downloads.
+# (YOLO face detectors, latent upscalers.)
