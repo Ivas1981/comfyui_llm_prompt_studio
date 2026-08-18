@@ -110,9 +110,11 @@
 3. Запустите LM Studio, загрузите модель и включите локальный сервер.
 4. Перезапустите ComfyUI. В консоли должно появиться:
    ```
-   [LLMPromptStudio] Package loaded: Writer, Critic, Smart Save, Library Loader,
-   Scene Builder, Smart Loader, Smart Multi-Clip.
-   ```
+    [LLMPromptStudio] Package loaded: LLMPromptStudioWriter, LLMPromptStudioCritic,
+    LLMPromptStudioSmartSave, LLMPromptStudioLibraryLoader, LLMPromptStudioSceneBuilder,
+    LLMPromptStudioSmartLoader, LLMPromptStudioMultiClipSDXL, LLMPromptStudioSmartParameters,
+    LLMPromptStudioKSamplerHiresFix, LLMPromptStudioFaceDetailer.
+    ```
 
 ### Структура пакета
 
@@ -162,7 +164,7 @@ comfyui_llm_prompt_studio/
   - **Входы:** `server_url`, `api_key`, `model`, `load_model_profile`, `context_length`, `gpu_offload`,
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
-    `face_prompt_instruction`, `prompt_mode`, `family`, `style_preset`,
+    `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
     `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
     `top_k`, `top_p`, `min_p`, `server_status`.
   - **`prompt_mode`** выбирает, как обрабатывается негативный промпт: `auto` (по умолчанию)
@@ -192,10 +194,15 @@ comfyui_llm_prompt_studio/
     **«⚙ Расширенные настройки»** (рядом с `load_model_profile`) и свёрнуты по умолчанию. Нажмите
     кнопку, чтобы показать/скрыть их (значения виджетов сохраняются, поэтому узел всегда получает
     параметры).
-  - **`family`** (опционально) — подключите сюда выход `detected_family` Smart Loader, чтобы `auto`
+   - **`family`** (опционально) — подключите сюда выход `detected_family` Smart Loader, чтобы `auto`
     автоматически определял дистиллированное семейство. Поскольку Smart Loader включает применённую
-    дистиллированную LoRA в `detected_family`, базовый чекпоинт с LoRA DMD/LCM/Turbo/… также
+    дистиллигентную LoRA в `detected_family`, базовый чекпоинт с LoRA DMD/LCM/Turbo/… также
     включает режим без негатива. Оставьте неподключённым, чтобы использовать `standard`.
+   - **`architecture`** (опционально) — подключите выход `detected_architecture` Smart Loader
+    (или задайте значение вручную), чтобы адаптировать сгенерированный промпт к базовой архитектуре:
+    переключает стиль токенов и добавляет архитектурно-специфичные негативы по умолчанию для
+    `Flux` / `SD3` / `SD1.5` / `Pony` / `Illustrious` (SDXL не меняется, когда пусто/не подключено).
+    `Flux` и `SD3` также принудительно включают режим без негатива независимо от `prompt_mode`.
   - Загружает выбранную модель на сервере LM Studio **по требованию** (через API загрузки) с
     `context_length` (по умолчанию 8192), `gpu_offload` (1.0 = максимум GPU) и расширенными
     опциями загрузки (`flash_attention`, `offload_kv_cache_to_gpu`), и **выгружает все модели,
@@ -277,8 +284,8 @@ comfyui_llm_prompt_studio/
   - **Входы:** `stage` (`1 - describe` / `2 - compose`), `image`, `server_url`,
     `api_key`, `model`, `load_model_profile`, `context_length`, `gpu_offload`,
     `describe_prompt`, `composer_prompt`, `user_changes`, `image_max_size`, `temperature`,
-    `max_tokens`, `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`,
-    `family`, `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
+    `max_tokens`,     `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`,
+    `family`, `architecture`, `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
     `top_k`, `top_p`, `min_p`.
   - **`load_model_profile`** работает как у Писателя. Этап определяет «вид»: этап 1
     (`describe`) — проза из зрительного ввода, поэтому всегда `baseline` **без**
@@ -290,10 +297,13 @@ comfyui_llm_prompt_studio/
     `temperature`, `max_tokens`, `repeat_penalty`, `top_k`, `top_p`, `min_p` скрыты за кнопкой
     **«⚙ Расширенные настройки»** (рядом с `load_model_profile`), свёрнуты по умолчанию;
     нажмите её, чтобы показать/скрыть.
-  - **`prompt_mode`** и **`family`** ведут себя точно как у Писателя: `auto` переключается на
+   - **`prompt_mode`** и **`family`** ведут себя точно как у Писателя: `auto` переключается на
     композиторный промпт без негатива для дистиллированных семейств чекпоинтов (подключённый
     `family`), что Smart Loader сообщает включая случай применения дистиллированной LoRA к
     базовому чекпоинту (он включает семейство LoRA в `detected_family`).
+   - **`architecture`** (опционально, только этап 2) ведёт себя как у Писателя: адаптирует стиль
+    токенов и добавляет архитектурно-специфичные негативы по умолчанию для `Flux` / `SD3` /
+    `SD1.5` / `Pony` / `Illustrious` и принудительно включает режим без негатива для `Flux` / `SD3`.
 - **Выходы:** `positive`, `negative`, `scene_name`, `prompt_view`, `description`.
   Этап 1 помещает зрительное описание в `description`; этап 2 составляет промпт.
 - **`max_field_retries`** (по умолчанию 2): на этапе 2, если JSON модели пропускает обязательные
@@ -402,7 +412,7 @@ comfyui_llm_prompt_studio/
 | `composer_no_negative` | Scene Builder (дистиллированный/режим без негатива; откат к `composer`) |
 | `face_instruction_no_negative` | Промпты лица Prompt Writer (режим без негатива; откат к `face_instruction`) |
 
-- **`presets`** — 14 стилевых пресетов, перечисленных в комбобоксе `style_preset` Писателя
+- **`presets`** — 51 стилевой пресет, перечисленный в комбобоксе `style_preset` Писателя
   (см. [Стилевые пресеты](#стилевые-пресеты)). Когда комбобокс оставлен на «— none —», Писатель
   использует промпт `defaults.writer_system`; когда выбран пресет, его `system_prompt` (или
   `system_prompt_no_negative` в режиме без негатива) переопределяет его, а его `style_tags`

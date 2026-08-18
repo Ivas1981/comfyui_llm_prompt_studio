@@ -1120,14 +1120,19 @@ def chat_completion(server_url, api_key, model, messages,
     if seed is not None:
         body["seed"] = seed
     # Forward the sampling params the node layer already computed (native-v1 equivalents).
-    # `min_p` is native-v1-only (LMStudioAPI.md §8/§6.1) and must stay out of the OpenAI body,
-    # keeping the fallback symmetric with the native path so sampling never silently changes.
+    # Most OpenAI-compatible servers accept them; a few builds reject `min_p` / `reasoning`
+    # / the penalty keys with a 400 `unrecognized_keys`, in which case the retry block below
+    # drops the rejected key(s) so a single unsupported param never fails the whole call.
     if top_p is not None:
         body["top_p"] = top_p
     if top_k is not None:
         body["top_k"] = top_k
     if repeat_penalty is not None:
         body["repeat_penalty"] = repeat_penalty
+    if min_p is not None:
+        body["min_p"] = min_p
+    if reasoning is not None:
+        body["reasoning"] = reasoning
     if presence_penalty is not None:
         body["presence_penalty"] = presence_penalty
     if frequency_penalty is not None:
@@ -1135,11 +1140,12 @@ def chat_completion(server_url, api_key, model, messages,
     if response_format is not None:
         body["response_format"] = response_format
     started = time.time()
-    # Some LM Studio builds reject `presence_penalty` / `frequency_penalty` on the OpenAI
-    # path with a 400 `unrecognized_keys`. Drop the rejected penalty and retry once so a
-    # single unsupported param never fails the whole call (mirrors the native v1 retry).
-    penal_keys = ["presence_penalty", "frequency_penalty"]
-    drop_penal = False
+    # Some LM Studio builds reject `presence_penalty` / `frequency_penalty` / `min_p` /
+    # `reasoning` on the OpenAI path with a 400 `unrecognized_keys`. Drop the rejected
+    # keys and retry once so a single unsupported param never fails the whole call
+    # (mirrors the native v1 retry).
+    optional_keys = ["presence_penalty", "frequency_penalty", "min_p", "reasoning"]
+    dropped = False
     for _ in range(2):
         try:
             resp = requests.post(
@@ -1150,15 +1156,16 @@ def chat_completion(server_url, api_key, model, messages,
         except requests.RequestException as e:
             logger.error("Could not reach LM Studio (%s): %s", server_url, e)
             raise RuntimeError(f"Could not reach LM Studio ({server_url}): {e}")
-        if (drop_penal is False and resp.status_code == 400
+        if (not dropped and resp.status_code == 400
                 and _is_unrecognized_keys(resp)):
             rejected = _parse_rejected_keys(resp, set(body.keys()))
-            if any(k in penal_keys for k in rejected):
-                for k in penal_keys:
+            to_drop = [k for k in rejected if k in optional_keys]
+            if to_drop:
+                for k in to_drop:
                     body.pop(k, None)
-                drop_penal = True
-                logger.debug("OpenAI path dropped unsupported penalty key(s) %s; retrying.",
-                             sorted(rejected & set(penal_keys)))
+                dropped = True
+                logger.debug("OpenAI path dropped unsupported key(s) %s; retrying.",
+                             sorted(to_drop))
                 continue
         break
     if resp.status_code >= 400:

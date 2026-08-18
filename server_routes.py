@@ -4,6 +4,7 @@ from server import PromptServer
 
 from .library import load_library, resolve_library_path, save_prompt_to_library
 from .lm_http import cache_models, fetch_models, server_status
+from .model_meta import detect_checkpoint_family
 
 
 @PromptServer.instance.routes.post("/llm_prompt_studio/models")
@@ -108,6 +109,11 @@ async def llm_prompt_studio_sampler_params(request):
     preset = request.query.get("preset", "balanced")
     ckpt = request.query.get("ckpt", "")
     arch = request.query.get("arch", "")
+    # When the front-end can't supply a concrete family (no detected_family / family_override
+    # wired), it sends "auto". The checkpoint filename carries the real family, so resolve it
+    # here instead of passing "auto" straight to recommend() (which would map to base).
+    if (not family or family == "auto") and ckpt:
+        family = detect_checkpoint_family(ckpt)
     try:
         from .nodes._distilled_presets import recommend
         rec = recommend(family, preset, ckpt or "", architecture=arch or "")
@@ -116,20 +122,3 @@ async def llm_prompt_studio_sampler_params(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-@PromptServer.instance.routes.post("/llm_prompt_studio/library/scene")
-async def llm_prompt_studio_library_scene(request):
-    try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON body"}, status=400)
-    library_path = data.get("library_path", "")
-    scene_name = data.get("scene_name", "")
-    try:
-        lib = resolve_library_path(library_path)
-        entries = load_library(lib)
-        for e in entries:
-            if isinstance(e, dict) and e.get("name") == scene_name:
-                return web.json_response(e)
-        return web.json_response({"error": "Scene not found"}, status=404)
-    except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)

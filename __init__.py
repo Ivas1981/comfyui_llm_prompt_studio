@@ -22,8 +22,7 @@ except Exception:
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
 else:
-    _logger.info("Package loaded: Writer, Critic, Smart Save, Library Loader, "
-                 "Scene Builder, Smart Loader, Multi-CLIP SDXL.")
+    _logger.info("Package loaded: %s.", ", ".join(NODE_CLASS_MAPPINGS.keys()))
 
 try:
     from . import server_routes  # noqa: F401 — registers HTTP routes /llm_prompt_studio/*

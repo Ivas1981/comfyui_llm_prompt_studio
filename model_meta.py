@@ -22,8 +22,9 @@ FAMILY_MARKERS = {
 }
 
 # Families for which the negative prompt is inert (they sample at CFG ~1). Derived from
-# FAMILY_MARKERS so the two definitions never drift apart; "base" is never included.
-NO_NEGATIVE_FAMILIES = set(FAMILY_MARKERS) - {"base"}
+# FAMILY_MARKERS so the two definitions never drift apart. FAMILY_MARKERS has no "base" key,
+# so every key it defines is a distilled no-negative family.
+NO_NEGATIVE_FAMILIES = set(FAMILY_MARKERS)
 
 # Family markers are matched case-insensitively in the checkpoint name (and a curated
 # subset of the safetensors metadata). Boundaries are checked on the ORIGINAL case so we

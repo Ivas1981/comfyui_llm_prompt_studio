@@ -108,9 +108,11 @@ No cloud, no API keys required — everything runs on your machine.
 3. Start LM Studio, load a model and enable the local server.
 4. Restart ComfyUI. You should see in the console:
    ```
-   [LLMPromptStudio] Package loaded: Writer, Critic, Smart Save, Library Loader,
-   Scene Builder, Smart Loader, Smart Multi-Clip.
-   ```
+    [LLMPromptStudio] Package loaded: LLMPromptStudioWriter, LLMPromptStudioCritic,
+    LLMPromptStudioSmartSave, LLMPromptStudioLibraryLoader, LLMPromptStudioSceneBuilder,
+    LLMPromptStudioSmartLoader, LLMPromptStudioMultiClipSDXL, LLMPromptStudioSmartParameters,
+    LLMPromptStudioKSamplerHiresFix, LLMPromptStudioFaceDetailer.
+    ```
 
 ### Package layout
 
@@ -160,7 +162,7 @@ Generates an SDXL prompt from an idea.
   - **Inputs:** `server_url`, `api_key`, `model`, `load_model_profile`, `context_length`, `gpu_offload`,
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
-    `face_prompt_instruction`, `prompt_mode`, `family`, `style_preset`,
+    `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
     `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
     `top_k`, `top_p`, `min_p`, `server_status`.
   - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
@@ -188,10 +190,15 @@ Generates an SDXL prompt from an idea.
     `repeat_penalty`, `top_k`, `top_p`, `min_p` are hidden behind a **«⚙ Advanced settings»**
     button (next to `load_model_profile`) and are collapsed by default. Click the button to
     show/hide them (the widget values are preserved, so the node always receives the params).
-  - **`family`** (optional) — wire the Smart Loader's `detected_family` output here to let
+   - **`family`** (optional) — wire the Smart Loader's `detected_family` output here to let
     `auto` detect the distilled family automatically. Because the Smart Loader folds an applied
     distillation LoRA into `detected_family`, a base checkpoint with a DMD/LCM/Turbo/… LoRA also
     engages no-negative mode. Leave unconnected to use `standard`.
+   - **`architecture`** (optional) — wire the Smart Loader's `detected_architecture` output (or
+    set a value manually) to adapt the generated prompt to the base architecture: it switches the
+    token style and appends architecture-specific default negatives for `Flux` / `SD3` / `SD1.5` /
+    `Pony` / `Illustrious` (SDXL is unchanged when empty/unwired). `Flux` and `SD3` also force the
+    no-negative path regardless of `prompt_mode`.
   - Loads the selected model on the LM Studio server **on demand** (via the load API) with
     `context_length` (default 8192), `gpu_offload` (1.0 = max GPU) and the advanced load options
     (`flash_attention`, `offload_kv_cache_to_gpu`), and **unloads every model currently resident
@@ -273,8 +280,8 @@ Two-stage scene construction from an image.
   - **Inputs:** `stage` (`1 - describe` / `2 - compose`), `image`, `server_url`,
     `api_key`, `model`, `load_model_profile`, `context_length`, `gpu_offload`,
     `describe_prompt`, `composer_prompt`, `user_changes`, `image_max_size`, `temperature`,
-    `max_tokens`, `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`,
-    `family`, `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
+    `max_tokens`,     `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`,
+    `family`, `architecture`, `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
     `top_k`, `top_p`, `min_p`.
   - **`load_model_profile`** works as on the Writer. The stage decides the "kind": stage 1
     (`describe`) is prose from a vision input, so it is always `baseline` with **no**
@@ -286,10 +293,13 @@ Two-stage scene construction from an image.
     `max_tokens`, `repeat_penalty`, `top_k`, `top_p`, `min_p` are hidden behind a
     **«⚙ Advanced settings»** button (next to `load_model_profile`), collapsed by default;
     click it to show/hide them.
-  - **`prompt_mode`** and **`family`** behave exactly as on the Writer: `auto`
+   - **`prompt_mode`** and **`family`** behave exactly as on the Writer: `auto`
     switches to a no-negative composer prompt for distilled checkpoint families (wired `family`),
     which the Smart Loader reports including the case of a distillation LoRA applied to a base
     checkpoint (it folds the LoRA family into `detected_family`).
+   - **`architecture`** (optional, stage 2 only) behaves as on the Writer: it adapts the token
+    style and appends architecture-specific default negatives for `Flux` / `SD3` / `SD1.5` /
+    `Pony` / `Illustrious`, and forces the no-negative path for `Flux` / `SD3`.
 - **Outputs:** `positive`, `negative`, `scene_name`, `prompt_view`, `description`.
   Stage 1 puts the vision description into `description`; stage 2 composes the prompt.
 - **`max_field_retries`** (default 2): in stage 2, if the model's JSON omits required
@@ -373,8 +383,52 @@ non-SDXL checkpoints are conditioned correctly.
     metadata is attached but ignored by those models.
   - If `architecture` is left unwired, the node inspects the CLIP's own encoder shape (dual vs
     single) and branches accordingly, so existing SDXL graphs are byte-identical.
-- Replaces multiple `CLIPTextEncodeSDXL` nodes: `positive1/negative1` → main KSampler,
-  `positive2/negative2` → FaceDetailer.
+   - Replaces multiple `CLIPTextEncodeSDXL` nodes: `positive1/negative1` → main KSampler,
+   `positive2/negative2` → FaceDetailer.
+
+### LLM Prompt Studio KSampler (Hires Fix)
+
+Single KSampler node that runs a base pass and an optional hires (upscale) pass. It supports the
+studio's **full scheduler list** (standard ComfyUI schedulers plus `AYS SD1` / `AYS SDXL` / `AYS SVD`
+/ `GITS`) via the shared AYS/GITS-aware sampler. The full quality path passes **LATENT** from this
+node straight into **FaceDetailer**, so no extra VAE decode is needed between them.
+
+- **Inputs:** `model`, `positive`, `negative`, `latent_image`, `seed`, `steps`, `cfg`,
+  `sampler_name`, `scheduler`, `denoise`, `hires_enabled`, `hires_upscale_method`,
+  `hires_latent_upscale_model`, `hires_latent_upscale_factor`, `hires_pixel_upscale`,
+  `hires_width`, `hires_height`, `hires_steps`, `hires_cfg`, `hires_denoise`, `hires_sampler_name`,
+  `hires_scheduler`, `hires_use_same_seed`, `hires_seed`, `vae_decode`; optional
+  `hires_upscale_model` (UPSCALE_MODEL), `hires_positive`, `hires_negative`, `optional_vae`.
+- **Outputs:** `LATENT`, `IMAGE` (the IMAGE is only produced when `vae_decode` is on, otherwise it
+  returns a 1×1 placeholder so downstream graphs stay valid).
+- **Hires pass:** enabled when `hires_enabled` is true and the target size differs from the base
+  latent. Upscaling uses a latent upscale model or an interpolation method, with an optional
+  pixel-upscale stage (`hires_pixel_upscale`). The hires pass reuses the base sampler/scheduler
+  unless overridden by `hires_sampler_name` / `hires_scheduler` (`base` = reuse base).
+- **AYS / GITS schedulers** require an external custom node (ComfyUI-AlignYourSteps for AYS,
+  KJNodes for GITS). When that node is not installed, the sampler logs a warning and falls back to
+  a standard scheduler (`karras` for AYS, `simple` for GITS) so the studio still works
+  out-of-the-box.
+
+### LLM Prompt Studio Face Detailer
+
+Refines detected faces and returns a corrected `IMAGE`. It accepts either a `latent` (optimized
+path — one shared VAE decode for detection, crops straight from the latent) or an `image` (legacy
+pixel path). The `latent` input is the intended input when chained after the Hires Fix node.
+
+- **Inputs:** `model`, `vae`, `positive`, `negative`, `seed`, `steps`, `cfg`, `sampler_name`,
+  `scheduler`, `denoise`, `guide_size`, `max_size`, `detection_method`, `yolo_model_name`,
+  `detection_threshold`, `feather`, `inpaint_model`; optional `image`, `latent`,
+  `face_positive`, `face_negative`.
+- **Outputs:** `IMAGE` (the input image with each detected face refined; returned unchanged when no
+  face is found).
+- **Detection:** `haar` (OpenCV, no extra dependencies) or `yolo` (ultralytics — `ultralytics` must
+  be installed and a model such as `face_yolov8s.pt` present).
+- **Per-face prompts:** when `face_positive` / `face_negative` are wired (e.g. from the Writer's
+  `face_positive` / `face_negative` outputs via Smart Multi-Clip), they override `positive` /
+  `negative` for each cropped face; otherwise the main conditioning is used. The face crop is
+  upscaled by `guide_size` and refined with the node's own KSampler, then pasted back with a
+  feathered mask.
 
 ---
 
@@ -398,7 +452,7 @@ top-level sections:
 | `composer_no_negative` | Scene Builder (distilled/no-negative mode; falls back to `composer`) |
 | `face_instruction_no_negative` | Prompt Writer face prompts (no-negative mode; falls back to `face_instruction`) |
 
-- **`presets`** — the 14 style presets listed in the Writer's `style_preset` combobox (see
+- **`presets`** — the 51 style presets listed in the Writer's `style_preset` combobox (see
   [Style presets](#style-presets)). When the combobox is left at "— none —" the Writer uses the
   `defaults.writer_system` prompt; when a preset is chosen, that preset's `system_prompt` (or
   `system_prompt_no_negative` in no-negative mode) overrides it and its `style_tags` are appended.

@@ -70,15 +70,25 @@ class LLMPromptStudioSceneBuilder:
                 "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
                                           "tooltip": "Store KV cache in GPU memory (faster) vs CPU RAM (lower VRAM)"}),
                 "reasoning": (["off", "low", "medium", "high", "on"], {"default": "off",
-                             "tooltip": "Reasoning level for thinking models"}),
+                             "tooltip": "Reasoning level for thinking models. Applied only when "
+                                        "load_model_profile = custom; otherwise the chosen profile "
+                                        "overrides it."}),
                 "repeat_penalty": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 2.0, "step": 0.05,
-                                     "tooltip": "Penalty for repeating tokens (1.0 = off)"}),
+                                     "tooltip": "Penalty for repeating tokens (1.0 = off). Applied "
+                                                "only when load_model_profile = custom; otherwise "
+                                                "the chosen profile overrides it."}),
                 "top_k": ("INT", {"default": 0, "min": 0, "max": 200, "step": 1,
-                          "tooltip": "Top-k sampling (0 = disabled)"}),
+                          "tooltip": "Top-k sampling (0 = disabled). Applied only when "
+                                     "load_model_profile = custom; otherwise the chosen profile "
+                                     "overrides it."}),
                 "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01,
-                          "tooltip": "Nucleus sampling (1.0 = off)"}),
+                          "tooltip": "Nucleus sampling (1.0 = off). Applied only when "
+                                     "load_model_profile = custom; otherwise the chosen profile "
+                                     "overrides it."}),
                 "min_p": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
-                           "tooltip": "Minimum probability floor (0.0 = off)"}),
+                           "tooltip": "Minimum probability floor (0.0 = off). Applied only when "
+                                      "load_model_profile = custom; otherwise the chosen profile "
+                                      "overrides it."}),
             },
             "optional": {
                 "family": ("STRING", {"default": ""}),

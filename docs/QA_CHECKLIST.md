@@ -24,7 +24,7 @@ Tested against ComfyUI 0.19.3 (classic).
 
 ## Phase 3 — Style presets
 - [ ] First node run creates `llm_prompt_studio_presets.json` from `presets_default.json`.
-- [ ] 14 presets are listed in the `style_preset` combobox.
+- [ ] 51 presets are listed in the `style_preset` combobox.
 - [ ] Selecting a preset appends its style tags to `positive`/`negative`; in no-negative mode the
       negative tags are skipped.
 - [ ] A preset with `disabled_in_no_negative_mode` is skipped automatically in no-negative mode.

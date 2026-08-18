@@ -1,9 +1,9 @@
 import { api } from "/scripts/api.js";
 
 // Placeholders - MUST match the values in constants.py
-export const PH_DOWN   = "- server unavailable -";
-export const PH_EMPTY  = "- no models on server -";
-export const LIB_EMPTY = "- library is empty -";
+export const PH_DOWN   = "— server unavailable —";
+export const PH_EMPTY  = "— no models on server —";
+export const LIB_EMPTY = "— library is empty —";
 
 // ---------------------------------------------------------------------------
 // Widget / node helpers
