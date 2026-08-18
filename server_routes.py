@@ -62,10 +62,10 @@ async def llm_prompt_studio_library_save(request):
 @PromptServer.instance.routes.get("/llm_prompt_studio/presets")
 async def llm_prompt_studio_presets(request):
     try:
-        from .presets import load_presets, get_user_presets_path
-        data = load_presets()
+        from .presets import load_presets, get_user_presets_path, get_preset_names
+        load_presets()  # ensure migrated user file exists
         return web.json_response({
-            "names": [p["name"] for p in data.get("presets", [])],
+            "names": get_preset_names(),
             "path": get_user_presets_path(),
         })
     except Exception as e:
@@ -107,9 +107,11 @@ async def llm_prompt_studio_sampler_params(request):
     preset = request.query.get("preset", "balanced")
     ckpt = request.query.get("ckpt", "")
     target = request.query.get("target", "standard")
+    arch = request.query.get("arch", "")
     try:
         from .nodes._distilled_presets import recommend
-        rec = recommend(family, preset, ckpt or "", target=target or "standard")
+        rec = recommend(family, preset, ckpt or "", target=target or "standard",
+                        architecture=arch or "")
         return web.json_response(rec)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)

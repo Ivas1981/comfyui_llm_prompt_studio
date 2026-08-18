@@ -96,10 +96,127 @@ def is_no_negative_family(family):
     return str(family or "").strip().lower() in NO_NEGATIVE_FAMILIES
 
 
+# Base-architecture detection. The *architecture* is the model base (SDXL, SD1.5, Flux,
+# Pony, Illustrious, SD3, ...) — a separate axis from the distillation *family* tracked
+# above. Canonical keys: sdxl, sd15, flux, pony, illustrious, sd3, unknown.
+#
+# ComfyUI's loaded model exposes two class names we can inspect: `type(model.model).__name__`
+# (the unet/base class, e.g. "SDXL", "Flux") and `model.model_config.__class__.__name__`
+# (the config class). We map either against these aliases (case-insensitive substring).
+ARCHITECTURE_ALIASES = {
+    "sdxl": "sdxl",
+    "sd15": "sd15",
+    "sd20": "sd15",
+    "sd21": "sd15",
+    "sd1x": "sd15",
+    "sd2x": "sd15",
+    "flux": "flux",
+    "pony": "pony",
+    "illustrious": "illustrious",
+    "sd3": "sd3",
+    "stable-diffusion-3": "sd3",
+    "stablediffusion3": "sd3",
+}
+
+# Architectures that ignore the negative prompt (they are not CFG-driven the way SDXL/SD1.5
+# are). For these the Writer/Scene Builder force the no-negative path regardless of family.
+NO_NEGATIVE_ARCHITECTURES = ("flux", "sd3")
+
+
+def architecture_from_class_name(name):
+    """Map a comfy model/config class name to a canonical architecture key, or None."""
+    n = (name or "").lower()
+    for key, canon in ARCHITECTURE_ALIASES.items():
+        if key in n:
+            return canon
+    return None
+
+
+def guess_architecture_from_name(name):
+    """Comfy-free filename heuristic for base architecture (used when the loaded model
+    object is unavailable, e.g. in headless tests). Returns a canonical key or 'unknown'.
+
+    Order matters: 'sd3' / 'stable-diffusion-3' before the SD1.5/SXL patterns, and 'sdxl'
+    before anything that could match a looser 'sd' prefix."""
+    n = (name or "").lower()
+    checks = (
+        ("sd3", "sd3"),
+        ("stable-diffusion-3", "sd3"),
+        ("flux", "flux"),
+        ("pony", "pony"),
+        ("illustrious", "illustrious"),
+        ("sdxl", "sdxl"),
+        ("sd_xl", "sdxl"),
+        ("sd1.5", "sd15"),
+        ("sd_1_5", "sd15"),
+        ("v1-5", "sd15"),
+        ("sd15", "sd15"),
+        ("sd2", "sd15"),
+    )
+    for kw, canon in checks:
+        if kw in n:
+            return canon
+    return "unknown"
+
+
+def is_no_negative_architecture(arch):
+    """True for base architectures that ignore the negative prompt (Flux, SD3)."""
+    return str(arch or "").strip().lower() in NO_NEGATIVE_ARCHITECTURES
+
+
+def resolve_architecture(obj_name="", cfg_name="", ckpt_name="") -> tuple:
+    """Resolve the canonical base architecture from a loaded model.
+
+    Returns ``(arch, source)``. Priority:
+
+    1. The live comfy model object's class name (``type(model.model).__name__``).
+    2. Its config class name (``model.model_config.__class__.__name__``).
+    3. A filename heuristic, but ONLY as a *refinement* when the detected arch is
+       ``sdxl``/``unknown``/empty. This lets Pony/Illustrious (SDXL finetunes whose
+       object class is still ``SDXL``) be recovered from their checkpoint filename,
+       while a genuine Flux/SD3/SD1.5 object detection is never overwritten by a
+       coincidental filename keyword.
+
+    The filename fallback only ever adopts ``pony``/``illustrious`` when the arch is
+    ``sdxl``; for empty/unknown arch it adopts whatever the filename yields (including
+    staying ``unknown``).
+    """
+    arch = ""
+    source = "unknown"
+    if obj_name:
+        arch = architecture_from_class_name(obj_name) or ""
+        if arch:
+            source = "object"
+    if not arch and cfg_name:
+        arch = architecture_from_class_name(cfg_name) or ""
+        if arch:
+            source = "object"
+
+    # Refinement gate: only run the filename heuristic when we don't already have a
+    # definitive non-sdxl architecture. A real flux/sd3/sd15 object is never overwritten.
+    if arch in ("", "sdxl", "unknown"):
+        name_arch = guess_architecture_from_name(ckpt_name)
+        if name_arch in ("pony", "illustrious"):
+            arch = name_arch
+            source = "filename"
+        elif arch in ("", "unknown"):
+            arch = name_arch
+            source = "filename" if name_arch and name_arch != "unknown" else "unknown"
+        # else: arch is "sdxl" and the filename did not yield pony/illustrious -> keep sdxl.
+
+    return arch, source
+
+
 __all__ = [
     "FAMILY_MARKERS",
     "NO_NEGATIVE_FAMILIES",
     "is_no_negative_family",
+    "ARCHITECTURE_ALIASES",
+    "NO_NEGATIVE_ARCHITECTURES",
+    "architecture_from_class_name",
+    "guess_architecture_from_name",
+    "is_no_negative_architecture",
+    "resolve_architecture",
     "collect_generation_meta",
     "read_safetensors_metadata",
     "detect_checkpoint_family",

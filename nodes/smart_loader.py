@@ -1,7 +1,8 @@
 import folder_paths
 
 from ..combos import combo_checkpoints, combo_loras, combo_vae
-from ..model_meta import detect_checkpoint_family, detect_checkpoint_family_info
+from ..model_meta import (detect_checkpoint_family, detect_checkpoint_family_info,
+                           resolve_architecture)
 from ..debug import node_span
 
 
@@ -29,9 +30,10 @@ class LLMPromptStudioSmartLoader:
             }
         }
 
-    RETURN_TYPES = ("MODEL", "CLIP", "VAE", "VAE", "STRING", "STRING")
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE", "VAE", "STRING", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("MODEL", "CLIP", "VAE_MODEL", "VAE_USER",
-                    "detected_family", "detected_family_info")
+                    "detected_family", "detected_family_info",
+                    "detected_architecture", "detected_architecture_info")
 
     def load(self, ckpt_name, family_override, lora_name, apply_lora,
               strength_model, vae_user, unique_id=None):
@@ -95,5 +97,26 @@ class LLMPromptStudioSmartLoader:
             # Human-readable provenance for the UI widget: original checkpoint family, detection
             # source, and — when relevant — a note that a distillation LoRA was applied.
             family_info = "family: %s | source: %s%s" % (ckpt_family, source, lora_note)
-            return {"ui": {"family": [detected], "family_info": [family_info]},
-                    "result": (model, clip, vae_model, vae_user_obj, detected, family_info)}
+
+            # Base architecture detection (a separate axis from the distillation family above).
+            # Prefer inspecting the live comfy model object; fall back to a filename heuristic
+            # when the object is unavailable (e.g. tests). SDXL stays canonical 'sdxl', and
+            # Pony/Illustrious (SDXL finetunes) are recovered from the checkpoint filename via
+            # the refinement inside resolve_architecture.
+            obj_name = ""
+            try:
+                obj_name = type(model.model).__name__
+            except Exception:
+                obj_name = ""
+            cfg_name = ""
+            try:
+                cfg_name = model.model_config.__class__.__name__
+            except Exception:
+                cfg_name = ""
+            arch, arch_source = resolve_architecture(obj_name, cfg_name, ckpt_name)
+            architecture_info = "architecture: %s | source: %s" % (arch, arch_source)
+
+            return {"ui": {"family": [detected], "family_info": [family_info],
+                           "architecture": [arch], "architecture_info": [architecture_info]},
+                    "result": (model, clip, vae_model, vae_user_obj, detected, family_info,
+                               arch, architecture_info)}

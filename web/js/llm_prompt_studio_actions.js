@@ -284,7 +284,13 @@ export async function reloadPresets(node) {
         const opts = ["— none —", ...names];
         w.options = w.options || {};
         w.options.values = opts;
-        if (!opts.includes(w.value)) w.value = "— none —";
+        // Preserve an old saved value. After categorization the combobox shows labels like
+        // "Category > Photorealism"; a workflow saved with the bare name "Photorealism" is no
+        // longer in `opts`, so match it by its bare name (the part after "> ") before resetting.
+        if (!opts.includes(w.value)) {
+            const match = opts.find(o => o.indexOf("> ") !== -1 && o.split("> ").pop() === w.value);
+            w.value = match || "— none —";
+        }
         app.graph.setDirtyCanvas(true, true);
     } catch (e) {
         alert("Could not reload presets: " + e);

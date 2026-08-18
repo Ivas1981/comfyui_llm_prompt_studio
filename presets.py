@@ -94,6 +94,7 @@ def _migrate(data: Dict) -> Dict:
         p.setdefault("style_tags_positive", [])
         p.setdefault("style_tags_negative", [])
         p.setdefault("disabled_in_no_negative_mode", False)
+        p.setdefault("category", "")
         # Normalize types: a hand-edited JSON may carry a wrong type (e.g. a string
         # where a list is expected). setdefault only fills missing keys, so coerce
         # explicitly to avoid a crash later in apply_preset_to_prompts.
@@ -122,18 +123,67 @@ def load_presets() -> Dict:
 
 
 def get_preset_names() -> List[str]:
-    """Names for the Writer's style_preset combobox."""
-    return [p["name"] for p in load_presets().get("presets", [])]
+    """Labels for the Writer's style_preset combobox.
+
+    Each preset is shown as ``"<category> > <name>"`` when it carries a category, so the
+    (now ~50) presets are grouped in the dropdown. Presets without a category keep their
+    bare ``name``. The bare name remains the stored identity (see :func:`get_preset_by_name`)."""
+    out = []
+    for p in load_presets().get("presets", []):
+        cat = p.get("category") or ""
+        name = p.get("name", "")
+        out.append(f"{cat} > {name}" if cat else name)
+    return out
 
 
 def get_preset_by_name(name: str) -> Optional[Dict]:
-    """Return a preset dict by its display name (the combobox stores names, not ids)."""
+    """Return a preset dict by its display name (the combobox stores labels/names, not ids).
+
+    Matches both the bare preset ``name`` (old saved workflows) and the categorized
+    ``"<category> > <name>"`` label produced by :func:`get_preset_names`, so a workflow
+    saved before categorization still resolves after "Reload presets"."""
     if not name:
         return None
-    for p in load_presets().get("presets", []):
+    presets = load_presets().get("presets", [])
+    for p in presets:
         if p.get("name") == name:
             return p
+    bare = name.split("> ")[-1].strip() if "> " in name else name
+    for p in presets:
+        if p.get("name") == bare:
+            return p
     return None
+
+
+def get_architecture_guidance() -> Dict:
+    """Architecture-specific prompt guidance from ``presets_default.json``.
+
+    Keyed by canonical architecture (``sdxl``, ``sd15``, ``pony``, ``illustrious``,
+    ``flux``, ``sd3``, ``unknown``). Each entry may carry ``system_addendum`` (appended to
+    the system prompt), ``default_negative`` (appended to the negative in standard mode) and
+    ``force_no_negative`` (bool). User-editable via the presets file."""
+    data = load_presets_raw()
+    return data.get("architecture_guidance", {})
+
+
+def append_negative_tags(negative: str, additions: str) -> str:
+    """Append architecture ``default_negative`` tokens to an existing negative prompt.
+
+    Mirrors :func:`apply_preset_to_prompts` for negatives: tokens are split on commas,
+    trimmed, deduplicated against the existing negative (and within the additions), and
+    joined back. Empty input is returned unchanged."""
+    if not additions:
+        return negative
+    existing = {t.strip().lower() for t in negative.split(",") if t.strip()}
+    new = []
+    for tok in additions.split(","):
+        tok = tok.strip()
+        if tok and tok.lower() not in existing:
+            existing.add(tok.lower())
+            new.append(tok)
+    if not new:
+        return negative
+    return (negative + ", " + ", ".join(new)) if negative.strip() else ", ".join(new)
 
 
 def apply_preset_to_prompts(preset: Dict, positive: str, negative: str,

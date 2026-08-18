@@ -1,14 +1,17 @@
 """HTTP client for LM Studio / OpenAI-compatible servers, model cache and SSRF guard."""
+import hashlib
 import ipaddress
 import json
 import logging
 import os
 import re
 import time
+from collections import OrderedDict
 from typing import Any, Dict, Optional
 from urllib.parse import quote, urlparse
 
 import requests
+
 
 from .constants import PLACEHOLDER, PLACEHOLDER_EMPTY
 from .debug import debug_active, log, log_http_request, log_http_response
@@ -48,6 +51,15 @@ _MAX_REJECTED_RETRIES = 8
 
 # Read allow-public flag from environment for runtime configuration.
 ALLOW_PUBLIC_SERVER_URLS = os.getenv("LLM_PROMPT_STUDIO_ALLOW_PUBLIC", "False").lower() in ("1", "true", "yes")
+
+# Opt-in global LLM-response cache. OFF by default; enable with
+# LLM_PROMPT_STUDIO_LLM_CACHE=true. When on, identical chat_completion requests (same server,
+# model, messages and sampling params, excluding api_key) return the cached text instead of
+# hitting the server again. It sits BELOW the per-node `reuse_last_prompt` cache in writer.py:
+# both coexist. Bounded LRU (~256 entries) to bound memory.
+_LLM_CACHE_ENABLED = os.getenv("LLM_PROMPT_STUDIO_LLM_CACHE", "false").lower() in ("1", "true", "yes")
+_LLM_CACHE_MAX = 256
+_llm_response_cache = OrderedDict()
 
 # cache "last loaded model" to unload the old one on switch: {slot: fingerprint}
 _last_loaded = {}
@@ -992,6 +1004,58 @@ def _enrich_http_error(model: str, status: int, text: str, has_images: bool) -> 
     return None
 
 
+def _llm_cache_key(server_url, api_key, model, messages, temperature, max_tokens, seed,
+                    reasoning, repeat_penalty, top_k, top_p, min_p, presence_penalty,
+                    response_format):
+    """Stable hash for a chat_completion request. ``api_key`` is intentionally excluded so the
+    cache is shared across key-less local calls; every other request-shaping arg is included.
+    Multimodal message parts are serialized via their data-URL string for a stable key."""
+    def _norm_content(content):
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return [(
+                p.get("type"),
+                p.get("text", ""),
+                (p.get("image_url", {}) or {}).get("url", ""),
+            ) for p in content if isinstance(p, dict)]
+        return content
+
+    payload = {
+        "server_url": server_url,
+        "model": model,
+        "messages": [(m.get("role"), _norm_content(m.get("content", "")))
+                     for m in messages if isinstance(m, dict)],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "seed": seed,
+        "reasoning": reasoning,
+        "repeat_penalty": repeat_penalty,
+        "top_k": top_k,
+        "top_p": top_p,
+        "min_p": min_p,
+        "presence_penalty": presence_penalty,
+        "response_format": response_format,
+    }
+    s = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def _llm_cache_store(key, text):
+    """Store a successful response in the bounded LRU cache (no-op when disabled/unkeyed)."""
+    if not key or not _LLM_CACHE_ENABLED:
+        return
+    _llm_response_cache[key] = text
+    _llm_response_cache.move_to_end(key)
+    while len(_llm_response_cache) > _LLM_CACHE_MAX:
+        _llm_response_cache.popitem(last=False)
+
+
+def _llm_cache_clear():
+    """Drop all cached responses (used by tests and on config change)."""
+    _llm_response_cache.clear()
+
+
 def chat_completion(server_url, api_key, model, messages,
                      temperature, max_tokens, timeout=600, seed=None,
                      reasoning="off", repeat_penalty=1.0,
@@ -1011,6 +1075,18 @@ def chat_completion(server_url, api_key, model, messages,
         isinstance(m.get("content"), list)
         for m in messages if isinstance(m, dict))
 
+    # --- Global LLM-response cache (opt-in) --------------------------------------
+    # Identical requests (server, model, messages, sampling params; api_key excluded) hit the
+    # cache instead of the network. Disabled by default; only active when _LLM_CACHE_ENABLED.
+    cache_key = None
+    if _LLM_CACHE_ENABLED:
+        cache_key = _llm_cache_key(server_url, api_key, model, messages, temperature, max_tokens,
+                                   seed, reasoning, repeat_penalty, top_k, top_p, min_p,
+                                   presence_penalty, response_format)
+        if cache_key in _llm_response_cache:
+            logger.debug("LLM cache HIT for model '%s' (skipping network).", model)
+            return _llm_response_cache[cache_key]
+
     # Prefer the native /api/v1/chat endpoint for ALL requests (text, vision, reasoning):
     # it is the project's base integration. A JSON-Schema `response_format` (structured
     # output) is forced onto the OpenAI /chat/completions path, which supports json_schema
@@ -1024,12 +1100,14 @@ def chat_completion(server_url, api_key, model, messages,
 
     if prefer_native:
         try:
-            return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
-                             timeout=timeout, seed=seed, reasoning=reasoning,
-                             repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
-                             min_p=min_p,
-                             presence_penalty=presence_penalty,
-                             frequency_penalty=frequency_penalty)
+            result = _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
+                              timeout=timeout, seed=seed, reasoning=reasoning,
+                              repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
+                              min_p=min_p,
+                              presence_penalty=presence_penalty,
+                              frequency_penalty=frequency_penalty)
+            _llm_cache_store(cache_key, result)
+            return result
         except Exception as e:  # noqa: BLE001 — graceful fallback to OpenAI-compatible path
             logger.warning("Native /api/v1/chat failed (%s); falling back to OpenAI path.", e)
             # Vision rejection on the native path is the classic reason to fall back here.
@@ -1118,6 +1196,7 @@ def chat_completion(server_url, api_key, model, messages,
                  model, time.time() - started, len(content),
                  _serialize_message_content(last))
 
+    _llm_cache_store(cache_key, content)
     return content
 
 

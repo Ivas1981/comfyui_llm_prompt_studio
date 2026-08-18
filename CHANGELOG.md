@@ -6,6 +6,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.7] — 2026-08-18
+
+Made every node behave correctly with non-SDXL checkpoints (SD1.5 / SD3 / Flux / Pony /
+Illustrious), and renamed **Multi-CLIP SDXL** to **Smart Multi-Clip**. All new inputs are
+optional with a `""` default, so existing workflows (keyed by the unchanged registration
+`LLMPromptStudioMultiClipSDXL`) keep loading and show the new title.
+
+### Added
+- **Architecture-aware Smart Parameters.** A new optional `architecture` input (wire the Smart
+  Loader's `detected_architecture`) makes the node recommend that base architecture's own sampler
+  defaults for base checkpoints — e.g. Flux → 24 steps / cfg 1.0 / euler-simple, SD1.5 → cfg 7.0,
+  SD3 → 40 steps / cfg 4.5, Pony / Illustrious → 28 steps / cfg 6.0. Distilled families keep
+  priority and are never overridden. The `sampler_params` route also accepts `arch`.
+- **`resolve_architecture()` in `model_meta.py`.** Resolves the canonical base architecture from
+  the loaded model object (and config), with a refinement that recovers **Pony / Illustrious** from
+  a SDXL checkpoint filename while never overwriting a genuine Flux / SD3 / SD1.5 detection.
+- **`force_no_negative` now live.** `presets_default.json` already carried `force_no_negative`
+  for Flux / SD3; the Writer and Scene Builder now honor it (computed before the no-negative
+  resolution) so those architectures force an empty negative regardless of family.
+
+### Changed
+- **Multi-CLIP SDXL → Smart Multi-Clip.** Now accepts a `detected_architecture` input and branches
+  conditioning per architecture: SDXL / Pony / Illustrious use dual g/l; SD1.5 uses its single
+  encoder; Flux / SD3 emit best-effort conditioning with a warning recommending the core
+  `CLIPTextEncodeFlux` / `CLIPTextEncodeSD3`. A token safety net prevents `KeyError` on
+  single-encoder CLIPs. Left unwired, it behaves exactly as before (driven by the CLIP's encoder
+  shape).
+
+### Fixed
+- Scene Builder now forwards its `architecture` input into the prompt builder (previously declared
+  but never wired through), so architecture adaptation actually applies in stage 2.
+
+---
+
+## [1.1.6] — 2026-08-18
+
+Improvements borrowed from peer projects (pinkpixel-dev/comfyui-llm-prompt-enhancer,
+jideka/ComfyUI-SmartPromptCrafter), all additive and gated so existing behaviour is unchanged.
+
+### Added
+- **Architecture detection in Smart Loader.** Two new outputs `detected_architecture` and
+  `detected_architecture_info` report the base architecture (SDXL / SD1.5 / Pony / Illustrious /
+  Flux / SD3 / unknown), derived from the loaded model object and falling back to a filename
+  heuristic. SDXL stays canonical when no architecture is wired in.
+- **Per-architecture prompt adaptation (Writer / Scene Builder).** A new optional `architecture`
+  input appends an architecture-specific system addendum and (in standard mode) default-negative
+  tokens; Flux / SD3 force no-negative mode. Guidance lives in `presets_default.json`
+  (`architecture_guidance`) and is user-editable.
+- **Categorized style-preset library.** The 14 flat presets are now grouped into ~50 styles with
+  `Category > Name` combobox labels; the original 14 names are preserved so old workflows resolve.
+  Preset matching accepts both the bare name and the categorized label.
+- **Opt-in global LLM-response cache** (`lm_http.py`). Off by default; enable with
+  `LLM_PROMPT_STUDIO_LLM_CACHE=true`. Identical requests (excluding the API key) are served from a
+  bounded LRU (~256 entries) below the per-node `reuse_last_prompt` cache.
+
+### Changed
+- Smart Loader `RETURN_TYPES`/`RETURN_NAMES` gained two appended outputs (`detected_architecture`,
+  `detected_architecture_info`); existing links are unaffected.
+
 ## [1.1.5] — 2026-08-18
 
 Added the **LLM Prompt Studio Smart Parameters** nodes that recommend KSampler parameters

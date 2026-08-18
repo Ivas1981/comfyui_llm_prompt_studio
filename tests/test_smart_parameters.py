@@ -126,3 +126,76 @@ def test_node_apply_parameters_and_return_types():
         "efficient", "auto", "balanced", 0, -1.0, "auto", "auto",
         detected_family="lcm", ckpt_name="")
     assert out3[3] == "AYS SDXL"
+
+
+# ---------------------------------------------------------------------------
+# Architecture-aware recommendations (base family + known architecture).
+# ---------------------------------------------------------------------------
+def test_architecture_override_flux_cfg():
+    # A base Flux checkpoint must NOT get SDXL defaults; cfg -> 1.0.
+    rec = dp.recommend("base", "balanced", "", target="standard", architecture="flux")
+    assert rec["family"] == "base"
+    assert rec["cfg"] == 1.0
+    assert rec["sampler"] == "euler"
+    assert rec["scheduler"] == "simple"
+    assert rec["steps"] == 24
+
+
+def test_architecture_override_sd3_low_cfg():
+    rec = dp.recommend("base", "balanced", "", target="standard", architecture="sd3")
+    assert rec["cfg"] == 4.5
+    assert rec["steps"] == 40
+    assert rec["sampler"] == "euler"
+    assert rec["scheduler"] == "simple"
+
+
+def test_architecture_override_sd15_cfg():
+    rec = dp.recommend("base", "balanced", "", target="standard", architecture="sd15")
+    assert rec["cfg"] == 7.0
+    assert rec["sampler"] is None or rec["sampler"] == "dpmpp_2m"
+    # sampler must be a valid standard sampler
+    assert rec["sampler"] in _SAMPLERS
+    assert rec["scheduler"] in _STANDARD_SCHEDULERS
+
+
+def test_architecture_override_pony():
+    rec = dp.recommend("base", "balanced", "", target="standard", architecture="pony")
+    assert rec["cfg"] == 6.0
+    assert rec["sampler"] == "dpmpp_2m"
+
+
+def test_architecture_unknown_falls_back_to_base():
+    rec = dp.recommend("base", "balanced", "", target="standard", architecture="unknown")
+    assert rec["cfg"] == 6.0
+    assert rec["steps"] == 30
+
+
+def test_distilled_family_still_wins_over_architecture():
+    # Even with architecture="flux", a distilled family (e.g. lightning) keeps its own params.
+    rec = dp.recommend("lightning", "balanced", "", target="standard", architecture="flux")
+    assert rec["family"] == "lightning"
+    assert rec["cfg"] == 1.0
+    assert rec["sampler"] == "euler"
+    assert rec["scheduler"] == "sgm_uniform"
+
+
+def test_node_passes_architecture_through():
+    from comfyui_llm_prompt_studio.nodes import smart_parameters as sp
+    out = sp.apply_parameters(
+        "standard", "auto", "balanced", 0, -1.0, "auto", "auto",
+        detected_family="base", ckpt_name="", architecture="flux")
+    # flux base -> cfg 1.0, euler/simple
+    assert out[1] == 1.0
+    assert out[2] == "euler"
+    assert out[3] == "simple"
+    assert "arch: flux" in out[4]
+
+
+def test_architecture_tables_have_all_presets():
+    for arch in dp.ARCHITECTURE_RECOMMENDATIONS:
+        for preset in dp.PRESETS:
+            assert preset in dp.ARCHITECTURE_RECOMMENDATIONS[arch]
+            row = dp.ARCHITECTURE_RECOMMENDATIONS[arch][preset]
+            assert len(row) == 4
+            assert row[2] in _SAMPLERS
+            assert row[3] in _STANDARD_SCHEDULERS

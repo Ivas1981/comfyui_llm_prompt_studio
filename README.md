@@ -32,16 +32,24 @@ No cloud, no API keys required — everything runs on your machine.
   (`filename` / `metadata` / `base` / `override`). The widget shows the checkpoint's **own** family
   and a notification when a distillation LoRA was applied, e.g.
    `family: base | source: filename | LoRA applied: dmd_lora.safetensors (distilled: dmd)`.
+   It also reports the base **`architecture`** (SDXL / SD1.5 / Pony / Illustrious / Flux / SD3) via
+   `detected_architecture` / `detected_architecture_info`; wire `detected_architecture` into the
+   Writer / Scene Builder `architecture` input to tailor token style and negatives per base model
+   (SDXL generation is unchanged when the input is left empty).
 - **Smart Parameters** — recommends KSampler `steps` / `cfg` / `sampler` / `scheduler` from the
   detected checkpoint family (wired from the Smart Loader's `detected_family`); emits them as COMBO
   outputs that plug straight into a standard or Efficient `KSampler`.
 - **LM Studio server-status indicator** — Writer / Image Critic / Scene Builder show a live
   `server_status` widget (`● Connected — <loaded model names>` / `● Connected (no model loaded)` /
   `● Server down`), polled from the pack's status route every few seconds.
-- **Multi-CLIP SDXL** — encodes up to four SDXL prompt pairs with one CLIP and shared
-  size settings.
-- **Style presets** — pick from 14 built-in styles (Photorealism, Cinematic, Anime, 3D Render,
-  …); a preset appends its style tags to the prompt and can override the system prompt.
+ - **Smart Multi-Clip** — architecture-aware encoding of up to four prompt pairs with one CLIP
+   and shared size settings; wire the Smart Loader's `detected_architecture` for non-SDXL models.
+- **Style presets** — pick from ~50 built-in styles grouped into categories (Photography,
+  Art Movements, Asian Art, Traditional Media, Digital & Contemporary, Fantasy & Horror,
+  Period & Style, Basic Styles); the combobox shows `Category > Name` labels. A preset appends
+  its style tags to the prompt and can override the system prompt. The Writer / Scene Builder
+  also expose an `architecture` input that adapts token style and default negatives for
+  SD1.5 / Pony / Illustrious / Flux / SD3.
 - **Advanced LM Studio v1 options** — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
   `repeat_penalty`, `top_k`, `top_p`, `min_p` are forwarded to LM Studio's native v1 API when
   supported.
@@ -101,7 +109,7 @@ No cloud, no API keys required — everything runs on your machine.
 4. Restart ComfyUI. You should see in the console:
    ```
    [LLMPromptStudio] Package loaded: Writer, Critic, Smart Save, Library Loader,
-   Scene Builder, Smart Loader, Multi-CLIP SDXL.
+   Scene Builder, Smart Loader, Smart Multi-Clip.
    ```
 
 ### Package layout
@@ -323,7 +331,8 @@ at link time, so a single node cannot switch its scheduler list at runtime:
 Both variants share the same inputs/outputs:
 - **Inputs:** `family_override` (auto / family), `preset` (`balanced` / `speed` / `quality`),
   `steps`, `cfg`, `sampler_name`, `scheduler`, plus optional `detected_family`
-  (wire the Smart Loader's `detected_family` output here) and `ckpt_name`.
+  (wire the Smart Loader's `detected_family` output here), `ckpt_name`, and `architecture`
+  (wire the Smart Loader's `detected_architecture` output here).
 - **Outputs:** `steps` (INT), `cfg` (FLOAT), `sampler_name` (COMBO), `scheduler` (COMBO), `info`
   (STRING).
 - The effective family is `detected_family` if wired (it already folds in a distillation LoRA),
@@ -331,22 +340,38 @@ Both variants share the same inputs/outputs:
   for known Lightning/Hyper checkpoints the step count can also be read from the filename
   (`SDXL-Lightning_4step` → 4 steps). The efficient node swaps in `AYS SDXL` for distilled
   families at the low-step presets.
+- **Architecture awareness:** when the resolved family is `base` and a known `architecture` is
+  wired in (SD1.5 / Pony / Illustrious / Flux / SD3), the node recommends that base
+  architecture's own sampler defaults (e.g. Flux → 24 steps, cfg 1.0, euler/simple; SD1.5 →
+  cfg 7.0) instead of the SDXL base row, so a non-SDXL checkpoint is not washed out. Distilled
+  families keep priority and are never overridden by the architecture.
 - **Sentinels:** leave `steps`/`cfg` at `0`/`-1.0` and `sampler_name`/`scheduler` at `auto`
   to use the recommendation. Any value you type manually overrides the recommendation and is
   preserved on reload (the web UI only autofills widgets you have not edited).
 - The web UI autofills the widgets from the `/llm_prompt_studio/sampler_params` route when the
-  family/preset/checkpoint changes.
+  family/preset/checkpoint changes (the route also accepts `arch`).
 
-### LLM Prompt Studio Multi-CLIP SDXL
+### LLM Prompt Studio Smart Multi-Clip
 
-Encodes up to four SDXL prompt pairs with one CLIP and shared size settings.
+Encodes up to four prompt pairs with one CLIP and shared size settings. It is **architecture-
+aware**: wire the Smart Loader's `detected_architecture` into the `architecture` input so
+non-SDXL checkpoints are conditioned correctly.
 - **Inputs:** `clip`, `width`, `height`, `crop_w`, `crop_h`, and optional
   `target_width`, `target_height`, `positive1_g/l`, `negative1_g/l`,
-  `positive2_g/l`, `negative2_g/l`.
+  `positive2_g/l`, `negative2_g/l`, and `architecture`.
 - **Outputs:** `clip` (pass-through), `positive1`, `negative1`, `positive2`,
   `negative2` (CONDITIONING).
 - Each `*_l` falls back to its `*_g` when empty; `target_*` falls back to
   `width`/`height` when empty; an empty pair encodes an empty string.
+- **Conditioning by architecture:**
+  - **SDXL / Pony / Illustrious** — dual g/l conditioning (the original behavior).
+  - **SD1.5** — encoded through its single encoder; the width/height metadata is attached but
+    ignored by SD1.5 (harmless).
+  - **Flux / SD3** — best-effort conditioning (a warning is logged recommending the core
+    `CLIPTextEncodeFlux` / `CLIPTextEncodeSD3` for native-quality conditioning); the width/height
+    metadata is attached but ignored by those models.
+  - If `architecture` is left unwired, the node inspects the CLIP's own encoder shape (dual vs
+    single) and branches accordingly, so existing SDXL graphs are byte-identical.
 - Replaces multiple `CLIPTextEncodeSDXL` nodes: `positive1/negative1` → main KSampler,
   `positive2/negative2` → FaceDetailer.
 
@@ -398,10 +423,11 @@ back with **Library Loader**.
 
 ## Style presets
 
-The Writer's `style_preset` combobox lists 14 built-in styles (Photorealism, Cinematic,
-Anime / Manga, 3D Render, Digital Art / Concept Art, Oil Painting, Watercolor, Pixel Art,
-Comic / Graphic Novel, Fantasy Art, Cyberpunk, Steampunk, Ukiyo-e, Minimalist / Vector).
-Selecting one:
+The Writer's `style_preset` combobox lists ~50 built-in styles grouped by category
+(Photography, Art Movements, Asian Art, Traditional Media, Digital & Contemporary,
+Fantasy & Horror, Period & Style, Basic Styles); each entry is shown as `Category > Name`.
+The original 14 styles keep their names, so workflows saved with a bare preset name still
+resolve. Selecting one:
 
 - appends the preset's `style_tags_positive` / `style_tags_negative` to the generated
   `positive` / `negative` (skipped for `negative` in no-negative mode);
@@ -454,6 +480,9 @@ outside the output folder.
 - **`library_path` / `save_dir` (path-traversal guard)** — confined to the ComfyUI
   output directory. To allow paths outside it, set `RESTRICT_PATHS_TO_OUTPUT = False`
   in `library.py`.
+- **Global LLM-response cache** — OFF by default. Set `LLM_PROMPT_STUDIO_LLM_CACHE=true`
+  to reuse identical chat-completion responses within a session (bounded LRU, ~256 entries).
+  The cache key excludes the API key and lives below the per-node `reuse_last_prompt` cache.
 - The prompt library is written atomically (`.tmp` then rename) to avoid corruption.
 
 ---
@@ -518,7 +547,7 @@ the combo.
 ## Typical workflow
 
 1. **Writer** generates a prompt from your idea.
-2. Prompt → your SDXL sampling graph (use **Smart Loader** + **Multi-CLIP SDXL**).
+ 2. Prompt → your SDXL sampling graph (use **Smart Loader** + **Smart Multi-Clip**).
 3. Rendered image → **Critic** (vision model scores it).
 4. `approved` → **Smart Save** (saves only good images).
 5. Enable **`auto_loop`** on the Critic to refine automatically, or wire

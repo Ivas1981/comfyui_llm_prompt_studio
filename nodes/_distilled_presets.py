@@ -16,6 +16,7 @@ __all__ = [
     "FAMILIES",
     "DISTILLED_FAMILIES",
     "RECOMMENDATIONS",
+    "ARCHITECTURE_RECOMMENDATIONS",
     "recommend",
 ]
 
@@ -98,6 +99,50 @@ RECOMMENDATIONS = {
     },
 }
 
+# Architecture-aware recommendations, keyed by canonical base architecture. Used when the
+# resolved family is "base" (a non-distilled checkpoint) so a base Flux/SD3/SD1.5 does not
+# silently receive SDXL defaults (which wash out those architectures). Distilled families
+# keep priority and are never overridden by this table. Each sub-row is (steps, cfg, sampler,
+# scheduler) per preset; the sampler/scheduler values validate against BOTH standard and
+# efficient KSampler lists (no AYS/GITS), mirroring RECOMMENDATIONS.
+ARCHITECTURE_RECOMMENDATIONS = {
+    "sdxl": {
+        "balanced": (30, 6.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 5.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 7.0, "dpmpp_2m_sde", "karras"),
+    },
+    "sd15": {
+        "balanced": (28, 7.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 6.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 9.0, "dpmpp_2m_sde", "karras"),
+    },
+    "pony": {
+        "balanced": (28, 6.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 5.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 7.0, "dpmpp_2m_sde", "karras"),
+    },
+    "illustrious": {
+        "balanced": (28, 6.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 5.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 7.0, "dpmpp_2m_sde", "karras"),
+    },
+    "flux": {
+        "balanced": (24, 1.0, "euler", "simple"),
+        "speed":    (12, 1.0, "euler", "simple"),
+        "quality":  (30, 1.0, "euler", "simple"),
+    },
+    "sd3": {
+        "balanced": (40, 4.5, "euler", "simple"),
+        "speed":    (20, 3.0, "euler", "simple"),
+        "quality":  (50, 5.0, "euler", "simple"),
+    },
+    "unknown": {
+        "balanced": (30, 6.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 5.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 7.0, "dpmpp_2m_sde", "karras"),
+    },
+}
+
 # Matches "4step" / "4 steps" / "8-Step" in a checkpoint filename.
 _STEP_RE = re.compile(r"(\d+)\s*step", re.IGNORECASE)
 
@@ -134,12 +179,18 @@ def _steps_from_ckpt(ckpt_name: str, distilled: bool) -> int:
     return max(1, min(100, n))
 
 
-def recommend(family="", preset="balanced", ckpt_name="", target="standard") -> dict:
+def recommend(family="", preset="balanced", ckpt_name="", target="standard",
+               architecture="") -> dict:
     """Return recommended sampler params for a checkpoint family.
 
     Returns ``{"family", "preset", "target", "steps", "cfg", "sampler",
     "scheduler", "note"}``. ``target`` is ``"standard"`` (broader default) or
     ``"efficient"`` (Efficient KSampler, which adds AYS/GITS schedulers).
+
+    When the resolved family is ``"base"`` and a known ``architecture`` is supplied, the
+    architecture's own recommended steps/cfg/sampler/scheduler override the base defaults
+    (the preset still selects the sub-row), so a base Flux/SD3/SD1.5 does not receive SDXL
+    defaults. Distilled families keep priority — a non-base family is never overridden.
     """
     fam, is_known = _family_key(family)
     if preset not in PRESETS:
@@ -150,6 +201,18 @@ def recommend(family="", preset="balanced", ckpt_name="", target="standard") -> 
     steps_t, cfg, sampler, scheduler, note = table.get(
         preset, RECOMMENDATIONS["base"][preset]
     )
+
+    # Architecture override for base checkpoints: a base Flux/SD3/SD1.5 (or Pony/Illustrious)
+    # gets its own sane sampler defaults instead of the SDXL base row. Distilled families are
+    # unaffected because the gate below requires fam == "base".
+    arch = (architecture or "").strip().lower()
+    if fam == "base" and arch in ARCHITECTURE_RECOMMENDATIONS:
+        a_steps, a_cfg, a_sampler, a_scheduler = \
+            ARCHITECTURE_RECOMMENDATIONS[arch][preset]
+        steps_t = a_steps
+        cfg = a_cfg
+        sampler = a_sampler
+        scheduler = a_scheduler
 
     # Unknown family falls back to base params but reports a safe step count.
     if not is_known:

@@ -53,6 +53,7 @@ def _reset_state():
     lm_http._model_cache.clear()
     lm_http._static_keys.clear()
     lm_http._server_loaded.clear()
+    lm_http._llm_response_cache.clear()
 
 
 def test_validate_server_url_allows_local():
@@ -398,6 +399,65 @@ def test_ensure_model_loaded_old_string_state_forces_reload():
          patch.object(lm_http, "load_model", return_value=True) as load:
         lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
     load.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Global LLM-response cache (opt-in, off by default).
+# ---------------------------------------------------------------------------
+
+def test_llm_cache_hit_avoids_second_network_call():
+    # With the cache enabled, an identical repeat request is served from cache (one POST only).
+    lm_http._LLM_CACHE_ENABLED = True
+    lm_http._llm_response_cache.clear()
+    try:
+        ok = _ok_response(status=200,
+                          text=json.dumps({"output": [{"type": "message",
+                                                       "content": "hello"}]}))
+        with patch("requests.get",
+                   return_value=_models_response([{"key": "m", "capabilities": {}}])), \
+             patch("requests.post", return_value=ok) as post:
+            out1 = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                           [{"role": "user", "content": "hi"}], 0.7, 100)
+            out2 = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                           [{"role": "user", "content": "hi"}], 0.7, 100)
+        assert out1 == out2 == "hello"
+        assert post.call_count == 1
+    finally:
+        lm_http._LLM_CACHE_ENABLED = False
+        lm_http._llm_response_cache.clear()
+
+
+def test_llm_cache_disabled_always_hits_network():
+    # Default-off cache: identical requests still hit the network every time.
+    assert lm_http._LLM_CACHE_ENABLED is False
+    with patch("requests.get",
+               return_value=_models_response([{"key": "m", "capabilities": {}}])), \
+         patch("requests.post",
+               return_value=_ok_response(status=200,
+                                         text=json.dumps({"output": [{"type": "message",
+                                                                      "content": "x"}]}))) as post:
+        lm_http.chat_completion(LOCAL_V1, "", "m", [{"role": "user", "content": "hi"}], 0.7, 100)
+        lm_http.chat_completion(LOCAL_V1, "", "m", [{"role": "user", "content": "hi"}], 0.7, 100)
+    assert post.call_count == 2
+
+
+def test_llm_cache_distinct_requests_not_merged():
+    # Different messages -> different keys -> a real second call (not a cache hit).
+    lm_http._LLM_CACHE_ENABLED = True
+    lm_http._llm_response_cache.clear()
+    try:
+        ok = _ok_response(status=200,
+                          text=json.dumps({"output": [{"type": "message",
+                                                       "content": "x"}]}))
+        with patch("requests.get",
+                   return_value=_models_response([{"key": "m", "capabilities": {}}])), \
+             patch("requests.post", return_value=ok) as post:
+            lm_http.chat_completion(LOCAL_V1, "", "m", [{"role": "user", "content": "a"}], 0.7, 100)
+            lm_http.chat_completion(LOCAL_V1, "", "m", [{"role": "user", "content": "b"}], 0.7, 100)
+        assert post.call_count == 2
+    finally:
+        lm_http._LLM_CACHE_ENABLED = False
+        lm_http._llm_response_cache.clear()
 
 
 # ---------------------------------------------------------------------------

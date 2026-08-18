@@ -5,8 +5,9 @@ import traceback
 from ..combos import combo_models
 from ..imaging import image_to_base64
 from ..lm_http import chat_completion, ensure_model_loaded, resolve_vision
-from ..model_meta import is_no_negative_family
+from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
+from ..presets import get_architecture_guidance, append_negative_tags
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._defaults import DEFAULT_COMPOSER, DEFAULT_COMPOSER_NO_NEGATIVE, DEFAULT_DESCRIBE
 from .model_recommendations import resolve_profile
@@ -81,6 +82,10 @@ class LLMPromptStudioSceneBuilder:
             },
             "optional": {
                 "family": ("STRING", {"default": ""}),
+                "architecture": ("STRING", {"default": "",
+                                            "tooltip": "Base architecture detected by Smart "
+                                                       "Loader's detected_architecture output; "
+                                                       "adapts token style and negatives (stage 2)"}),
                 "server_status": ("STRING", {"default": "",
                                              "multiline": False,
                                              "tooltip": "Live LM Studio server status "
@@ -98,7 +103,7 @@ class LLMPromptStudioSceneBuilder:
                    prompt_mode="auto", family="", unique_id=None,
                    flash_attention=None, offload_kv_cache_to_gpu=None, reasoning="off",
                     repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
-                     load_model_profile="auto", server_status=""):
+                      load_model_profile="auto", server_status="", architecture=""):
         _t0 = time.time()
         log_node_enter("Scene Builder", unique_id, {
             "stage": stage, "server_url": server_url, "model": model,
@@ -111,19 +116,19 @@ class LLMPromptStudioSceneBuilder:
                              gpu_offload, describe_prompt, composer_prompt, user_changes,
                              image_max_size, temperature, max_tokens, max_field_retries,
                              vision_check, description_view, prompt_mode, family, unique_id, _t0,
-                             flash_attention, offload_kv_cache_to_gpu, reasoning,
-                              repeat_penalty, top_k, top_p, min_p,
-                               load_model_profile)
+                              flash_attention, offload_kv_cache_to_gpu, reasoning,
+                               repeat_penalty, top_k, top_p, min_p,
+                                load_model_profile, architecture)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
 
     def _run(self, stage, image, server_url, api_key, model, context_length, gpu_offload,
-              describe_prompt, composer_prompt, user_changes, image_max_size, temperature,
-              max_tokens, max_field_retries, vision_check, description_view, prompt_mode, family,
-              unique_id, _t0, flash_attention, offload_kv_cache_to_gpu, reasoning,
-               repeat_penalty, top_k, top_p, min_p,
-                 load_model_profile="auto"):
+               describe_prompt, composer_prompt, user_changes, image_max_size, temperature,
+               max_tokens, max_field_retries, vision_check, description_view, prompt_mode, family,
+               unique_id, _t0, flash_attention, offload_kv_cache_to_gpu, reasoning,
+                repeat_penalty, top_k, top_p, min_p,
+                  load_model_profile="auto", architecture=""):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -196,15 +201,23 @@ class LLMPromptStudioSceneBuilder:
                 "The description field is empty — run stage 1 (Describe) "
                 "on this workflow first.")
 
+        # Architecture adaptation lookups (computed BEFORE the no-negative resolution so an
+        # arch-level force_no_negative can flip the mode). SDXL guidance is empty, so SDXL
+        # output is unchanged when `architecture` is empty/unwired.
+        arch = (architecture or "").strip().lower()
+        arch_guidance = get_architecture_guidance().get(arch, {}) if arch else {}
+
         # Resolve the effective mode (same semantics as the Writer).
         if prompt_mode == "no_negative":
             no_negative = True
         elif prompt_mode == "standard":
             no_negative = False
         else:
-            no_negative = is_no_negative_family(family)
-        logger.info("Scene Builder prompt mode: %s (family=%r) -> no_negative=%s",
-                     prompt_mode, family, no_negative)
+            no_negative = is_no_negative_family(family) or is_no_negative_architecture(architecture)
+        if not no_negative and arch_guidance.get("force_no_negative"):
+            no_negative = True
+        logger.info("Scene Builder prompt mode: %s (family=%r, arch=%r) -> no_negative=%s",
+                     prompt_mode, family, architecture, no_negative)
 
         # Mirror the Writer: only switch to the no-negative composer when we are actually in
         # no-negative mode; otherwise keep the standard composer verbatim so a real negative
@@ -214,6 +227,14 @@ class LLMPromptStudioSceneBuilder:
                 else DEFAULT_COMPOSER_NO_NEGATIVE
         else:
             effective_composer = composer_prompt
+
+        # Architecture adaptation (stage 2 only): append architecture-specific guidance to the
+        # composer prompt. SDXL guidance is empty, so SDXL output is unchanged when `architecture`
+        # is empty/unwired. Flux/SD3 force no-negative via is_no_negative_architecture above.
+        if arch_guidance:
+            addendum = arch_guidance.get("system_addendum", "")
+            if addendum:
+                effective_composer = effective_composer + "\n\n" + addendum
 
         user_text = f"Scene description:\n{description_view.strip()}\n\n"
         if user_changes.strip():
@@ -265,6 +286,11 @@ class LLMPromptStudioSceneBuilder:
         # In no-negative mode the negative is forced empty (inert at CFG~1).
         if no_negative:
             negative = ""
+
+        # Architecture default negatives (standard mode only; inert when no_negative already
+        # forced the negative empty above). Deduped against the generated negative.
+        if arch and not no_negative and arch_guidance:
+            negative = append_negative_tags(negative, arch_guidance.get("default_negative", ""))
 
         if not positive.strip():
             raise RuntimeError(

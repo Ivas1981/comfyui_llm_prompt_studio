@@ -9,7 +9,7 @@ logger = logging.getLogger("llm_prompt_studio")
 # user-editable ``llm_prompt_studio_presets.json`` in the ComfyUI output directory on
 # first run). The package-root file is the shipped source of truth; the user file
 # overrides it. See ``presets.py`` for loading/migration.
-from ..presets import get_defaults
+from ..presets import get_defaults, get_architecture_guidance
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -52,3 +52,7 @@ DEFAULT_COMPOSER_NO_NEGATIVE = _with_hint(
     _P.get("composer_no_negative") or _P.get("composer", ""))
 FACE_PROMPT_INSTRUCTION_NO_NEGATIVE = (
     _P.get("face_instruction_no_negative") or _P.get("face_instruction", ""))
+
+# Architecture-specific prompt guidance (system addendum / default negatives), keyed by
+# canonical architecture; sourced from presets_default.json and user-editable.
+ARCHITECTURE_GUIDANCE = get_architecture_guidance()

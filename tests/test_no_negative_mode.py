@@ -28,7 +28,7 @@ def _json(**fields):
 
 def _run_writer(chat_side_effect, prompt_mode="auto", family="", generate_face_prompts=False,
                 max_field_retries=2, face_prompt_instruction="", revision_notes="",
-                unique_id="1"):
+                unique_id="1", architecture=""):
     with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
          patch.object(writer, "chat_completion", side_effect=chat_side_effect):
         result = writer.LLMPromptStudioWriter().execute(
@@ -37,11 +37,12 @@ def _run_writer(chat_side_effect, prompt_mode="auto", family="", generate_face_p
             revision_notes=revision_notes, temperature=0.7, max_tokens=512, seed=0,
             reuse_last_prompt=False, generate_face_prompts=generate_face_prompts,
             max_field_retries=max_field_retries, face_prompt_instruction=face_prompt_instruction,
-            prompt_mode=prompt_mode, family=family, unique_id=unique_id)
+            prompt_mode=prompt_mode, family=family, unique_id=unique_id, architecture=architecture)
     return result
 
 
-def _run_scene(chat_side_effect, prompt_mode="auto", family="", description="a cat sitting"):
+def _run_scene(chat_side_effect, prompt_mode="auto", family="", description="a cat sitting",
+               architecture=""):
     with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: None), \
          patch.object(scene_builder, "chat_completion", side_effect=chat_side_effect):
         return scene_builder.LLMPromptStudioSceneBuilder().execute(
@@ -49,7 +50,7 @@ def _run_scene(chat_side_effect, prompt_mode="auto", family="", description="a c
             model="m", context_length=16384, gpu_offload=1.0, describe_prompt="D",
             composer_prompt="C", user_changes="", image_max_size=1024, temperature=0.7,
             max_tokens=1024, max_field_retries=2, vision_check=False, description_view=description,
-            prompt_mode=prompt_mode, family=family)
+            prompt_mode=prompt_mode, family=family, architecture=architecture)
 
 
 # --- mode selection ---------------------------------------------------------
@@ -168,9 +169,29 @@ def test_cache_key_survives_checkpoint_family_change():
     assert result[1] == "blurry"
 
 
-def test_scene_no_negative_forces_empty():
+def test_auto_flux_architecture_forces_no_negative():
+    # A base family with a Flux architecture must force the empty negative (force_no_negative).
+    result = _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                         prompt_mode="auto", family="base", architecture="flux")
+    assert result[1] == ""
+
+
+def test_auto_sd3_architecture_forces_no_negative():
+    result = _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                         prompt_mode="auto", family="base", architecture="sd3")
+    assert result[1] == ""
+
+
+def test_auto_sdxl_architecture_keeps_negative():
+    # SDXL architecture must NOT force no-negative in auto mode with a base family.
+    result = _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                         prompt_mode="auto", family="base", architecture="sdxl")
+    assert result[1] == "blurry"
+
+
+def test_scene_flux_architecture_forces_no_negative():
     result = _run_scene([_json(positive="a cat", negative="blurry", scene_name="cat")],
-                         prompt_mode="no_negative")
+                        prompt_mode="auto", architecture="flux")
     assert result["result"][1] == ""
 
 

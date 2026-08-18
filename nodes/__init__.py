@@ -27,7 +27,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LLMPromptStudioLibraryLoader": "LLM Prompt Studio Library Loader",
     "LLMPromptStudioSceneBuilder": "LLM Prompt Studio Scene Builder",
     "LLMPromptStudioSmartLoader": "LLM Prompt Studio Smart Loader",
-    "LLMPromptStudioMultiClipSDXL": "LLM Prompt Studio Multi-CLIP SDXL",
+    "LLMPromptStudioMultiClipSDXL": "LLM Prompt Studio Smart Multi-Clip",
     "LLMPromptStudioSmartParameters": "LLM Prompt Studio Smart Parameters",
     "LLMPromptStudioSmartParametersEfficient": "LLM Prompt Studio Smart Parameters (Efficient)",
 }

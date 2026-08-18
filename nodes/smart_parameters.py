@@ -36,13 +36,17 @@ def _build_input_types(sched_combo):
         "optional": {
             "detected_family": ("STRING", {"default": ""}),
             "ckpt_name": ("STRING", {"default": ""}),
+            "architecture": ("STRING", {"default": "",
+                                       "tooltip": "Base architecture from Smart Loader's "
+                                                  "detected_architecture; selects architecture-"
+                                                  "appropriate sampler defaults for base models"}),
         },
         "hidden": {"unique_id": "UNIQUE_ID"},
     }
 
 
 def apply_parameters(target, family_override, preset, steps, cfg, sampler_name, scheduler,
-                     detected_family="", ckpt_name="", unique_id=None):
+                      detected_family="", ckpt_name="", architecture="", unique_id=None):
     """Resolve effective params, applying recommendations for any sentinel value.
 
     Sentinels: ``steps <= 0``, ``cfg < 0``, ``sampler_name == "auto"``,
@@ -50,13 +54,13 @@ def apply_parameters(target, family_override, preset, steps, cfg, sampler_name, 
     the user-editable widgets; only the sentinel defaults fall through to the table.
     """
     eff = (detected_family or "").strip() or (family_override if family_override != "auto" else "base")
-    rec = recommend(eff, preset, ckpt_name or "", target=target)
+    rec = recommend(eff, preset, ckpt_name or "", target=target, architecture=architecture or "")
     out_steps = steps if steps and steps > 0 else rec["steps"]
     out_cfg = cfg if cfg is not None and cfg >= 0 else rec["cfg"]
     out_sampler = sampler_name if sampler_name and sampler_name != "auto" else rec["sampler"]
     out_sched = scheduler if scheduler and scheduler != "auto" else rec["scheduler"]
-    info = "family: %s | preset: %s | target: %s | %s" % (
-        eff, preset, target, rec.get("note", ""))
+    info = "family: %s | preset: %s | target: %s | arch: %s | %s" % (
+        eff, preset, target, architecture or "", rec.get("note", ""))
     return (out_steps, out_cfg, out_sampler, out_sched, info)
 
 

@@ -4,9 +4,10 @@ import traceback
 
 from ..combos import combo_models
 from ..lm_http import chat_completion, ensure_model_loaded
-from ..model_meta import is_no_negative_family
+from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
-from ..presets import apply_preset_to_prompts, get_preset_by_name
+from ..presets import (apply_preset_to_prompts, get_preset_by_name,
+                       get_architecture_guidance, append_negative_tags)
 from .model_recommendations import resolve_profile
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._defaults import (DEFAULT_SYSTEM, DEFAULT_SYSTEM_NO_NEGATIVE,
@@ -103,6 +104,10 @@ class LLMPromptStudioWriter:
             },
             "optional": {
                 "family": ("STRING", {"default": ""}),
+                "architecture": ("STRING", {"default": "",
+                                            "tooltip": "Base architecture detected by Smart "
+                                                       "Loader's detected_architecture output; "
+                                                       "adapts token style and negatives"}),
                 "server_status": ("STRING", {"default": "",
                                              "multiline": False,
                                              "tooltip": "Live LM Studio server status "
@@ -124,11 +129,12 @@ class LLMPromptStudioWriter:
                  style_preset="— none —", flash_attention=None,
                   offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
                    top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto",
-                     server_status=""):
+                     server_status="", architecture=""):
         _t0 = time.time()
         log_node_enter("Writer", unique_id, {
             "server_url": server_url, "model": model, "idea": idea,
             "prompt_mode": prompt_mode, "family": family,
+            "architecture": architecture,
             "generate_face_prompts": generate_face_prompts,
             "temperature": temperature, "max_tokens": max_tokens, "seed": seed,
              "reuse_last_prompt": reuse_last_prompt, "max_field_retries": max_field_retries,
@@ -142,18 +148,18 @@ class LLMPromptStudioWriter:
                              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
                              style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
                repeat_penalty, top_k, top_p, min_p,
-                 load_model_profile)
+                 load_model_profile, architecture)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
 
     def _run(self, server_url, api_key, model, context_length, gpu_offload, system_prompt, idea,
-              revision_notes, temperature, max_tokens, seed,
-              reuse_last_prompt, generate_face_prompts, max_field_retries,
-              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
-              style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
+             revision_notes, temperature, max_tokens, seed,
+             reuse_last_prompt, generate_face_prompts, max_field_retries,
+             face_prompt_instruction, prompt_mode, family, unique_id, _t0,
+             style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
                repeat_penalty, top_k, top_p, min_p,
-                 load_model_profile="auto"):
+                 load_model_profile="auto", architecture=""):
         # Reuse mode: return the cached prompt without calling the LLM. The key is the node
         # id + prompt_mode so a mode switch still regenerates. `family` is intentionally
         # excluded: it is driven by the loaded checkpoint, and with reuse on we want the same
@@ -187,6 +193,12 @@ class LLMPromptStudioWriter:
                             flash_attention=flash_attention,
                             offload_kv_cache_to_gpu=offload_kv_cache_to_gpu)
 
+        # Architecture adaptation lookups (computed BEFORE the no-negative resolution so an
+        # arch-level ``force_no_negative`` can flip the mode; see below). SDXL guidance is
+        # empty, so SDXL generation is unchanged when `architecture` is empty/unwired.
+        arch = (architecture or "").strip().lower()
+        arch_guidance = get_architecture_guidance().get(arch, {}) if arch else {}
+
         # Resolve the effective mode. 'no_negative' forces it; 'standard' forbids it;
         # 'auto' (and anything unexpected) defers to the detected checkpoint family.
         if prompt_mode == "no_negative":
@@ -194,9 +206,13 @@ class LLMPromptStudioWriter:
         elif prompt_mode == "standard":
             no_negative = False
         else:
-            no_negative = is_no_negative_family(family)
-        logger.info("Writer node %s prompt mode: %s (family=%r) -> no_negative=%s",
-                     unique_id, prompt_mode, family, no_negative)
+            no_negative = is_no_negative_family(family) or is_no_negative_architecture(architecture)
+        # An architecture may declare force_no_negative (e.g. Flux/SD3) to force the empty
+        # negative path even when the family is not itself a no-negative one.
+        if not no_negative and arch_guidance.get("force_no_negative"):
+            no_negative = True
+        logger.info("Writer node %s prompt mode: %s (family=%r, arch=%r) -> no_negative=%s",
+                     unique_id, prompt_mode, family, architecture, no_negative)
 
         # Drop a preset that opts out of no-negative mode, then optionally override the
         # system prompt with the preset's when the user hasn't customized it.
@@ -232,6 +248,15 @@ class LLMPromptStudioWriter:
             if REASONING_HINT and "ALWAYS finish your reply with the complete JSON object" \
                     not in effective_system:
                 effective_system = effective_system + REASONING_HINT
+
+        # Architecture adaptation: append architecture-specific guidance to the system prompt
+        # (only when a detected architecture is wired in). SDXL guidance is empty, so SDXL
+        # generation is unchanged when `architecture` is empty/unwired. A Flux/SD3 architecture
+        # also forces no-negative via is_no_negative_architecture above.
+        if arch_guidance:
+            addendum = arch_guidance.get("system_addendum", "")
+            if addendum:
+                effective_system = effective_system + "\n\n" + addendum
 
         # v1-native sampling params: convert "off"/default widget values to None so the
         # default call stays on the OpenAI-compatible path (backward compatible).
@@ -338,6 +363,11 @@ class LLMPromptStudioWriter:
             face_positive = positive
         if not no_negative and not face_negative.strip():
             face_negative = negative
+
+        # Architecture default negatives (standard mode only; inert when no_negative already
+        # forced the negative empty above). Deduped against the generated negative.
+        if arch and not no_negative and arch_guidance:
+            negative = append_negative_tags(negative, arch_guidance.get("default_negative", ""))
 
         # Append the preset's style tags to the prompts (negative tags only when not in
         # no-negative mode, where the negative is intentionally empty).
