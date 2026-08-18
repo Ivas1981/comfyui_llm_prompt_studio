@@ -33,15 +33,17 @@ if "comfy" not in sys.modules or "comfy.samplers" not in sys.modules:
     _samplers = types.ModuleType("comfy.samplers")
 
     class _KSampler:
-        SAMPLERS = (
+        # Real ComfyUI returns LISTS here (not tuples). Mirror that so `list + tuple`
+        # type errors (e.g. `STANDARD_SCHEDULERS + ("auto",)`) are caught by tests.
+        SAMPLERS = [
             "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms",
             "dpmpp_2s_ancestral", "dpmpp_2m", "dpmpp_sde", "dpmpp_2m_sde",
             "dpmpp_3m_sde", "ddpm", "lcm", "ddim", "uni_pc", "uni_pc_bh2",
-        )
-        SCHEDULERS = (
+        ]
+        SCHEDULERS = [
             "normal", "karras", "exponential", "sgm_uniform", "simple",
             "ddim_uniform", "beta", "linear_quadratic", "kl_optimal",
-        )
+        ]
 
     _samplers.KSampler = _KSampler
     _comfy.samplers = _samplers

@@ -18,7 +18,7 @@ import comfy.samplers
 
 SAMPLERS_COMBO = comfy.samplers.KSampler.SAMPLERS
 STANDARD_SCHEDULERS = comfy.samplers.KSampler.SCHEDULERS
-EFF_SCHEDULERS = STANDARD_SCHEDULERS + ("AYS SD1", "AYS SDXL", "AYS SVD", "GITS")
+EFF_SCHEDULERS = list(STANDARD_SCHEDULERS) + ["AYS SD1", "AYS SDXL", "AYS SVD", "GITS"]
 
 from ._distilled_presets import recommend, PRESETS, FAMILIES  # noqa: E402
 
@@ -30,8 +30,8 @@ def _build_input_types(sched_combo):
             "preset": (list(PRESETS), {"default": "balanced"}),
             "steps": ("INT", {"default": 0, "min": 0, "max": 10000, "step": 1}),
             "cfg": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 100.0, "step": 0.1}),
-            "sampler_name": (SAMPLERS_COMBO + ("auto",), {"default": "auto"}),
-            "scheduler": (sched_combo + ("auto",), {"default": "auto"}),
+                "sampler_name": (SAMPLERS_COMBO + ["auto"], {"default": "auto"}),
+                "scheduler": (sched_combo + ["auto"], {"default": "auto"}),
         },
         "optional": {
             "detected_family": ("STRING", {"default": ""}),
