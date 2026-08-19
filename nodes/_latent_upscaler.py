@@ -246,8 +246,21 @@ def _tiled_forward(fn, x, scale, tile, overlap=_TILE_OVERLAP, out_channels=4):
     is left uncovered when ``scale`` is fractional.
     """
     b, _, h, w = x.shape
-    out_h = max(1, int(round(h * scale)))
-    out_w = max(1, int(round(w * scale)))
+    # The output size must come from the upscaling net itself, not from ``round(h*scale)``:
+    # a fractional scale (City96 ``x1.5``, or a non-integer ttl factor) can make the net emit
+    # a size that round() does not match. With a too-large buffer the last tile is flushed
+    # one cell past the net's true edge, leaving an uncovered strip; with a too-small one the
+    # tile writes would fall out of bounds. Probe the net on thin strips (far cheaper than a
+    # full forward) to read its real output dimensions - our nets size each axis independently,
+    # so a 1-wide strip gives the true output height and a 1-tall strip the true output width.
+    # If even that tiny forward cannot run (pathological OOM), fall back to round() so we still
+    # produce output.
+    try:
+        out_h = max(1, int(fn(x[:, :, :, :1]).shape[-2]))
+        out_w = max(1, int(fn(x[:, :, :1, :]).shape[-1]))
+    except Exception:  # pragma: no cover - only when the net cannot process a 1-wide strip
+        out_h = max(1, int(round(h * scale)))
+        out_w = max(1, int(round(w * scale)))
     acc = torch.zeros((b, out_channels, out_h, out_w), device=x.device, dtype=x.dtype)
     weight = torch.zeros((b, 1, out_h, out_w), device=x.device, dtype=x.dtype)
     out_overlap = max(1, int(round(overlap * scale)))

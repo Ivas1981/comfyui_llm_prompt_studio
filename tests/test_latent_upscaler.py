@@ -109,17 +109,17 @@ def test_tiled_forward_is_exact_for_a_local_op():
 
 
 def test_tiled_forward_covers_output_for_fractional_scale():
-    # Fractional scales round differently per tile; every output cell must still be written
-    # (a gap would show up as a black row/column in the hires latent).
+    # A fractional scale (City96 x1.5, or a non-integer ttl factor) makes the net emit a size
+    # that round(h*scale) does not match - so the output size must be read from the net itself,
+    # otherwise a strip is left uncovered (black row/column in the hires latent) or the tiles
+    # are written to the wrong (too-large) buffer. Use a floor-based net, like F.interpolate /
+    # City96 Upsample, which is exactly the case round() used to get wrong.
     x = torch.ones(1, 4, 45, 45)
-
-    def fn(t):
-        h, w = t.shape[-2], t.shape[-1]
-        return torch.nn.functional.interpolate(
-            t, size=(int(round(h * 1.5)), int(round(w * 1.5))), mode="nearest")
-
+    fn = lambda t: torch.nn.functional.interpolate(t, scale_factor=1.5, mode="nearest")
     tiled = lu._tiled_forward(fn, x, 1.5, tile=24)
-    assert tiled.shape[-2:] == (68, 68)
+    whole = fn(x)
+    assert tiled.shape == whole.shape            # size derived from the net, not round()
+    assert torch.allclose(tiled, whole)          # every output cell is written and matches
     assert torch.all(tiled > 0.5)                 # no uncovered (zero-weight) cells
 
 
@@ -172,6 +172,22 @@ def test_attention_resizer_tiles_without_growing_memory():
         plain = model(x, scale=2.0)
         tiled = lu._tiled_forward(lambda t: model(t, scale=2.0), x, 2.0, tile=16)
     assert plain.shape == tiled.shape == (1, 4, 80, 80)
+
+
+def test_attention_resizer_tiles_fractional_scale():
+    # Same idea with a non-integer scale: the tiled output must still cover the full frame
+    # and match the untiled one (the output size is taken from the net via the probe).
+    torch.manual_seed(0)
+    model = lu._TtlLatentResizer(2, {1}, 2, {1})
+    x = torch.randn(1, 4, 45, 45)
+    with torch.no_grad():
+        plain = model(x, scale=1.5)
+        tiled = lu._tiled_forward(lambda t: model(t, scale=1.5), x, 1.5, tile=24)
+    assert plain.shape == tiled.shape == (1, 4, 68, 68)
+    # Tiling changes normalisation/attention statistics, so the values only approximately
+    # match the whole-latent run - the important guarantee is full coverage (no gaps).
+    assert torch.isfinite(tiled).all()
+    assert tiled.abs().max() > 0
 
 
 def test_oom_detection_recognises_cpu_allocator_failure():
@@ -267,8 +283,11 @@ def test_upscale_retries_with_tiles_then_reports_persistent_oom(tmp_path, monkey
         assert False, "expected RuntimeError after all retries"
     except RuntimeError as e:
         assert "ran out of memory even tiled" in str(e)
-    # First the whole latent (best quality), then progressively smaller tiles.
-    assert calls[0] == (48, 48)
-    assert len(calls) >= 2 and calls[-1] != (48, 48)
-    assert max(calls[-1]) <= 32
+    # First the whole latent (best quality), then progressively smaller tiles. _tiled_forward
+    # also probes the net on a 1-wide/1-tall strip to learn its true output size; those probe
+    # calls (one dimension == 1) are incidental and excluded from the tile-size assertions.
+    real_calls = [c for c in calls if min(c) > 1]
+    assert real_calls[0] == (48, 48)
+    assert len(real_calls) >= 2 and real_calls[-1] != (48, 48)
+    assert max(real_calls[-1]) <= 32
 
