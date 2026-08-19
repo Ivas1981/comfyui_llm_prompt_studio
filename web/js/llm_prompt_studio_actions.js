@@ -31,7 +31,7 @@ const ADVANCED_WIDGETS = ["context_length", "gpu_offload",
 // restored from the cache when shown again.
 const _advOrig = {};   // "<nodeId>:<name>" -> original computeSize
 
-function setWidgetHidden(node, name, hidden) {
+export function setWidgetHidden(node, name, hidden) {
     const w = getW(node, name);
     if (!w) return;
     const key = node.id + ":" + name;

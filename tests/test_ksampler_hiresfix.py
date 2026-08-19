@@ -49,7 +49,7 @@ def _base_args(**over):
         seed=1, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
         denoise=1.0, hires_enabled=True, hires_upscale_type="latent (model)",
         hires_upscale_method="bilinear", hires_latent_upscale_model="none",
-        hires_latent_upscale_factor=2.0, hires_width=512, hires_height=512,
+        hires_latent_upscale_factor=2.0, hires_upscale_iterations=1,
         hires_steps=20, hires_cfg=-1.0, hires_denoise=0.5,
         hires_sampler_name="base", hires_scheduler="base",
         hires_use_same_seed=True, hires_seed=0, vae_decode=False,
@@ -72,10 +72,20 @@ def test_hires_upscales_to_target_size(monkeypatch):
 def test_no_hires_when_size_already_matches(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
-    final, image = node.sample(**_base_args(hires_width=256, hires_height=256,
+    # factor 1.0 x 1 iteration => target == base => no hires pass
+    final, image = node.sample(**_base_args(hires_latent_upscale_factor=1.0,
                                             hires_enabled=True))
     assert final["samples"].shape[2] == 32
     assert final["samples"].shape[3] == 32
+
+
+def test_hires_iterations_scale_output(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    # base 256px (32 latent); factor 2.0 x 2 iterations => 1024px (128 latent)
+    final, image = node.sample(**_base_args(hires_upscale_iterations=2))
+    assert final["samples"].shape[2] == 128
+    assert final["samples"].shape[3] == 128
 
 
 def test_hires_disabled_keeps_base(monkeypatch):
@@ -148,8 +158,7 @@ def test_pixel_model_upscale_requires_connected_model(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
     try:
-        node.sample(**_base_args(hires_enabled=True, hires_upscale_type="pixel (model)",
-                                 hires_width=512, hires_height=512))
+        node.sample(**_base_args(hires_enabled=True, hires_upscale_type="pixel (model)"))
         assert False, "expected ValueError for missing UPSCALE_MODEL"
     except ValueError as e:
         assert "pixel (model)" in str(e)

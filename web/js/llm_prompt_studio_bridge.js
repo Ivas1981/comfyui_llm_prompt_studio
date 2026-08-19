@@ -119,7 +119,7 @@ function setupSmartParams(node) {
 // ---------------------------------------------------------------------------
 const HIRES_FIELDS = [
     "hires_upscale_type", "hires_upscale_method", "hires_latent_upscale_model",
-    "hires_latent_upscale_factor", "hires_width", "hires_height", "hires_steps",
+    "hires_latent_upscale_factor", "hires_upscale_iterations", "hires_steps",
     "hires_cfg", "hires_denoise", "hires_sampler_name", "hires_scheduler",
     "hires_use_same_seed", "hires_seed",
 ];
@@ -161,53 +161,20 @@ function setupHires(node) {
 // Button registration
 // ---------------------------------------------------------------------------
 function addButton(node, label, handler) {
+    if (!node.widgets) return;
     if (node.widgets.some(w => w.name === label)) return;  // avoid duplicates
-    node.addWidget("button", label, null, handler);
+    node.addWidget("button", label, "", handler);
+    // The node's canvas size is recomputed so the freshly added button is visible
+    // (addWidget grows the layout, but force a redraw to be safe across front-ends).
+    if (typeof node.setDirtyCanvas === "function") node.setDirtyCanvas(true, true);
 }
 
-app.registerExtension({
-    name: "llm_prompt_studio.bridge",
-
-    // Make loading a saved workflow robust: ComfyUI validates each widget's saved value
-    // against the combo options at load time, but the model list may not be populated yet
-    // (it is fetched asynchronously). Inject the saved model value into the combo's allowed
-    // options *before* ComfyUI validates, so a saved workflow never trips "Value not in list"
-    // even when the server list hasn't arrived.
-    beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (!["LLMPromptStudioWriter", "LLMPromptStudioCritic",
-              "LLMPromptStudioSceneBuilder",
-              "LLMPromptStudioSmartParameters"].includes(nodeData.name)) {
-            return;
-        }
-        const configure = nodeType.prototype.configure;
-        nodeType.prototype.configure = function (data) {
-            const vals = data && data.widgets_values;
-            if (this.widgets && Array.isArray(vals)) {
-                let vi = 0;
-                for (const w of this.widgets) {
-                    if (w.type === "button") continue;  // buttons aren't in widgets_values
-                    const v = vals[vi];
-                    vi++;
-                    if (w.name === "model" && w.options && Array.isArray(w.options.values)
-                            && v != null && !w.options.values.includes(v)) {
-                        w.options.values = w.options.values.concat(v);
-                    }
-                    // Smart Parameters: a saved workflow may store the "auto" sentinel in
-                    // the sampler_name/scheduler combos; inject it so validation passes
-                    // before the server list (full scheduler list) is populated.
-                    if ((w.name === "sampler_name" || w.name === "scheduler")
-                            && w.options && Array.isArray(w.options.values)
-                            && v != null && !w.options.values.includes(v)
-                            && typeof v === "string" && v !== "") {
-                        w.options.values = w.options.values.concat(v);
-                    }
-                }
-            }
-            return configure.apply(this, arguments);
-        };
-    },
-
-    nodeCreated(node) {
+// Wire every node's buttons + setup logic. See the timing-independent
+// installation block below (processExistingNodes + loadGraphData wrap + the
+// `nodeCreated` extension hook).
+function setupNodeUI(node) {
+    if (!node) return;
+    try {
         if (isWriter(node) || isCritic(node)) {
             addButton(node, "Refresh models", () => refreshModels(node));
         }
@@ -245,8 +212,127 @@ app.registerExtension({
             setTimeout(() => refreshModels(node), 400);
             setTimeout(() => pollServerStatus(node), 400);
         }
+    } catch (e) {
+        console.error("[LLMPromptStudio.Bridge] setupNodeUI failed:", e);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Timing-independent UI installation
+// ---------------------------------------------------------------------------
+// The node constructor dispatches creation via the `nodeCreated` extension hook
+// (it does NOT call a prototype onNodeCreated), so `nodeCreated` is the correct
+// hook for nodes created *after* this extension registers. Nodes created *before*
+// registration (e.g. the auto-loaded default workflow, which can finish loading
+// before this async JS extension is ready) never fire `nodeCreated`. To cover
+// those, we also process any already-present nodes and re-process after every
+// graph load.
+function processExistingNodes() {
+    try {
+        if (app.graph && app.graph.nodes) {
+            for (const n of app.graph.nodes) setupNodeUI(n);
+        }
+    } catch (e) {
+        console.error("[LLMPromptStudio.Bridge] processExistingNodes failed:", e);
+    }
+}
+
+// Re-apply our UI after any graph is loaded (default workflow, template, paste, etc.).
+if (typeof app.loadGraphData === "function") {
+    const origLoad = app.loadGraphData.bind(app);
+    app.loadGraphData = async function (...args) {
+        const r = await origLoad.apply(app, args);
+        processExistingNodes();
+        return r;
+    };
+}
+
+// Node types we augment with buttons + per-node UI.
+const OUR_NODE_TYPES = [
+    "LLMPromptStudioWriter",
+    "LLMPromptStudioCritic",
+    "LLMPromptStudioSceneBuilder",
+    "LLMPromptStudioSmartSave",
+    "LLMPromptStudioLibraryLoader",
+    "LLMPromptStudioSmartLoader",
+    "LLMPromptStudioSmartParameters",
+    "LLMPromptStudioKSamplerHiresFix",
+];
+
+app.registerExtension({
+    name: "llm_prompt_studio.bridge",
+
+    // Buttons + per-node setup for nodes created after this extension registers.
+    // Kept as a secondary safety net; the authoritative install happens in
+    // beforeRegisterNodeDef (node type onNodeCreated), which also covers the
+    // auto-loaded default workflow.
+    nodeCreated(node) {
+        setupNodeUI(node);
+    },
+
+    beforeRegisterNodeDef(nodeType, nodeData) {
+        if (!OUR_NODE_TYPES.includes(nodeData.name)) return;
+
+        // Install buttons/UI at instance-creation time by wrapping the node type's own
+        // onNodeCreated. ComfyUI calls `node.onNodeCreated?.()` inside LGraph.createNode,
+        // so this runs for EVERY instance — including nodes from the auto-loaded default
+        // workflow, which finish loading before async extension hooks (nodeCreated) have
+        // registered. This wrap is installed at node-type registration (startup), before
+        // any graph is loaded, so it is immune to the extension-load race. The widgets are
+        // present when the Vue node component first renders, so the buttons actually show.
+        const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function () {
+            const r = origOnNodeCreated ? origOnNodeCreated.apply(this, arguments) : undefined;
+            setupNodeUI(this);
+            return r;
+        };
+
+        // Make loading a saved workflow robust: ComfyUI validates each widget's saved value
+        // against the combo options at load time, but the model list may not be populated yet
+        // (it is fetched asynchronously). Inject the saved value into the combo's allowed
+        // options *before* ComfyUI validates, so a saved workflow never trips "Value not in list"
+        // even when the server list hasn't arrived. Installed here because this hook runs at
+        // node-type registration, before any instance is created.
+        if (!["LLMPromptStudioWriter", "LLMPromptStudioCritic",
+              "LLMPromptStudioSceneBuilder",
+              "LLMPromptStudioSmartParameters"].includes(nodeData.name)) {
+            return;
+        }
+        const configure = nodeType.prototype.configure;
+        nodeType.prototype.configure = function (data) {
+            const vals = data && data.widgets_values;
+            if (this.widgets && Array.isArray(vals)) {
+                let vi = 0;
+                for (const w of this.widgets) {
+                    if (w.type === "button") continue;  // buttons aren't in widgets_values
+                    const v = vals[vi];
+                    vi++;
+                    if (w.name === "model" && w.options && Array.isArray(w.options.values)
+                            && v != null && !w.options.values.includes(v)) {
+                        w.options.values = w.options.values.concat(v);
+                    }
+                    // Smart Parameters: a saved workflow may store the "auto" sentinel in
+                    // the sampler_name/scheduler combos; inject it so validation passes
+                    // before the server list (full scheduler list) is populated.
+                    if ((w.name === "sampler_name" || w.name === "scheduler")
+                            && w.options && Array.isArray(w.options.values)
+                            && v != null && !w.options.values.includes(v)
+                            && typeof v === "string" && v !== "") {
+                        w.options.values = w.options.values.concat(v);
+                    }
+                }
+            }
+            return configure.apply(this, arguments);
+        };
     },
 });
+
+// Process nodes that already exist when this module evaluates (covers a
+// late-loading extension where the default workflow finished loading first),
+// plus a short safety-net pass after startup in case the graph was still being
+// built while this module ran.
+processExistingNodes();
+setTimeout(processExistingNodes, 800);
 
 // ---------------------------------------------------------------------------
 // Executed event: titles, views, stored data and the auto-revision loop

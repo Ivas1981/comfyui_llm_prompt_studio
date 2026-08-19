@@ -202,11 +202,12 @@ def _latent_device(latent):
     return t.device if hasattr(t, "device") else torch.device("cpu")
 
 
-def latent_upscale_with_model(latent, model_name, factor):
+def latent_upscale_with_model(latent, model_name, factor, iterations=1):
     """Upscale a latent ``dict`` (returns a new dict) by ``factor``.
 
     Applies a City96/ttl-nn Conv2d net directly to the latent samples - no VAE
-    round-trip, no third-party upscaler packs.
+    round-trip, no third-party upscaler packs. The net is loaded once and the
+    upscale is applied ``iterations`` times (compounding by ``factor`` each pass).
     """
     path = _resolve_path(model_name)
     if not path:
@@ -230,12 +231,14 @@ def latent_upscale_with_model(latent, model_name, factor):
     device = _latent_device(latent)
     net = net.to(device=device)
     dtype = next(net.parameters()).dtype
+    iters = max(1, int(iterations))
     with torch.no_grad():
-        samples = latent["samples"].to(device=device, dtype=dtype)
-        if is_ttl:
-            out = net(0.13025 * samples, scale=factor) / 0.13025
-        else:
-            out = net(samples)
+        out = latent["samples"].to(device=device, dtype=dtype)
+        for _ in range(iters):
+            if is_ttl:
+                out = net(0.13025 * out, scale=factor) / 0.13025
+            else:
+                out = net(out)
         out = out.to(device=latent["samples"].device, dtype=latent["samples"].dtype)
 
     result = dict(latent)

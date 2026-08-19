@@ -68,9 +68,17 @@ class LLMPromptStudioKSamplerHiresFix:
                     {"default": "none",
                      "tooltip": "LatentUpscaleModel used when hires_upscale_type = 'latent (model)'."}),
                 "hires_latent_upscale_factor": (
-                    "FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.05}),
-                "hires_width": ("INT", {"default": 1024, "min": 8, "max": 16384, "step": 8}),
-                "hires_height": ("INT", {"default": 1024, "min": 8, "max": 16384, "step": 8}),
+                    "FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.05,
+                              "tooltip": "Per-pass upscale scale for latent hires types "
+                                         "('latent' and 'latent (model)'). The hires output "
+                                         "size is base x factor^iterations; raise it for a "
+                                         "bigger result."}),
+                "hires_upscale_iterations": (
+                    "INT", {"default": 1, "min": 1, "max": 8, "step": 1,
+                            "tooltip": "Number of progressive upscale passes. The hires output "
+                                        "size is base x per_pass_scale^iterations, where "
+                                        "per_pass_scale is hires_latent_upscale_factor for "
+                                        "latent types, or the model scale for 'pixel (model)'."}),
                 "hires_steps": ("INT", {"default": 20, "min": 1, "max": 10000, "step": 1}),
                 "hires_cfg": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 100.0, "step": 0.1}),
                 "hires_denoise": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
@@ -119,22 +127,32 @@ class LLMPromptStudioKSamplerHiresFix:
             return latent
         return self._latent_interp(latent, method, w, h)
 
-    def _hires_upscale(self, base, upscale_type, method, model_name, factor, width, height):
-        target_w = _round8(width) // 8
-        target_h = _round8(height) // 8
+    def _hires_upscale(self, base, upscale_type, method, model_name, factor, target_w, target_h, iterations):
+        iterations = max(1, int(iterations))
         if upscale_type == "latent (model)" and model_name not in (None, "none", ""):
-            upscaled = latent_upscale_with_model(base, model_name, factor)
+            upscaled = latent_upscale_with_model(base, model_name, factor, iterations=iterations)
         else:
-            upscaled = self._latent_interp(base, method, target_w, target_h)
+            cur_h, cur_w = self._latent_hw(base)
+            step_h = (target_h / float(cur_h)) ** (1.0 / iterations)
+            step_w = (target_w / float(cur_w)) ** (1.0 / iterations)
+            upscaled = base
+            for _ in range(iterations):
+                cur_h, cur_w = self._latent_hw(upscaled)
+                nw = _round8(max(8, round(cur_w * step_w)))
+                nh = _round8(max(8, round(cur_h * step_h)))
+                upscaled = self._latent_interp(upscaled, method, nw, nh)
         return self._ensure_latent_size(upscaled, method, target_w, target_h)
 
-    def _pixel_stage(self, latent, upscale_model, method, width, height, vae):
+    def _pixel_stage(self, latent, upscale_model, method, width, height, vae, iterations):
         from nodes import VAEDecode, VAEEncode
         from comfy.utils import tiled_scale
+        iterations = max(1, int(iterations))
         pixels = VAEDecode().decode(vae, latent)[0]
-        up = tiled_scale(pixels, lambda a: upscale_model(a.float()),
-                         upscale_amount=getattr(upscale_model, "scale", 2),
-                         tile_x=512, tile_y=512, overlap=32)
+        up = pixels
+        for _ in range(iterations):
+            up = tiled_scale(up, lambda a: upscale_model(a.float()),
+                             upscale_amount=getattr(upscale_model, "scale", 2),
+                             tile_x=512, tile_y=512, overlap=32)
         enc = VAEEncode().encode(vae, up)[0]
         return self._ensure_latent_size(enc, method, width // 8, height // 8)
 
@@ -194,20 +212,29 @@ class LLMPromptStudioKSamplerHiresFix:
         return self._preview_image(final, preview_method, vae)
 
     def sample(self, model, positive, negative, latent_image, seed, steps, cfg,
-               sampler_name, scheduler, denoise, hires_enabled, hires_upscale_type,
-               hires_upscale_method, hires_latent_upscale_model,
-               hires_latent_upscale_factor, hires_width, hires_height, hires_steps,
-               hires_cfg, hires_denoise, hires_sampler_name, hires_scheduler,
-               hires_use_same_seed, hires_seed, vae_decode, preview_method,
-               hires_upscale_model=None, hires_positive=None,
-               hires_negative=None, optional_vae=None, unique_id=None):
+                sampler_name, scheduler, denoise, hires_enabled, hires_upscale_type,
+                hires_upscale_method, hires_latent_upscale_model,
+                hires_latent_upscale_factor, hires_upscale_iterations, hires_steps,
+                hires_cfg, hires_denoise, hires_sampler_name, hires_scheduler,
+                hires_use_same_seed, hires_seed, vae_decode, preview_method,
+                hires_upscale_model=None, hires_positive=None,
+                hires_negative=None, optional_vae=None, unique_id=None):
         with node_span("LLMPromptStudioKSamplerHiresFix", unique_id):
             base = self._sample(model, seed, steps, cfg, sampler_name, scheduler,
                                 positive, negative, latent_image, denoise)
 
             b_h, b_w = self._latent_hw(base)
-            target_w = _round8(hires_width) // 8
-            target_h = _round8(hires_height) // 8
+            # Hires output size is derived from the base size and the per-pass scale,
+            # so there are no explicit width/height fields to confuse the user.
+            if hires_upscale_type == "pixel (model)":
+                per_pass = float(getattr(hires_upscale_model, "scale", 2))
+            else:
+                per_pass = float(hires_latent_upscale_factor)
+            iterations = max(1, int(hires_upscale_iterations))
+            target_pw = _round8(b_w * 8 * (per_pass ** iterations))
+            target_ph = _round8(b_h * 8 * (per_pass ** iterations))
+            target_w = max(1, target_pw // 8)
+            target_h = max(1, target_ph // 8)
             need_hires = bool(hires_enabled) and (target_w != b_w or target_h != b_h)
 
             final = base
@@ -219,12 +246,12 @@ class LLMPromptStudioKSamplerHiresFix:
                             "UPSCALE_MODEL (hires_upscale_model input)")
                     upscaled = self._pixel_stage(
                         base, hires_upscale_model, hires_upscale_method,
-                        hires_width, hires_height, optional_vae)
+                        target_pw, target_ph, optional_vae, hires_upscale_iterations)
                 else:
                     upscaled = self._hires_upscale(
                         base, hires_upscale_type, hires_upscale_method,
                         hires_latent_upscale_model, hires_latent_upscale_factor,
-                        hires_width, hires_height)
+                        target_w, target_h, hires_upscale_iterations)
                 sam2, sched2 = self._resolve_hires_sampler(
                     sampler_name, scheduler, hires_sampler_name, hires_scheduler)
                 cfg2 = hires_cfg if hires_cfg >= 0 else cfg

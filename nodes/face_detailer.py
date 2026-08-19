@@ -175,7 +175,7 @@ class LLMPromptStudioFaceDetailer:
                           face_positive=None, face_negative=None, unique_id=None):
         with node_span("LLMPromptStudioFaceDetailer", unique_id):
             if latent is not None:
-                img = vae.decode(latent["samples"])[0]
+                img = vae.decode(latent["samples"])
             elif image is not None:
                 img = image
             else:
