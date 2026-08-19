@@ -58,7 +58,7 @@ class _FakeVAE:
         self.decode_calls += 1
         assert isinstance(latent, torch.Tensor), "vae.decode must receive samples, not a dict"
         s = latent
-        return [torch.zeros((s.shape[0], s.shape[2] * 8, s.shape[3] * 8, 3))]
+        return torch.zeros((s.shape[0], s.shape[2] * 8, s.shape[3] * 8, 3))
 
     def encode(self, pixels):
         self.encode_calls += 1
