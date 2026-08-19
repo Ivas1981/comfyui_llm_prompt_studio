@@ -123,6 +123,21 @@ def test_tiled_forward_covers_output_for_fractional_scale():
     assert torch.all(tiled > 0.5)                 # no uncovered (zero-weight) cells
 
 
+def test_tiled_forward_tile_equal_to_overlap_still_covers_everything():
+    # hires_latent_upscale_tile=8 with the default _TILE_OVERLAP=8 used to collapse the
+    # stepping window (step = max(1, tile-overlap) -> 1) into one tile per latent cell -
+    # tens of thousands of tiny forwards for a small latent, millions for a 1024x768 one,
+    # i.e. an effective hang that looked like a broken/"one tile" output. The effective
+    # overlap is now capped at tile//2, so the whole frame is still covered.
+    x = torch.randn(1, 4, 96, 128)
+    fn = lambda t: torch.nn.functional.interpolate(t, scale_factor=1.25, mode="nearest")
+    tiled = lu._tiled_forward(fn, x, 1.25, tile=8)   # overlap defaults to _TILE_OVERLAP=8
+    whole = fn(x)
+    assert tiled.shape == whole.shape
+    assert torch.isfinite(tiled).all()
+    assert tiled.abs().max() > 0                       # full frame written, not a single tile
+
+
 def test_tiled_model_upscale_matches_untiled(tmp_path, monkeypatch):
     net = lu._LatentUpscalerNet(2)
     import safetensors.torch as sf

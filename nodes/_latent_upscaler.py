@@ -246,6 +246,13 @@ def _tiled_forward(fn, x, scale, tile, overlap=_TILE_OVERLAP, out_channels=4):
     is left uncovered when ``scale`` is fractional.
     """
     b, _, h, w = x.shape
+    # Overlap must stay strictly below the tile edge. If ``tile`` reaches the default
+    # overlap (e.g. ``hires_latent_upscale_tile = 8`` with ``_TILE_OVERLAP = 8``), the
+    # stepping window collapses (``step = max(1, tile - overlap) -> 1``) and tiling degrades
+    # into one tiny tile per latent cell - catastrophically slow (tens of thousands of
+    # forwards for a small latent, millions for a 1024x768 one) and visually pointless.
+    # Cap it at half the tile so the window always advances by a meaningful stride.
+    eff_overlap = max(1, min(int(overlap), tile // 2))
     # The output size must come from the upscaling net itself, not from ``round(h*scale)``:
     # a fractional scale (City96 ``x1.5``, or a non-integer ttl factor) can make the net emit
     # a size that round() does not match. With a too-large buffer the last tile is flushed
@@ -263,11 +270,11 @@ def _tiled_forward(fn, x, scale, tile, overlap=_TILE_OVERLAP, out_channels=4):
         out_w = max(1, int(round(w * scale)))
     acc = torch.zeros((b, out_channels, out_h, out_w), device=x.device, dtype=x.dtype)
     weight = torch.zeros((b, 1, out_h, out_w), device=x.device, dtype=x.dtype)
-    out_overlap = max(1, int(round(overlap * scale)))
+    out_overlap = max(1, int(round(eff_overlap * scale)))
     masks = {}  # interior tiles share a shape, so build each blend mask only once
-    for y in _tile_positions(h, tile, overlap):
+    for y in _tile_positions(h, tile, eff_overlap):
         th = min(tile, h - y)
-        for xx in _tile_positions(w, tile, overlap):
+        for xx in _tile_positions(w, tile, eff_overlap):
             tw = min(tile, w - xx)
             piece = fn(x[:, :, y:y + th, xx:xx + tw])
             ph, pw = piece.shape[-2], piece.shape[-1]
