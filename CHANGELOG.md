@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.9] — 2026-08-19
+
+Fixed a fatal crash in the **KSampler Hires Fix** node when the hires pass used a fractional
+latent upscale, and hardened the latent/pixel upscale paths.
+
+### Fixed
+- **`Fatal Python error: Aborted` on `hires_upscale_type = latent` with a fractional factor
+  (e.g. `hires_latent_upscale_factor = 1.25`, `bislerp` / `nearest-exact` / …).** `_latent_interp`
+  passed **latent cell** dimensions straight into `LatentUpscale`, which treats its `width`/`height`
+  as **pixel** dimensions and divides by 8 internally — so a 64×64 latent was shrunk to ~10×10
+  (1/64 of the intended area), and the UNet forward aborted on the degenerate tensor. The call now
+  converts the target back to pixel dimensions (`w * 8`, `h * 8`), yielding the correct upscaled
+  latent (verified at 1.25×, 1.5×, 2.0×).
+- **`pixel (model)` hires pass produced wrong-size / garbled latents.** The decoded pixel tensor
+  (BHWC) was fed directly into `tiled_scale`, which expects NCHW. It is now permuted BHWC → NCHW
+  before upscaling and back to BHWC before re-encoding.
+- **`latent (model)` dropdown listed invalid models.** It combined the folder `upscale_models`
+  list (pixel ESRGAN `.safetensors`) with the project's latent resizers, so pixel models could be
+  picked as a `LatentUpscaleModel` and fail. The input now lists **only the project's latent
+  resizers** (`models/upscale_models` — ttl-nn `sd15_resizer.pt` / `sdxl_resizer.pt`); the tooltip
+  says so. The broken City96 `latent-upscaler-v2.1_*.safetensors` were removed from
+  `models/upscale_models`.
+
+### Changed
+- Test `test_project_local_helpers` now asserts the shipped latent resizers are `.pt` (the City96
+  `.safetensors` were removed), not `.safetensors`.
+
 ## [1.1.8] — 2026-08-18
 
 Family-aware distilled sampler presets for the Smart Parameters node, plus checkpoint

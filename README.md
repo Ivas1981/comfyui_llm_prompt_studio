@@ -411,6 +411,16 @@ node straight into **FaceDetailer**, so no extra VAE decode is needed between th
   `pixel (model)` = decode → super-res UPSCALE_MODEL → re-encode (requires the `hires_upscale_model`
   input). The hires pass reuses the base sampler/scheduler unless overridden by `hires_sampler_name`
   / `hires_scheduler` (`base` = reuse base).
+- **Latent upscale (`latent` type):** `hires_upscale_type = latent` interpolates the latent in
+  latent space (no model). It accepts fractional factors (e.g. `1.25`, `1.5`). Previously a
+  fractional factor fed the cell dimensions into `LatentUpscale` as if they were pixels (which
+  divides by 8 again), shrinking the latent to 1/64 of its area and aborting the UNet forward
+  with `Fatal Python error: Aborted`; this is fixed — the target is now converted back to pixel
+  dimensions before the call.
+- **`latent (model)` model list:** the `hires_latent_upscale_model` dropdown only lists the
+  project's latent resizers from `models/upscale_models` (ttl-nn `sd15_resizer.pt` /
+  `sdxl_resizer.pt`). Pixel ESRGAN `.safetensors` are **not** valid as a `LatentUpscaleModel` and
+  are no longer listed. The broken City96 `latent-upscaler-v2.1_*.safetensors` were removed.
 - **Latent upscale memory:** the `latent (model)` upscalers apply the net directly to the latent on
   ComfyUI's compute device (falling back to CPU when VRAM is short). Their attention is evaluated in
   chunks, so its `tokens²` score matrix can no longer blow up (that was the

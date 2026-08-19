@@ -39,7 +39,8 @@ def test_ttl_state_dict_keys_match():
 
 def test_project_local_helpers():
     ups = lu.project_local_upscale_models()
-    assert any(f.endswith(".safetensors") for f in ups)
+    # City96 .safetensors were removed; the project ships ttl-nn .pt latent resizers.
+    assert not any(f.endswith(".safetensors") for f in ups)
     assert any(f.endswith(".pt") for f in ups)
     bbox = lu.project_local_ultralytics_bbox()
     assert any(f.endswith(".pt") for f in bbox)

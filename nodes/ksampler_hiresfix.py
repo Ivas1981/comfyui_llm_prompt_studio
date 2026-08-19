@@ -37,11 +37,6 @@ class LLMPromptStudioKSamplerHiresFix:
 
     @classmethod
     def INPUT_TYPES(cls):
-        try:
-            import folder_paths
-            model_list = folder_paths.get_filename_list("upscale_models") or []
-        except Exception:
-            model_list = []
         return {
             "required": {
                 "model": ("MODEL",),
@@ -64,9 +59,12 @@ class LLMPromptStudioKSamplerHiresFix:
                                "input), then re-encode."}),
                 "hires_upscale_method": (_LATENT_UPSCALE_METHODS, {"default": "nearest-exact"}),
                 "hires_latent_upscale_model": (
-                    ["none"] + project_local_upscale_models() + list(model_list),
+                    ["none"] + project_local_upscale_models(),
                     {"default": "none",
-                     "tooltip": "LatentUpscaleModel used when hires_upscale_type = 'latent (model)'."}),
+                     "tooltip": "LatentUpscaleModel used when hires_upscale_type = 'latent (model)'. "
+                                "Only the project's latent upscalers (models/upscale_models, e.g. "
+                                "ttl-nn sdxl_resizer.pt) are listed - pixel ESRGAN models are not "
+                                "valid here."}),
                 "hires_latent_upscale_factor": (
                     "FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.05,
                               "tooltip": "Per-pass upscale scale for latent hires types "
@@ -132,7 +130,11 @@ class LLMPromptStudioKSamplerHiresFix:
     @staticmethod
     def _latent_interp(latent, method, w, h):
         from nodes import LatentUpscale
-        return LatentUpscale().upscale(latent, method, w, h, "disabled")[0]
+        # w/h are LATENT cell dims (samples space). LatentUpscale treats its
+        # width/height as PIXELS and divides by 8 internally, so convert back,
+        # otherwise the latent gets shrunk to 1/64 of the intended area and the
+        # UNet forward aborts on the degenerate tensor.
+        return LatentUpscale().upscale(latent, method, w * 8, h * 8, "disabled")[0]
 
     def _ensure_latent_size(self, latent, method, w, h):
         w, h = _round8(w), _round8(h)
@@ -164,11 +166,12 @@ class LLMPromptStudioKSamplerHiresFix:
         from comfy.utils import tiled_scale
         iterations = max(1, int(iterations))
         pixels = VAEDecode().decode(vae, latent)[0]
-        up = pixels
+        up = pixels.permute(0, 3, 1, 2)
         for _ in range(iterations):
             up = tiled_scale(up, lambda a: upscale_model(a.float()),
                              upscale_amount=getattr(upscale_model, "scale", 2),
                              tile_x=512, tile_y=512, overlap=32)
+        up = up.permute(0, 2, 3, 1)
         enc = VAEEncode().encode(vae, up)[0]
         return self._ensure_latent_size(enc, method, width // 8, height // 8)
 
