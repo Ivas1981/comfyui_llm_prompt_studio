@@ -134,3 +134,73 @@ def test_no_faces_returns_original(monkeypatch):
         detection_threshold=0.5, feather=5, inpaint_model=False, latent=latent)
     assert out[0].shape == (1, 64, 64, 3)
 
+
+# -- tiled VAE decode helper -----------------------------------------------
+class _PlainVAE:
+    def __init__(self):
+        self.decoded = []
+
+    def decode(self, samples):
+        self.decoded.append(samples)
+        return samples * 2
+
+
+class _KwTiledVAE(_PlainVAE):
+    def __init__(self):
+        super().__init__()
+        self.tiled = []
+
+    def tiled_decode(self, samples, tile_x=0, tile_y=0):
+        self.tiled.append((tile_x, tile_y))
+        return samples * 3
+
+
+class _PosTiledVAE(_PlainVAE):
+    def __init__(self):
+        super().__init__()
+        self.tiled = []
+
+    def tiled_decode(self, samples, tile, overlap):
+        self.tiled.append((tile, overlap))
+        return samples * 4
+
+
+class _BrokenTiledVAE(_PlainVAE):
+    def tiled_decode(self, *a, **k):
+        raise RuntimeError("no tiled decode")
+
+
+def test_decode_latent_uses_plain_when_tile_disabled():
+    vae = _PlainVAE()
+    s = torch.ones(1)
+    out = fd._decode_latent(vae, s, 0)
+    assert vae.decoded == [s] and torch.allclose(out, s * 2)
+
+
+def test_decode_latent_uses_keyword_tiled_when_present():
+    vae = _KwTiledVAE()
+    s = torch.ones(1)
+    out = fd._decode_latent(vae, s, 512)
+    assert vae.tiled == [(512, 512)] and torch.allclose(out, s * 3) and vae.decoded == []
+
+
+def test_decode_latent_uses_positional_tiled_fallback():
+    vae = _PosTiledVAE()
+    s = torch.ones(1)
+    out = fd._decode_latent(vae, s, 256)
+    assert vae.tiled == [(256, 16)] and torch.allclose(out, s * 4) and vae.decoded == []
+
+
+def test_decode_latent_falls_back_without_tiled_decode():
+    vae = _PlainVAE()
+    s = torch.ones(1)
+    out = fd._decode_latent(vae, s, 512)
+    assert vae.decoded == [s] and torch.allclose(out, s * 2)
+
+
+def test_decode_latent_falls_back_when_tiled_raises():
+    vae = _BrokenTiledVAE()
+    s = torch.ones(1)
+    out = fd._decode_latent(vae, s, 512)
+    assert vae.decoded == [s] and torch.allclose(out, s * 2)
+

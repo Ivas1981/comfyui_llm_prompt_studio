@@ -26,6 +26,31 @@ def _clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
+def _decode_latent(vae, samples, tile_size):
+    """Decode ``samples`` with the VAE, optionally using ComfyUI's tiled decode.
+
+    Tiled decode bounds VRAM on large hires latents (a plain decode materialises the
+    whole image at once, which is what makes a 1600x1200 hires frame expensive). It
+    falls back to a plain decode when tiling is disabled, or when the VAE does not
+    expose ``tiled_decode`` / uses a different signature than the one we call.
+    """
+    if not tile_size or int(tile_size) <= 0:
+        return vae.decode(samples)
+    t = int(tile_size)
+    td = getattr(vae, "tiled_decode", None)
+    if td is None:
+        return vae.decode(samples)
+    try:
+        return td(samples, tile_x=t, tile_y=t)          # current ComfyUI keyword form
+    except TypeError:
+        try:
+            return td(samples, t, 16)                   # older positional (tile, overlap)
+        except TypeError:
+            return vae.decode(samples)
+    except Exception:
+        return vae.decode(samples)
+
+
 class LLMPromptStudioFaceDetailer:
     CATEGORY = "LLM Prompt Studio"
     FUNCTION = "detect_and_detail"
@@ -71,10 +96,15 @@ class LLMPromptStudioFaceDetailer:
                           "tooltip": "Feather (blur) radius, in px, of the face mask used when "
                                      "compositing the refined face back into the image."}),
                 "inpaint_model": ("BOOLEAN", {"default": False,
-                                 "tooltip": "Use ComfyUI's InpaintModelConditioning so the model "
-                                            "sees the original face structure (concat latent) while "
-                                            "regenerating the face area. Off = differential noise "
-                                            "mask (refines in place)."}),
+                                  "tooltip": "Use ComfyUI's InpaintModelConditioning so the model "
+                                             "sees the original face structure (concat latent) while "
+                                             "regenerating the face area. Off = differential noise "
+                                             "mask (refines in place)."}),
+                "vae_tile_size": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 16,
+                                  "tooltip": "Tile size (px) for the VAE decode of the incoming "
+                                             "latent. 0 = decode the whole frame at once (best "
+                                             "quality). A positive value (e.g. 512) tiles the decode "
+                                             "to cap VRAM on large hires latents."}),
             },
             "optional": {
                 "image": ("IMAGE", {"forceInput": True}),
@@ -230,11 +260,12 @@ class LLMPromptStudioFaceDetailer:
                           sampler_name, scheduler, denoise, guide_size, max_size,
                           crop_factor, detection_method, yolo_model_name,
                           detection_threshold, feather, inpaint_model,
+                          vae_tile_size=0,
                           image=None, latent=None,
                           face_positive=None, face_negative=None, unique_id=None):
         with node_span("LLMPromptStudioFaceDetailer", unique_id):
             if latent is not None:
-                img = vae.decode(latent["samples"])
+                img = _decode_latent(vae, latent["samples"], vae_tile_size)
             elif image is not None:
                 img = image
             else:
