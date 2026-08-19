@@ -9,6 +9,7 @@ Weights are searched first in the project-local ``models/upscale_models`` folder
 """
 
 import os
+import re
 
 import torch
 import torch.nn as nn
@@ -167,6 +168,31 @@ class _TtlLatentResizer(nn.Module):
 # ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------
+# City96 / SD-Latent-Upscaler .safetensors checkpoints bake the upscale factor into
+# the architecture (the `Upsample(scale_factor=...)` layer), so the *real* scale is the
+# one the checkpoint was trained for, not whatever the caller passes. The scale is encoded
+# in the filename, e.g. "latent-upscaler-v2.1_SDxl-x1.5.safetensors" -> 1.5. If we rebuild
+# the net with a different factor the convs receive the wrong feature flow and the output is
+# garbage ("каша"). Parse it so the net and the target size use the model's native scale.
+_SCALE_RE = re.compile(r"[xX](\d+(?:\.\d+)?)")
+
+
+def model_native_scale(model_name, default=2.0):
+    """Best-effort native upscale scale of a latent-upscale model from its filename.
+
+    Returns the parsed ``xN.N`` scale (>= 1.0) or ``default`` when not detectable.
+    """
+    m = _SCALE_RE.search(str(model_name))
+    if m:
+        try:
+            v = float(m.group(1))
+            if v >= 1.0:
+                return v
+        except ValueError:
+            pass
+    return default
+
+
 def project_local_upscale_models():
     d = os.path.join(PROJECT_ROOT, "models", "upscale_models")
     if not os.path.isdir(d):
@@ -221,7 +247,9 @@ def latent_upscale_with_model(latent, model_name, factor, iterations=1):
         if sf is None:
             raise RuntimeError(
                 "safetensors is required to load .safetensors latent upscalers")
-        net = _LatentUpscalerNet(factor)
+        # The checkpoint's native scale is fixed by its architecture; use it (falling back
+        # to the requested factor) so the Upsample layer matches the trained conv weights.
+        net = _LatentUpscalerNet(model_native_scale(model_name, factor))
         net.load_state_dict(sf.load_file(path), strict=True)
     elif is_ttl:
         net = _TtlLatentResizer.load_model(path, torch.device("cpu"), torch.float32)

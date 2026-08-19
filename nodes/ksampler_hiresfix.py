@@ -9,7 +9,7 @@ import torch
 
 from ._ksample import sample_latent, node_span
 from ._latent_upscaler import (
-    latent_upscale_with_model, project_local_upscale_models,
+    latent_upscale_with_model, project_local_upscale_models, model_native_scale,
 )
 from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
 
@@ -228,6 +228,13 @@ class LLMPromptStudioKSamplerHiresFix:
             # so there are no explicit width/height fields to confuse the user.
             if hires_upscale_type == "pixel (model)":
                 per_pass = float(getattr(hires_upscale_model, "scale", 2))
+            elif (hires_upscale_type == "latent (model)"
+                  and hires_latent_upscale_model not in (None, "none", "")):
+                # A LatentUpscaleModel (.safetensors) bakes its scale into the architecture;
+                # use its native scale (from the filename) so target size matches the actual
+                # upscale instead of hires_latent_upscale_factor.
+                per_pass = model_native_scale(
+                    hires_latent_upscale_model, float(hires_latent_upscale_factor))
             else:
                 per_pass = float(hires_latent_upscale_factor)
             iterations = max(1, int(hires_upscale_iterations))

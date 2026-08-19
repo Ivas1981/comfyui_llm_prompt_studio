@@ -142,6 +142,27 @@ def test_latent_upscale_with_model_scales_by_factor(tmp_path, monkeypatch):
     assert "other" not in out
 
 
+def test_hires_target_follows_model_native_scale(tmp_path, monkeypatch):
+    # A 1.5x latent upscale model must upscale 1.5x (not the UI's hires_latent_upscale_factor=2.0).
+    net = lu._LatentUpscalerNet(1.5)
+    import safetensors.torch as sf
+    path = tmp_path / "fake-x1.5.safetensors"
+    sf.save_file({k: v.clone() for k, v in net.state_dict().items()}, str(path))
+    monkeypatch.setattr(lu, "_resolve_path", lambda name: str(path))
+
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    # base 256px (32 latent) -> 1.5x -> 384px (48 latent), not 512px (64 latent)
+    final, image = node.sample(**_base_args(
+        hires_upscale_type="latent (model)",
+        hires_latent_upscale_model="fake-x1.5.safetensors",
+        hires_latent_upscale_factor=2.0,
+    ))
+    assert final["samples"].shape[2] == 48
+    assert final["samples"].shape[3] == 48
+
+
+
 # -- new hires_upscale_type / preview_method features ------------------------
 def test_hires_upscale_type_options_present():
     types = kh.LLMPromptStudioKSamplerHiresFix.INPUT_TYPES()
