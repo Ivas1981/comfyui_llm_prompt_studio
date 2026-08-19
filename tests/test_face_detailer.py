@@ -74,15 +74,16 @@ def _install(monkeypatch):
 def test_refine_skipped_when_upscale_le_1():
     node = fd.LLMPromptStudioFaceDetailer()
     out = node._refine_face(
-        model=object(), vae=None, lat_mode=False, latent=None,
-        img=torch.zeros((1, 256, 256, 3)), i=0, x1=10, y1=10, x2=210, y2=210,
+        model=object(), vae=None,
+        img=torch.zeros((1, 256, 256, 3)), i=0, x1f=10, y1f=10, x2f=210, y2f=210,
         positive=object(), negative=object(), face_positive=None, face_negative=None,
         seed=0, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
-        denoise=0.5, guide_size=128, max_size=1024, feather=5, inpaint_model=False)
+        denoise=0.5, guide_size=128, max_size=1024, crop_factor=1.5, feather=5,
+        inpaint_model=False)
     assert out is None
 
 
-def test_latent_path_needs_no_vae_encode(monkeypatch):
+def test_latent_path_refines(monkeypatch):
     _install(monkeypatch)
     node = fd.LLMPromptStudioFaceDetailer()
     vae = _FakeVAE()
@@ -92,13 +93,12 @@ def test_latent_path_needs_no_vae_encode(monkeypatch):
     out = node.detect_and_detail(
         model=object(), vae=vae, positive=object(), negative=object(),
         seed=0, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
-        denoise=0.5, guide_size=512, max_size=1024, detection_method="haar",
-        yolo_model_name="face_yolov8s.pt", detection_threshold=0.5, feather=5,
-        inpaint_model=False, latent=latent)
+        denoise=0.5, guide_size=512, max_size=1024, crop_factor=1.5,
+        detection_method="haar", yolo_model_name="face_yolov8s.pt",
+        detection_threshold=0.5, feather=5, inpaint_model=False, latent=latent)
     assert out[0].shape == (1, 64, 64, 3)
-    # lat_mode: NO per-face VAEEncode (the optimized path).
-    assert vae.encode_calls == 0
-    # at least the detection decode happened
+    # latent path decodes the whole latent for detection, then encodes the refined crop
+    assert vae.encode_calls == 1
     assert vae.decode_calls >= 1
 
 
@@ -111,9 +111,9 @@ def test_pixel_path_encodes(monkeypatch):
     out = node.detect_and_detail(
         model=object(), vae=vae, positive=object(), negative=object(),
         seed=0, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
-        denoise=0.5, guide_size=512, max_size=1024, detection_method="haar",
-        yolo_model_name="face_yolov8s.pt", detection_threshold=0.5, feather=5,
-        inpaint_model=False, image=image)
+        denoise=0.5, guide_size=512, max_size=1024, crop_factor=1.5,
+        detection_method="haar", yolo_model_name="face_yolov8s.pt",
+        detection_threshold=0.5, feather=5, inpaint_model=False, image=image)
     assert out[0].shape == (1, 64, 64, 3)
     # pixel path encodes the refined crop
     assert vae.encode_calls == 1
@@ -129,8 +129,8 @@ def test_no_faces_returns_original(monkeypatch):
     out = node.detect_and_detail(
         model=object(), vae=vae, positive=object(), negative=object(),
         seed=0, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
-        denoise=0.5, guide_size=512, max_size=1024, detection_method="haar",
-        yolo_model_name="face_yolov8s.pt", detection_threshold=0.5, feather=5,
-        inpaint_model=False, latent=latent)
+        denoise=0.5, guide_size=512, max_size=1024, crop_factor=1.5,
+        detection_method="haar", yolo_model_name="face_yolov8s.pt",
+        detection_threshold=0.5, feather=5, inpaint_model=False, latent=latent)
     assert out[0].shape == (1, 64, 64, 3)
 
