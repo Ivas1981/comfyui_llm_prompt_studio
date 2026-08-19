@@ -79,6 +79,13 @@ class LLMPromptStudioKSamplerHiresFix:
                                         "size is base x per_pass_scale^iterations, where "
                                         "per_pass_scale is hires_latent_upscale_factor for "
                                         "latent types, or the model scale for 'pixel (model)'."}),
+                "hires_latent_upscale_tile": (
+                    "INT", {"default": 0, "min": 0, "max": 512, "step": 8,
+                            "tooltip": "Tile size (in latent cells) for 'latent (model)'. 0 = auto: "
+                                       "the whole latent is upscaled at once while it fits in "
+                                       "RAM/VRAM, and only oversized latents are tiled. Set a value "
+                                       "(e.g. 64) to force tiling on a low-memory machine, at the "
+                                       "cost of some quality (each tile is normalized on its own)."}),
                 "hires_steps": ("INT", {"default": 20, "min": 1, "max": 10000, "step": 1}),
                 "hires_cfg": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 100.0, "step": 0.1}),
                 "hires_denoise": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
@@ -127,10 +134,12 @@ class LLMPromptStudioKSamplerHiresFix:
             return latent
         return self._latent_interp(latent, method, w, h)
 
-    def _hires_upscale(self, base, upscale_type, method, model_name, factor, target_w, target_h, iterations):
+    def _hires_upscale(self, base, upscale_type, method, model_name, factor, target_w,
+                       target_h, iterations, tile=0):
         iterations = max(1, int(iterations))
         if upscale_type == "latent (model)" and model_name not in (None, "none", ""):
-            upscaled = latent_upscale_with_model(base, model_name, factor, iterations=iterations)
+            upscaled = latent_upscale_with_model(base, model_name, factor,
+                                                 iterations=iterations, tile=max(0, int(tile)))
         else:
             cur_h, cur_w = self._latent_hw(base)
             step_h = (target_h / float(cur_h)) ** (1.0 / iterations)
@@ -217,7 +226,7 @@ class LLMPromptStudioKSamplerHiresFix:
                 hires_latent_upscale_factor, hires_upscale_iterations, hires_steps,
                 hires_cfg, hires_denoise, hires_sampler_name, hires_scheduler,
                 hires_use_same_seed, hires_seed, vae_decode, preview_method,
-                hires_upscale_model=None, hires_positive=None,
+                hires_latent_upscale_tile=0, hires_upscale_model=None, hires_positive=None,
                 hires_negative=None, optional_vae=None, unique_id=None):
         with node_span("LLMPromptStudioKSamplerHiresFix", unique_id):
             base = self._sample(model, seed, steps, cfg, sampler_name, scheduler,
@@ -258,7 +267,8 @@ class LLMPromptStudioKSamplerHiresFix:
                     upscaled = self._hires_upscale(
                         base, hires_upscale_type, hires_upscale_method,
                         hires_latent_upscale_model, hires_latent_upscale_factor,
-                        target_w, target_h, hires_upscale_iterations)
+                        target_w, target_h, hires_upscale_iterations,
+                        tile=hires_latent_upscale_tile)
                 sam2, sched2 = self._resolve_hires_sampler(
                     sampler_name, scheduler, hires_sampler_name, hires_scheduler)
                 cfg2 = hires_cfg if hires_cfg >= 0 else cfg

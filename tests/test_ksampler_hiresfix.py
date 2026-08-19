@@ -207,3 +207,33 @@ def test_resolve_hires_sampler_base_aliases():
     sam2, sched2 = kh.LLMPromptStudioKSamplerHiresFix._resolve_hires_sampler(
         "euler", "karras", "dpmpp_2m", "simple")
     assert sam2 == "dpmpp_2m" and sched2 == "simple"
+
+
+# -- hires_latent_upscale_tile (memory guard for the latent upscale model) ----
+def test_hires_latent_upscale_tile_widget_defaults_to_auto():
+    req = kh.LLMPromptStudioKSamplerHiresFix.INPUT_TYPES()["required"]
+    assert "hires_latent_upscale_tile" in req
+    spec = req["hires_latent_upscale_tile"]
+    assert spec[0] == "INT"
+    assert spec[1]["default"] == 0          # 0 = auto (whole latent while it fits)
+    assert spec[1]["min"] == 0
+
+
+def test_hires_latent_upscale_tile_reaches_the_upscaler(monkeypatch):
+    _install_mocks(monkeypatch)
+    seen = {}
+
+    def fake_upscale(latent, model_name, factor, iterations=1, tile=0):
+        seen.update(model=model_name, factor=factor, iterations=iterations, tile=tile)
+        s = latent["samples"]
+        return {"samples": torch.zeros((s.shape[0], 4, s.shape[2] * 2, s.shape[3] * 2))}
+
+    monkeypatch.setattr(kh, "latent_upscale_with_model", fake_upscale)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    node.sample(**_base_args(hires_latent_upscale_model="whatever-x2.0.safetensors",
+                             hires_latent_upscale_tile=64))
+    assert seen["tile"] == 64
+    # Default (widget absent / 0) stays on the auto path.
+    seen.clear()
+    node.sample(**_base_args(hires_latent_upscale_model="whatever-x2.0.safetensors"))
+    assert seen["tile"] == 0

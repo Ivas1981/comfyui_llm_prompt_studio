@@ -396,7 +396,8 @@ node straight into **FaceDetailer**, so no extra VAE decode is needed between th
 - **Inputs:** `model`, `positive`, `negative`, `latent_image`, `seed`, `steps`, `cfg`,
   `sampler_name`, `scheduler`, `denoise`, `hires_enabled`, `hires_upscale_type`,
   `hires_upscale_method`, `hires_latent_upscale_model`, `hires_latent_upscale_factor`,
-  `hires_upscale_iterations`, `hires_steps`, `hires_cfg`, `hires_denoise`, `hires_sampler_name`,
+  `hires_upscale_iterations`, `hires_latent_upscale_tile`, `hires_steps`, `hires_cfg`,
+  `hires_denoise`, `hires_sampler_name`,
   `hires_scheduler`, `hires_use_same_seed`, `hires_seed`, `vae_decode`, `preview_method`; optional
   `hires_upscale_model` (UPSCALE_MODEL), `hires_positive`, `hires_negative`, `optional_vae`.
 - **Outputs:** `LATENT`, `IMAGE` (the IMAGE is only produced when `vae_decode` is on, otherwise it
@@ -410,6 +411,14 @@ node straight into **FaceDetailer**, so no extra VAE decode is needed between th
   `pixel (model)` = decode → super-res UPSCALE_MODEL → re-encode (requires the `hires_upscale_model`
   input). The hires pass reuses the base sampler/scheduler unless overridden by `hires_sampler_name`
   / `hires_scheduler` (`base` = reuse base).
+- **Latent upscale memory:** the `latent (model)` upscalers apply the net directly to the latent on
+  ComfyUI's compute device (falling back to CPU when VRAM is short). Their attention is evaluated in
+  chunks, so its `tokens²` score matrix can no longer blow up (that was the
+  `DefaultCPUAllocator: not enough memory ... 3600000000 bytes` crash at large hires targets).
+  Oversized latents are upscaled in overlapping tiles instead; `hires_latent_upscale_tile` = 0 keeps
+  that automatic (whole latent while it fits, best quality), and a positive value (e.g. `64`) forces
+  tiling on a low-memory machine at the cost of some quality, because each tile is normalized on its
+  own.
 - **Preview method:** `preview_method` controls how the output `IMAGE` is generated (mirrors
   Efficient KSampler): `vae` = full VAE decode (most accurate, default), `latent2rgb` = fast
   approximate latent→RGB, `taesd` = TAESD preview if available (else VAE), `none` = no preview

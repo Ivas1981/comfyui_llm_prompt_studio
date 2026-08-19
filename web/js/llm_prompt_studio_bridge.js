@@ -119,7 +119,8 @@ function setupSmartParams(node) {
 // ---------------------------------------------------------------------------
 const HIRES_FIELDS = [
     "hires_upscale_type", "hires_upscale_method", "hires_latent_upscale_model",
-    "hires_latent_upscale_factor", "hires_upscale_iterations", "hires_steps",
+    "hires_latent_upscale_factor", "hires_latent_upscale_tile",
+    "hires_upscale_iterations", "hires_steps",
     "hires_cfg", "hires_denoise", "hires_sampler_name", "hires_scheduler",
     "hires_use_same_seed", "hires_seed",
 ];
@@ -138,6 +139,8 @@ function refreshHiresVisibility(node) {
     setWidgetHidden(node, "hires_upscale_method", t !== "latent");
     setWidgetHidden(node, "hires_latent_upscale_model", t !== "latent (model)");
     setWidgetHidden(node, "hires_latent_upscale_factor", t === "pixel (model)");
+    // The tile size only guards the latent-upscale-model net's memory use.
+    setWidgetHidden(node, "hires_latent_upscale_tile", t !== "latent (model)");
 }
 
 function setupHires(node) {
