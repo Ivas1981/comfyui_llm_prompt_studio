@@ -394,17 +394,23 @@ studio's **full scheduler list** (standard ComfyUI schedulers plus `AYS SD1` / `
 node straight into **FaceDetailer**, so no extra VAE decode is needed between them.
 
 - **Inputs:** `model`, `positive`, `negative`, `latent_image`, `seed`, `steps`, `cfg`,
-  `sampler_name`, `scheduler`, `denoise`, `hires_enabled`, `hires_upscale_method`,
-  `hires_latent_upscale_model`, `hires_latent_upscale_factor`, `hires_pixel_upscale`,
+  `sampler_name`, `scheduler`, `denoise`, `hires_enabled`, `hires_upscale_type`,
+  `hires_upscale_method`, `hires_latent_upscale_model`, `hires_latent_upscale_factor`,
   `hires_width`, `hires_height`, `hires_steps`, `hires_cfg`, `hires_denoise`, `hires_sampler_name`,
-  `hires_scheduler`, `hires_use_same_seed`, `hires_seed`, `vae_decode`; optional
+  `hires_scheduler`, `hires_use_same_seed`, `hires_seed`, `vae_decode`, `preview_method`; optional
   `hires_upscale_model` (UPSCALE_MODEL), `hires_positive`, `hires_negative`, `optional_vae`.
 - **Outputs:** `LATENT`, `IMAGE` (the IMAGE is only produced when `vae_decode` is on, otherwise it
   returns a 1×1 placeholder so downstream graphs stay valid).
 - **Hires pass:** enabled when `hires_enabled` is true and the target size differs from the base
-  latent. Upscaling uses a latent upscale model or an interpolation method, with an optional
-  pixel-upscale stage (`hires_pixel_upscale`). The hires pass reuses the base sampler/scheduler
-  unless overridden by `hires_sampler_name` / `hires_scheduler` (`base` = reuse base).
+  latent. `hires_upscale_type` makes the upscaler explicit: `latent` = interpolate the latent
+  (no model), `latent (model)` = a LatentUpscaleModel, `pixel (model)` = decode → super-res
+  UPSCALE_MODEL → re-encode (requires the `hires_upscale_model` input). The hires pass reuses the
+  base sampler/scheduler unless overridden by `hires_sampler_name` / `hires_scheduler`
+  (`base` = reuse base).
+- **Preview method:** `preview_method` controls how the output `IMAGE` is generated (mirrors
+  Efficient KSampler): `vae` = full VAE decode (most accurate, default), `latent2rgb` = fast
+  approximate latent→RGB, `taesd` = TAESD preview if available (else VAE), `none` = no preview
+  image. The `vae_decode` toggle independently gates whether any decode happens at all.
 - **AYS / GITS schedulers** require an external custom node (ComfyUI-AlignYourSteps for AYS,
   KJNodes for GITS). When that node is not installed, the sampler logs a warning and falls back to
   a standard scheduler (`karras` for AYS, `simple` for GITS) so the studio still works

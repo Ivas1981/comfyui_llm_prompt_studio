@@ -4,14 +4,14 @@ import { api } from "/scripts/api.js";
 import {
     getW,
     isWriter, isCritic, isSmartSave, isLoader, isScene, isSmartLoader,
-    isSmartParams, getJSON,
+    isSmartParams, isKSampler, getJSON,
     lastSaveData, loopCounters,
 } from "./llm_prompt_studio_shared.js";
 
 import {
     refreshModels, saveToLibrary, refreshScenes, sendToWriter, requeuePrompt,
     reloadPresets, resetPresets, copyPresetsPath,
-    toggleAdvancedSettings, setAdvancedCollapsed, pollServerStatus,
+    toggleAdvancedSettings, setAdvancedCollapsed, pollServerStatus, setWidgetHidden,
 } from "./llm_prompt_studio_actions.js";
 
 // Resolve the Writer that actually produces a Critic's `prompt` input: follow the inbound
@@ -113,6 +113,51 @@ function setupSmartParams(node) {
 }
 
 // ---------------------------------------------------------------------------
+// KSampler (Hires Fix): hide hires widgets when hires_enabled is off, and hide
+// the upscale-model/vis method widgets that don't apply to the chosen
+// hires_upscale_type ("latent" vs "latent (model)" vs "pixel (model)").
+// ---------------------------------------------------------------------------
+const HIRES_FIELDS = [
+    "hires_upscale_type", "hires_upscale_method", "hires_latent_upscale_model",
+    "hires_latent_upscale_factor", "hires_width", "hires_height", "hires_steps",
+    "hires_cfg", "hires_denoise", "hires_sampler_name", "hires_scheduler",
+    "hires_use_same_seed", "hires_seed",
+];
+
+function refreshHiresVisibility(node) {
+    const enabledW = getW(node, "hires_enabled");
+    const enabled = enabledW ? enabledW.value : true;
+    const showAll = !enabledW || enabled;
+    for (const name of HIRES_FIELDS) {
+        setWidgetHidden(node, name, !showAll);
+    }
+    if (!showAll) return;
+    const typeW = getW(node, "hires_upscale_type");
+    const t = typeW ? typeW.value : "latent";
+    // Only show the widget relevant to the selected upscale type.
+    setWidgetHidden(node, "hires_upscale_method", t !== "latent");
+    setWidgetHidden(node, "hires_latent_upscale_model", t !== "latent (model)");
+    setWidgetHidden(node, "hires_latent_upscale_factor", t === "pixel (model)");
+}
+
+function setupHires(node) {
+    if (node._hires_setup) return;
+    node._hires_setup = true;
+    const refresh = () => refreshHiresVisibility(node);
+    for (const name of ["hires_enabled", "hires_upscale_type"]) {
+        const w = getW(node, name);
+        if (!w) continue;
+        const orig = w.callback;
+        w.callback = function () {
+            const r = orig ? orig.apply(this, arguments) : undefined;
+            setTimeout(refresh, 0);
+            return r;
+        };
+    }
+    setTimeout(refresh, 0);
+}
+
+// ---------------------------------------------------------------------------
 // Button registration
 // ---------------------------------------------------------------------------
 function addButton(node, label, handler) {
@@ -189,6 +234,9 @@ app.registerExtension({
         }
         if (isSmartParams(node)) {
             setupSmartParams(node);
+        }
+        if (isKSampler(node)) {
+            setupHires(node);
         }
         // Auto-populate the model list on creation so a saved workflow whose model is not
         // yet in the combo validates without requiring a manual Refresh first. Deferred so it

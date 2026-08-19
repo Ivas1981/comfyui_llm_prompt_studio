@@ -47,12 +47,13 @@ def _base_args(**over):
         model=object(), positive=object(), negative=object(),
         latent_image={"samples": torch.zeros((1, 4, 32, 32))},
         seed=1, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
-        denoise=1.0, hires_enabled=True, hires_upscale_method="bilinear",
-        hires_latent_upscale_model="none", hires_latent_upscale_factor=2.0,
-        hires_pixel_upscale=False, hires_width=512, hires_height=512,
+        denoise=1.0, hires_enabled=True, hires_upscale_type="latent (model)",
+        hires_upscale_method="bilinear", hires_latent_upscale_model="none",
+        hires_latent_upscale_factor=2.0, hires_width=512, hires_height=512,
         hires_steps=20, hires_cfg=-1.0, hires_denoise=0.5,
         hires_sampler_name="base", hires_scheduler="base",
         hires_use_same_seed=True, hires_seed=0, vae_decode=False,
+        preview_method="none",
     )
     args.update(over)
     return args
@@ -107,7 +108,8 @@ def test_cfg2_defaults_to_base_cfg(monkeypatch):
 def test_vae_decode_emits_image(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
-    final, image = node.sample(**_base_args(vae_decode=True, optional_vae=object()))
+    final, image = node.sample(**_base_args(vae_decode=True, preview_method="vae",
+                                            optional_vae=object()))
     assert image.shape[0] == 1
     assert image.shape[3] == 3
 
@@ -128,3 +130,50 @@ def test_latent_upscale_with_model_scales_by_factor(tmp_path, monkeypatch):
     # non-sample keys are preserved
     assert set(out.keys()) == {"samples"}
     assert "other" not in out
+
+
+# -- new hires_upscale_type / preview_method features ------------------------
+def test_hires_upscale_type_options_present():
+    types = kh.LLMPromptStudioKSamplerHiresFix.INPUT_TYPES()
+    req = types["required"]
+    assert "hires_upscale_type" in req
+    assert list(req["hires_upscale_type"][0]) == kh.HIRES_UPSCALE_TYPES
+    assert "preview_method" in req
+    assert list(req["preview_method"][0]) == kh.PREVIEW_METHODS
+    # legacy boolean selector was replaced by the explicit enum
+    assert "hires_pixel_upscale" not in req
+
+
+def test_pixel_model_upscale_requires_connected_model(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    try:
+        node.sample(**_base_args(hires_enabled=True, hires_upscale_type="pixel (model)",
+                                 hires_width=512, hires_height=512))
+        assert False, "expected ValueError for missing UPSCALE_MODEL"
+    except ValueError as e:
+        assert "pixel (model)" in str(e)
+
+
+def test_preview_method_none_emits_placeholder(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    final, image = node.sample(**_base_args(vae_decode=True, preview_method="none"))
+    # "none" -> 1x1x3 placeholder regardless of size
+    assert image.shape == (1, 1, 1, 3)
+
+
+def test_latent_to_rgb_uses_samples():
+    samples = torch.randn(1, 4, 16, 16)
+    out = kh.LLMPromptStudioKSamplerHiresFix._latent_to_rgb(samples)
+    assert out.shape == (1, 16, 16, 3)
+    assert torch.all(out >= 0.0) and torch.all(out <= 1.0)
+
+
+def test_resolve_hires_sampler_base_aliases():
+    sam, sched = kh.LLMPromptStudioKSamplerHiresFix._resolve_hires_sampler(
+        "euler", "karras", "base", "base")
+    assert sam == "euler" and sched == "karras"
+    sam2, sched2 = kh.LLMPromptStudioKSamplerHiresFix._resolve_hires_sampler(
+        "euler", "karras", "dpmpp_2m", "simple")
+    assert sam2 == "dpmpp_2m" and sched2 == "simple"

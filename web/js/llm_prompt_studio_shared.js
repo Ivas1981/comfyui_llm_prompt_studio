@@ -59,6 +59,12 @@ export function isSmartParams(node) {
               getW(node, "sampler_name") && getW(node, "scheduler"));
 }
 
+export function isKSampler(node) {
+    if (cls(node) === "LLMPromptStudioKSamplerHiresFix") return true;
+    return !!(getW(node, "latent_image") && getW(node, "hires_enabled") &&
+              getW(node, "hires_upscale_type"));
+}
+
 // ---------------------------------------------------------------------------
 // API wrappers
 // ---------------------------------------------------------------------------

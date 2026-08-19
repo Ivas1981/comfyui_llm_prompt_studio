@@ -144,7 +144,7 @@ class LLMPromptStudioFaceDetailer:
             nlh = _clamp(round((ly2 - ly1) * upscale), 1, max_size // 8)
             up_lat = torch.nn.functional.interpolate(
                 lc, size=(nlh, nlw), mode="bilinear", align_corners=False)
-            up_pixels = vae.decode({"samples": up_lat})[0]
+            up_pixels = vae.decode(up_lat)[0]
             if inpaint_model:
                 inpaint_mask = torch.ones_like(up_pixels)[:, :, :, :1]
                 pos, neg, lat = self._inpaint_encode(pos, neg, up_pixels, vae, inpaint_mask)
@@ -162,8 +162,8 @@ class LLMPromptStudioFaceDetailer:
                 lat = to_latent_image(up, vae)
 
         refined = sample_latent(model, seed, steps, cfg, sampler_name, scheduler,
-                                pos, neg, lat, denoise)
-        ref = vae.decode(refined)[0]
+                                 pos, neg, lat, denoise)
+        ref = vae.decode(refined["samples"])[0]
         ref = tensor_resize(ref, bw, bh)
         composite_mask = tensor_gaussian_blur_mask(torch.ones((1, bh, bw, 1)), feather)
         return ref, composite_mask
@@ -175,7 +175,7 @@ class LLMPromptStudioFaceDetailer:
                           face_positive=None, face_negative=None, unique_id=None):
         with node_span("LLMPromptStudioFaceDetailer", unique_id):
             if latent is not None:
-                img = vae.decode(latent)[0]
+                img = vae.decode(latent["samples"])[0]
             elif image is not None:
                 img = image
             else:

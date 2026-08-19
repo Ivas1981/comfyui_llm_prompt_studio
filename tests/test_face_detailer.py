@@ -54,9 +54,10 @@ class _FakeVAE:
         self.encode_calls = 0
 
     def decode(self, latent):
-        # ComfyUI's VAEDecode().decode(vae, latent) returns a LIST [pixels].
+        # Face Detailer passes `latent["samples"]` (a tensor) to `vae.decode`.
         self.decode_calls += 1
-        s = latent["samples"]
+        assert isinstance(latent, torch.Tensor), "vae.decode must receive samples, not a dict"
+        s = latent
         return [torch.zeros((s.shape[0], s.shape[2] * 8, s.shape[3] * 8, 3))]
 
     def encode(self, pixels):

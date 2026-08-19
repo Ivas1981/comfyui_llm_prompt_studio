@@ -15,6 +15,13 @@ from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
 
 
 _LATENT_UPSCALE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp"]
+# How the hires pass upscales the base latent. This makes it explicit which upscaler runs:
+#  - "latent"        : bilinear/interp of the latent (hires_upscale_method), no model needed
+#  - "latent (model)": a LatentUpscaleModel (hires_latent_upscale_model)
+#  - "pixel (model)" : decode -> super-res UPSCALE_MODEL -> re-encode (hires_upscale_model input)
+HIRES_UPSCALE_TYPES = ["latent", "latent (model)", "pixel (model)"]
+# How the node's preview IMAGE is produced (mirrors Efficient KSampler's preview_method).
+PREVIEW_METHODS = ["none", "vae", "latent2rgb", "taesd"]
 
 
 def _round8(v):
@@ -48,13 +55,20 @@ class LLMPromptStudioKSamplerHiresFix:
                 "scheduler": (SCHEDULERS_WITH_BASE, {"default": "karras"}),
                 "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "hires_enabled": ("BOOLEAN", {"default": True}),
+                "hires_upscale_type": (HIRES_UPSCALE_TYPES, {
+                    "default": "latent (model)",
+                    "tooltip": "Which upscaler the hires pass uses: 'latent' = interpolate the "
+                               "latent (hires_upscale_method, no model); 'latent (model)' = a "
+                               "LatentUpscaleModel (hires_latent_upscale_model); 'pixel (model)' = "
+                               "decode to pixels, super-res with a UPSCALE_MODEL (hires_upscale_model "
+                               "input), then re-encode."}),
                 "hires_upscale_method": (_LATENT_UPSCALE_METHODS, {"default": "nearest-exact"}),
                 "hires_latent_upscale_model": (
                     ["none"] + project_local_upscale_models() + list(model_list),
-                    {"default": "none"}),
+                    {"default": "none",
+                     "tooltip": "LatentUpscaleModel used when hires_upscale_type = 'latent (model)'."}),
                 "hires_latent_upscale_factor": (
                     "FLOAT", {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.05}),
-                "hires_pixel_upscale": ("BOOLEAN", {"default": False}),
                 "hires_width": ("INT", {"default": 1024, "min": 8, "max": 16384, "step": 8}),
                 "hires_height": ("INT", {"default": 1024, "min": 8, "max": 16384, "step": 8}),
                 "hires_steps": ("INT", {"default": 20, "min": 1, "max": 10000, "step": 1}),
@@ -64,7 +78,14 @@ class LLMPromptStudioKSamplerHiresFix:
                 "hires_scheduler": (SCHEDULERS_WITH_BASE, {"default": "base"}),
                 "hires_use_same_seed": ("BOOLEAN", {"default": True}),
                 "hires_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                "vae_decode": ("BOOLEAN", {"default": False}),
+                "vae_decode": ("BOOLEAN", {"default": True,
+                                 "tooltip": "Decode the final latent into an IMAGE preview. Turn "
+                                            "off to skip the VAE decode (saves VRAM)."}),
+                "preview_method": (PREVIEW_METHODS, {
+                    "default": "vae",
+                    "tooltip": "How the preview IMAGE is generated: 'vae' = full VAE decode (most "
+                               "accurate), 'latent2rgb' = fast approximate latent->RGB, 'taesd' = "
+                               "TAESD preview if available (else VAE), 'none' = no preview image."}),
             },
             "optional": {
                 "hires_upscale_model": ("UPSCALE_MODEL", {"forceInput": True}),
@@ -98,10 +119,10 @@ class LLMPromptStudioKSamplerHiresFix:
             return latent
         return self._latent_interp(latent, method, w, h)
 
-    def _hires_upscale(self, base, method, model_name, factor, width, height):
+    def _hires_upscale(self, base, upscale_type, method, model_name, factor, width, height):
         target_w = _round8(width) // 8
         target_h = _round8(height) // 8
-        if model_name not in (None, "none", ""):
+        if upscale_type == "latent (model)" and model_name not in (None, "none", ""):
             upscaled = latent_upscale_with_model(base, model_name, factor)
         else:
             upscaled = self._latent_interp(base, method, target_w, target_h)
@@ -123,19 +144,62 @@ class LLMPromptStudioKSamplerHiresFix:
         sched = base_sched if hires_sched == "base" else hires_sched
         return sam, sched
 
-    def _maybe_decode(self, latent, vae_decode, vae):
-        if vae_decode and vae is not None:
+    @staticmethod
+    def _latent_to_rgb(samples):
+        # Cheap approximate latent -> RGB preview (no VAE). Useful when no VAE is wired.
+        # ComfyUI IMAGE is [B,H,W,C], so permute from the latent [B,C,H,W] layout.
+        if samples.shape[1] >= 3:
+            rgb = samples[:, :3]
+        else:
+            rgb = samples.repeat(1, 3, 1, 1)[:, :3]
+        rgb = rgb.permute(0, 2, 3, 1)
+        return (rgb * 0.5 + 0.5).clamp(0.0, 1.0)
+
+    def _taesd_preview(self, samples, vae):
+        # Best-effort TAESD preview; falls back to the caller on any failure.
+        try:
+            from comfy.taesd import TAESD
+        except Exception:
+            raise RuntimeError("taesd preview unavailable")
+        if vae is None or not hasattr(vae, "taesd_decoder"):
+            raise RuntimeError("no taesd decoder on this VAE")
+        dec = vae.taesd_decoder
+        out = dec(samples.to(dec.device))[0]
+        # TAESD decoder emits channel-first [B,C,H,W]; ComfyUI IMAGE is [B,H,W,C].
+        if out.dim() == 4 and out.shape[1] == 3 and out.shape[3] != 3:
+            out = out.permute(0, 2, 3, 1)
+        return out
+
+    def _preview_image(self, final, preview_method, vae):
+        samples = final["samples"]
+        if preview_method == "none":
+            return torch.zeros((samples.shape[0], 1, 1, 3), dtype=samples.dtype)
+        if preview_method == "latent2rgb":
+            return self._latent_to_rgb(samples)
+        if preview_method == "taesd":
+            try:
+                return self._taesd_preview(samples, vae)
+            except Exception:
+                pass
+        # default "vae"
+        if vae is not None:
             from nodes import VAEDecode
-            return VAEDecode().decode(vae, latent)[0]
-        b = latent["samples"].shape[0]
-        return torch.zeros((b, 1, 1, 3), dtype=latent["samples"].dtype)
+            return VAEDecode().decode(vae, final)[0]
+        return self._latent_to_rgb(samples)
+
+    def _maybe_preview(self, final, vae_decode, preview_method, vae):
+        if not vae_decode:
+            samples = final["samples"]
+            return torch.zeros((samples.shape[0], 1, 1, 3), dtype=samples.dtype)
+        return self._preview_image(final, preview_method, vae)
 
     def sample(self, model, positive, negative, latent_image, seed, steps, cfg,
-               sampler_name, scheduler, denoise, hires_enabled, hires_upscale_method,
-               hires_latent_upscale_model, hires_latent_upscale_factor, hires_pixel_upscale,
-               hires_width, hires_height, hires_steps, hires_cfg, hires_denoise,
-               hires_sampler_name, hires_scheduler, hires_use_same_seed, hires_seed,
-               vae_decode, hires_upscale_model=None, hires_positive=None,
+               sampler_name, scheduler, denoise, hires_enabled, hires_upscale_type,
+               hires_upscale_method, hires_latent_upscale_model,
+               hires_latent_upscale_factor, hires_width, hires_height, hires_steps,
+               hires_cfg, hires_denoise, hires_sampler_name, hires_scheduler,
+               hires_use_same_seed, hires_seed, vae_decode, preview_method,
+               hires_upscale_model=None, hires_positive=None,
                hires_negative=None, optional_vae=None, unique_id=None):
         with node_span("LLMPromptStudioKSamplerHiresFix", unique_id):
             base = self._sample(model, seed, steps, cfg, sampler_name, scheduler,
@@ -148,13 +212,19 @@ class LLMPromptStudioKSamplerHiresFix:
 
             final = base
             if need_hires:
-                upscaled = self._hires_upscale(
-                    base, hires_upscale_method, hires_latent_upscale_model,
-                    hires_latent_upscale_factor, hires_width, hires_height)
-                if hires_pixel_upscale and hires_upscale_model is not None:
+                if hires_upscale_type == "pixel (model)":
+                    if hires_upscale_model is None:
+                        raise ValueError(
+                            "hires_upscale_type 'pixel (model)' requires a connected "
+                            "UPSCALE_MODEL (hires_upscale_model input)")
                     upscaled = self._pixel_stage(
-                        upscaled, hires_upscale_model, hires_upscale_method,
+                        base, hires_upscale_model, hires_upscale_method,
                         hires_width, hires_height, optional_vae)
+                else:
+                    upscaled = self._hires_upscale(
+                        base, hires_upscale_type, hires_upscale_method,
+                        hires_latent_upscale_model, hires_latent_upscale_factor,
+                        hires_width, hires_height)
                 sam2, sched2 = self._resolve_hires_sampler(
                     sampler_name, scheduler, hires_sampler_name, hires_scheduler)
                 cfg2 = hires_cfg if hires_cfg >= 0 else cfg
@@ -164,6 +234,6 @@ class LLMPromptStudioKSamplerHiresFix:
                 final = self._sample(model, seed2, hires_steps, cfg2, sam2, sched2,
                                      pos2, neg2, upscaled, hires_denoise)
 
-            image = self._maybe_decode(final, vae_decode, optional_vae)
+            image = self._maybe_preview(final, vae_decode, preview_method, optional_vae)
             return (final, image)
 
