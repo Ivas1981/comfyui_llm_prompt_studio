@@ -33,8 +33,14 @@ def to_tensor(img):
 
 
 def to_latent_image(img, vae):
-    """Encode an image tensor ``(B, H, W, C)`` into a latent dict."""
-    return vae.encode(img)
+    """Encode an image tensor ``(B, H, W, C)`` into a latent dict.
+
+    ``VAE.encode`` returns the latent samples tensor directly; ComfyUI's
+    latent dict is ``{"samples": tensor}`` (see ``nodes.VAEEncode``). The
+    returned dict is what callers expect (e.g. when assigning
+    ``lat["noise_mask"]``).
+    """
+    return {"samples": vae.encode(img)}
 
 
 def tensor_gaussian_blur_mask(mask, feather):
