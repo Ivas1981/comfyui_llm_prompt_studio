@@ -146,7 +146,7 @@ class LLMPromptStudioFaceDetailer:
                 lc, size=(nlh, nlw), mode="bilinear", align_corners=False)
             up_pixels = vae.decode(up_lat)
             if inpaint_model:
-                inpaint_mask = torch.ones_like(up_pixels)[:, :, :, :1]
+                inpaint_mask = torch.ones_like(up_pixels[..., 0])
                 pos, neg, lat = self._inpaint_encode(pos, neg, up_pixels, vae, inpaint_mask)
             else:
                 lat = {"samples": up_lat}
@@ -156,7 +156,7 @@ class LLMPromptStudioFaceDetailer:
             nh = _clamp(round(bh * upscale), 1, max_size)
             up = tensor_resize(crop, nw, nh)
             if inpaint_model:
-                inpaint_mask = torch.ones_like(up)[:, :, :, :1]
+                inpaint_mask = torch.ones_like(up[..., 0])
                 pos, neg, lat = self._inpaint_encode(pos, neg, up, vae, inpaint_mask)
             else:
                 lat = to_latent_image(up, vae)
