@@ -592,3 +592,16 @@ ComfyUI (шаблоны загружаются при старте). Кажды�
   инструкциям (промпты `writer_system` / `composer` уже требуют все поля).
 - Логи используют Python `logging` под логгером `llm_prompt_studio` с префиксом `[LLMPromptStudio]`.
   Понизьте уровень этого логгера до DEBUG, чтобы видеть тайминги вызовов LLM и активность кэша.
+
+---
+
+## Благодарности
+
+Этот проект опирается на идеи и вдохновение из других открытых проектов ComfyUI и их авторов:
+
+- [ComfyUI-SmartPromptCrafter](https://github.com/jideka/ComfyUI-SmartPromptCrafter)
+- [comfyui-llm-prompt-enhancer](https://github.com/pinkpixel-dev/comfyui-llm-prompt-enhancer)
+- [efficiency-nodes-comfyui](https://github.com/jags111/efficiency-nodes-comfyui)
+- [ComfyUI-Impact-Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
+
+Благодарим авторов этих проектов за концепции, которые легли в основу этого набора нод.

@@ -12,7 +12,7 @@ import torch
 
 from ._ksample import sample_latent, node_span
 from ._imgutils import tensor_resize, to_latent_image, tensor_gaussian_blur_mask, tensor_paste
-from .smart_parameters import SAMPLERS_COMBO, FULL_SCHEDULERS
+from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
 from ._latent_upscaler import project_local_ultralytics_bbox
 
 
@@ -43,8 +43,8 @@ class LLMPromptStudioFaceDetailer:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 20, "min": 1, "max": 10000, "step": 1}),
                 "cfg": ("FLOAT", {"default": 7.0, "min": 0.0, "max": 100.0, "step": 0.1}),
-                "sampler_name": (SAMPLERS_COMBO,),
-                "scheduler": (FULL_SCHEDULERS,),
+                "sampler_name": (SAMPLERS_WITH_BASE, {"default": "dpmpp_2m"}),
+                "scheduler": (SCHEDULERS_WITH_BASE, {"default": "karras"}),
                 "denoise": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "guide_size": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 8}),
                 "max_size": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),

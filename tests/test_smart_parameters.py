@@ -128,13 +128,14 @@ def test_node_auto_detects_family_from_ckpt(monkeypatch):
 def test_node_apply_parameters_and_return_types():
     from comfyui_llm_prompt_studio.nodes import smart_parameters as sp
     from comfyui_llm_prompt_studio.nodes.smart_parameters import (
-        SAMPLERS_COMBO, FULL_SCHEDULERS,
+        SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE,
     )
 
     # RETURN_TYPES: sampler/scheduler must be the whole option-TUPLE as a single
-    # element (COMBO typing), not spread.
-    assert sp.LLMPromptStudioSmartParameters.RETURN_TYPES[2] is SAMPLERS_COMBO
-    assert sp.LLMPromptStudioSmartParameters.RETURN_TYPES[3] is FULL_SCHEDULERS
+    # element (COMBO typing), not spread. It must also carry the "base" entry so the
+    # hires inputs (which expose "base") validate against this exact same tuple.
+    assert sp.LLMPromptStudioSmartParameters.RETURN_TYPES[2] is SAMPLERS_WITH_BASE
+    assert sp.LLMPromptStudioSmartParameters.RETURN_TYPES[3] is SCHEDULERS_WITH_BASE
 
     # Sentinel behavior: defaults fall through to the recommendation.
     out = sp.apply_parameters(

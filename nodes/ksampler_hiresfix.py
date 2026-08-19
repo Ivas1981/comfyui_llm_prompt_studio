@@ -11,7 +11,7 @@ from ._ksample import sample_latent, node_span
 from ._latent_upscaler import (
     latent_upscale_with_model, project_local_upscale_models,
 )
-from .smart_parameters import FULL_SCHEDULERS, SAMPLERS_COMBO
+from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
 
 
 _LATENT_UPSCALE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp"]
@@ -44,8 +44,8 @@ class LLMPromptStudioKSamplerHiresFix:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 20, "min": 1, "max": 10000, "step": 1}),
                 "cfg": ("FLOAT", {"default": 7.0, "min": 0.0, "max": 100.0, "step": 0.1}),
-                "sampler_name": (SAMPLERS_COMBO,),
-                "scheduler": (FULL_SCHEDULERS,),
+                "sampler_name": (SAMPLERS_WITH_BASE, {"default": "dpmpp_2m"}),
+                "scheduler": (SCHEDULERS_WITH_BASE, {"default": "karras"}),
                 "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "hires_enabled": ("BOOLEAN", {"default": True}),
                 "hires_upscale_method": (_LATENT_UPSCALE_METHODS, {"default": "nearest-exact"}),
@@ -60,8 +60,8 @@ class LLMPromptStudioKSamplerHiresFix:
                 "hires_steps": ("INT", {"default": 20, "min": 1, "max": 10000, "step": 1}),
                 "hires_cfg": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 100.0, "step": 0.1}),
                 "hires_denoise": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "hires_sampler_name": (["base"] + list(SAMPLERS_COMBO), {"default": "base"}),
-                "hires_scheduler": (["base"] + list(FULL_SCHEDULERS), {"default": "base"}),
+                "hires_sampler_name": (SAMPLERS_WITH_BASE, {"default": "base"}),
+                "hires_scheduler": (SCHEDULERS_WITH_BASE, {"default": "base"}),
                 "hires_use_same_seed": ("BOOLEAN", {"default": True}),
                 "hires_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "vae_decode": ("BOOLEAN", {"default": False}),

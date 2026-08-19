@@ -14,6 +14,13 @@ SAMPLERS_COMBO = comfy.samplers.KSampler.SAMPLERS
 STANDARD_SCHEDULERS = comfy.samplers.KSampler.SCHEDULERS
 FULL_SCHEDULERS = list(STANDARD_SCHEDULERS) + ["AYS SD1", "AYS SDXL", "AYS SVD", "GITS"]
 
+# Combo types that also expose a "base" option. ComfyUI validates a link by comparing the
+# source node's output TYPE tuple against the destination input TYPE tuple for equality, so
+# every node that emits or consumes a sampler/scheduler combo must share the *exact same*
+# tuple object. The "base" entry lets the hires pass reuse the base pass sampler/scheduler.
+SAMPLERS_WITH_BASE = ("base",) + tuple(SAMPLERS_COMBO)
+SCHEDULERS_WITH_BASE = ("base",) + tuple(FULL_SCHEDULERS)
+
 from ._distilled_presets import recommend, PRESETS, FAMILIES  # noqa: E402
 from .. import model_meta  # noqa: E402  (comfy-free family/architecture detection)
 
@@ -101,7 +108,7 @@ class LLMPromptStudioSmartParameters:
     )
     CATEGORY = "LLM Prompt Studio"
     FUNCTION = "apply"
-    RETURN_TYPES = ("INT", "FLOAT", SAMPLERS_COMBO, FULL_SCHEDULERS, "STRING")
+    RETURN_TYPES = ("INT", "FLOAT", SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE, "STRING")
     RETURN_NAMES = ("steps", "cfg", "sampler_name", "scheduler", "info")
 
     @classmethod

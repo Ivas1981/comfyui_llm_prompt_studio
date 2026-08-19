@@ -74,3 +74,35 @@ def test_debug_redacts_base64(tmp_path, monkeypatch):
     debug.log_node_enter("Critic", "1", {"image": big})
     content = (tmp_path / "llm_prompt_studio.log").read_text(encoding="utf-8")
     assert "<base64 200 chars>" in content
+
+
+def test_log_type_mismatch(tmp_path, monkeypatch):
+    _set_output(tmp_path, monkeypatch, "FULL")
+    debug.log_type_mismatch("7", "sampler_name", ("base", "euler"), ["base", "euler"],
+                            note="combo differs")
+    content = (tmp_path / "llm_prompt_studio.log").read_text(encoding="utf-8")
+    assert "TYPE_MISMATCH" in content
+    assert "sampler_name" in content
+
+
+def test_ksample_node_span_delegates_to_debug(tmp_path, monkeypatch):
+    # The sampler nodes (KSampler Hires Fix, Face Detailer) import node_span from
+    # _ksample, which must delegate to the real debug span (not a no-op).
+    from comfyui_llm_prompt_studio.nodes import _ksample
+
+    _set_output(tmp_path, monkeypatch, "FULL")
+    with _ksample.node_span("SamplerProbe", "42"):
+        pass
+    content = (tmp_path / "llm_prompt_studio.log").read_text(encoding="utf-8")
+    assert "NODE_ENTER" in content
+    assert "SamplerProbe" in content
+    assert "42" in content
+
+
+def test_ksample_node_span_off_is_noop(tmp_path, monkeypatch):
+    from comfyui_llm_prompt_studio.nodes import _ksample
+
+    _set_output(tmp_path, monkeypatch, "OFF")
+    with _ksample.node_span("SamplerProbe", "42"):
+        pass
+    assert not (tmp_path / "llm_prompt_studio.log").exists()

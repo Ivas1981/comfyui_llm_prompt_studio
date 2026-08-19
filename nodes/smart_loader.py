@@ -30,10 +30,10 @@ class LLMPromptStudioSmartLoader:
             }
         }
 
-    RETURN_TYPES = ("MODEL", "CLIP", "VAE", "VAE", "STRING", "STRING", "STRING", "STRING")
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE", "VAE", "STRING", "STRING", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("MODEL", "CLIP", "VAE_MODEL", "VAE_USER",
                     "detected_family", "detected_family_info",
-                    "detected_architecture", "detected_architecture_info")
+                    "detected_architecture", "detected_architecture_info", "ckpt_name")
 
     def load(self, ckpt_name, family_override, lora_name, apply_lora,
               strength_model, vae_user, unique_id=None):
@@ -119,4 +119,4 @@ class LLMPromptStudioSmartLoader:
             return {"ui": {"family": [detected], "family_info": [family_info],
                            "architecture": [arch], "architecture_info": [architecture_info]},
                     "result": (model, clip, vae_model, vae_user_obj, detected, family_info,
-                               arch, architecture_info)}
+                               arch, architecture_info, ckpt_name)}

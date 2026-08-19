@@ -631,3 +631,17 @@ the combo.
   following (the `writer_system` / `composer` prompts already require all fields).
 - Logs use Python `logging` under the `llm_prompt_studio` logger with a `[LLMPromptStudio]`
   prefix. Lower that logger's level to DEBUG to see LLM call timings and cache activity.
+
+---
+
+## Acknowledgements
+
+This project builds on ideas and inspiration from other open-source ComfyUI projects
+and their authors:
+
+- [ComfyUI-SmartPromptCrafter](https://github.com/jideka/ComfyUI-SmartPromptCrafter)
+- [comfyui-llm-prompt-enhancer](https://github.com/pinkpixel-dev/comfyui-llm-prompt-enhancer)
+- [efficiency-nodes-comfyui](https://github.com/jags111/efficiency-nodes-comfyui)
+- [ComfyUI-Impact-Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
+
+Thanks to their authors for the concepts that informed this node pack.

@@ -9,6 +9,24 @@ from .smart_parameters import LLMPromptStudioSmartParameters
 from .ksampler_hiresfix import LLMPromptStudioKSamplerHiresFix
 from .face_detailer import LLMPromptStudioFaceDetailer
 
+# Debug-only self-check: verify the sampler/scheduler combo contract across studio nodes
+# (catches the "Return type mismatch" class of bug before any prompt is built).
+def _verify_combo_contracts():
+    try:
+        from .. import debug
+        if not debug.debug_active():
+            return
+        from ._contracts import check_combo_contracts
+        for m in check_combo_contracts(NODE_CLASS_MAPPINGS):
+            debug.log_type_mismatch(
+                m["node"], m["input"], m["expected"], m["actual"],
+                note="sampler/scheduler combo differs from the studio shared constant; "
+                     "ComfyUI will reject the prompt link with 'Return type mismatch'")
+    except Exception:
+        # Never let the debug check break custom-node registration.
+        pass
+
+
 NODE_CLASS_MAPPINGS = {
     "LLMPromptStudioWriter": LLMPromptStudioWriter,
     "LLMPromptStudioCritic": LLMPromptStudioCritic,
@@ -34,3 +52,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LLMPromptStudioKSamplerHiresFix": "LLM Prompt Studio KSampler (Hires Fix)",
     "LLMPromptStudioFaceDetailer": "LLM Prompt Studio Face Detailer",
 }
+
+_verify_combo_contracts()

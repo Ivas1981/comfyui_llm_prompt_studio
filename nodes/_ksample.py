@@ -20,14 +20,24 @@ _ORIGINAL_CALC = None
 _SIG_LOCK = threading.Lock()
 
 
-@contextlib.contextmanager
-def node_span(name, unique_id=None):
-    """Lightweight wrapper around a node's heavy work.
+try:
+    # Delegate to the real debug span when the studio debug module is available so the
+    # sampler nodes (KSampler Hires Fix, Face Detailer) get the same enter/exit/error
+    # coverage as the other studio nodes. Falls back to a no-op if debug is unavailable.
+    from ..debug import node_span as _real_node_span  # type: ignore
+except Exception:  # pragma: no cover - only when the package layout is unexpected
+    @contextlib.contextmanager
+    def _real_node_span(name, unique_id=None):
+        yield
 
-    Defined here so every studio node can use the same helper without pulling in
-    an optional debug module. A no-op by default (keeps node code clean).
+
+def node_span(name, unique_id=None):
+    """Wrap a node's heavy work with debug enter/exit/error logging.
+
+    Delegates to ``debug.node_span`` (a no-op when ``DEBUG_LEVEL == "OFF"``), so this
+    is cheap and safe to call unconditionally from every studio node.
     """
-    yield
+    return _real_node_span(name, unique_id)
 
 
 def _patched_calculate_sigmas(model, scheduler, steps):
