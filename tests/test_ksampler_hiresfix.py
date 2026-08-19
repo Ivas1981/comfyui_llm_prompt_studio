@@ -29,9 +29,16 @@ class _FakeLatentUpscale:
 
 
 class _FakeVAEDecode:
+    def __init__(self):
+        self.tiled_calls = []
+
     def decode(self, vae, latent):
         s = latent["samples"]
         return [torch.zeros((s.shape[0], s.shape[2] * 8, s.shape[3] * 8, 3))]
+
+    def tiled_decode(self, samples, tile_x=None, tile_y=None):
+        self.tiled_calls.append((int(tile_x), int(tile_y)))
+        return torch.zeros((samples.shape[0], samples.shape[2] * 8, samples.shape[3] * 8, 3))
 
 
 def _install_mocks(monkeypatch):
@@ -63,7 +70,7 @@ def test_hires_upscales_to_target_size(monkeypatch):
     _install_mocks(monkeypatch)
     node = __import__("comfyui_llm_prompt_studio.nodes.ksampler_hiresfix",
                       fromlist=["LLMPromptStudioKSamplerHiresFix"]).LLMPromptStudioKSamplerHiresFix()
-    final, image = node.sample(**_base_args())
+    final, image, tile = node.sample(**_base_args())
     # base 256px (32 latent) -> 512px target (64 latent)
     assert final["samples"].shape[2] == 64
     assert final["samples"].shape[3] == 64
@@ -73,7 +80,7 @@ def test_no_hires_when_size_already_matches(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
     # factor 1.0 x 1 iteration => target == base => no hires pass
-    final, image = node.sample(**_base_args(hires_latent_upscale_factor=1.0,
+    final, image, tile = node.sample(**_base_args(hires_latent_upscale_factor=1.0,
                                             hires_enabled=True))
     assert final["samples"].shape[2] == 32
     assert final["samples"].shape[3] == 32
@@ -83,7 +90,7 @@ def test_hires_iterations_scale_output(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
     # base 256px (32 latent); factor 2.0 x 2 iterations => 1024px (128 latent)
-    final, image = node.sample(**_base_args(hires_upscale_iterations=2))
+    final, image, tile = node.sample(**_base_args(hires_upscale_iterations=2))
     assert final["samples"].shape[2] == 128
     assert final["samples"].shape[3] == 128
 
@@ -91,7 +98,7 @@ def test_hires_iterations_scale_output(monkeypatch):
 def test_hires_disabled_keeps_base(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
-    final, image = node.sample(**_base_args(hires_enabled=False))
+    final, image, tile = node.sample(**_base_args(hires_enabled=False))
     assert final["samples"].shape[2] == 32
 
 
@@ -118,7 +125,7 @@ def test_cfg2_defaults_to_base_cfg(monkeypatch):
 def test_vae_decode_emits_image(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
-    final, image = node.sample(**_base_args(vae_decode=True, preview_method="vae",
+    final, image, tile = node.sample(**_base_args(vae_decode=True, preview_method="vae",
                                             optional_vae=object()))
     assert image.shape[0] == 1
     assert image.shape[3] == 3
@@ -153,7 +160,7 @@ def test_hires_target_follows_model_native_scale(tmp_path, monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
     # base 256px (32 latent) -> 1.5x -> 384px (48 latent), not 512px (64 latent)
-    final, image = node.sample(**_base_args(
+    final, image, tile = node.sample(**_base_args(
         hires_upscale_type="latent (model)",
         hires_latent_upscale_model="fake-x1.5.safetensors",
         hires_latent_upscale_factor=2.0,
@@ -188,7 +195,7 @@ def test_pixel_model_upscale_requires_connected_model(monkeypatch):
 def test_preview_method_none_emits_placeholder(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
-    final, image = node.sample(**_base_args(vae_decode=True, preview_method="none"))
+    final, image, tile = node.sample(**_base_args(vae_decode=True, preview_method="none"))
     # "none" -> 1x1x3 placeholder regardless of size
     assert image.shape == (1, 1, 1, 3)
 
@@ -237,3 +244,34 @@ def test_hires_latent_upscale_tile_reaches_the_upscaler(monkeypatch):
     seen.clear()
     node.sample(**_base_args(hires_latent_upscale_model="whatever-x2.0.safetensors"))
     assert seen["tile"] == 0
+
+
+# -- vae_tile_size output (wired into FaceDetailer) --------------------------
+def test_return_types_include_vae_tile_size():
+    assert kh.LLMPromptStudioKSamplerHiresFix.RETURN_TYPES == ("LATENT", "IMAGE", "INT")
+    assert kh.LLMPromptStudioKSamplerHiresFix.RETURN_NAMES[-1] == "VAE_TILE_SIZE"
+
+
+def test_vae_tile_size_emitted_and_drives_tiled_decode(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    vae = _FakeVAEDecode()
+    final, image, tile = node.sample(
+        **_base_args(vae_decode=True, preview_method="vae",
+                     optional_vae=vae, vae_tile_size=512))
+    # The third output is the same tile size the user requested.
+    assert tile == 512
+    # With a positive tile size, the VAE decode is tiled (VRAM-bounded).
+    assert vae.tiled_calls == [(512, 512)]
+
+
+def test_vae_tile_size_zero_emits_zero_and_uses_plain_decode(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    vae = _FakeVAEDecode()
+    final, image, tile = node.sample(
+        **_base_args(vae_decode=True, preview_method="vae",
+                     optional_vae=vae, vae_tile_size=0))
+    assert tile == 0
+    # 0 = whole-frame decode, no tiling.
+    assert vae.tiled_calls == []

@@ -62,8 +62,10 @@ class _FakeVAE:
 
     def encode(self, pixels):
         self.encode_calls += 1
-        return {"samples": torch.zeros((pixels.shape[0], 4,
-                                        pixels.shape[1] // 8, pixels.shape[2] // 8))}
+        # Production ComfyUI `vae.encode` returns the samples TENSOR (not a dict);
+        # VAEEncode wraps it as {"samples": ...}. to_latent_image expects the tensor.
+        return torch.zeros((pixels.shape[0], 4,
+                            pixels.shape[1] // 8, pixels.shape[2] // 8))
 
 
 def _install(monkeypatch):

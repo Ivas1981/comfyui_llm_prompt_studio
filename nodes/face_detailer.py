@@ -100,17 +100,18 @@ class LLMPromptStudioFaceDetailer:
                                              "sees the original face structure (concat latent) while "
                                              "regenerating the face area. Off = differential noise "
                                              "mask (refines in place)."}),
-                "vae_tile_size": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 16,
-                                  "tooltip": "Tile size (px) for the VAE decode of the incoming "
-                                             "latent. 0 = decode the whole frame at once (best "
-                                             "quality). A positive value (e.g. 512) tiles the decode "
-                                             "to cap VRAM on large hires latents."}),
             },
             "optional": {
                 "image": ("IMAGE", {"forceInput": True}),
                 "latent": ("LATENT", {"forceInput": True}),
                 "face_positive": ("CONDITIONING", {"forceInput": True}),
                 "face_negative": ("CONDITIONING", {"forceInput": True}),
+                "vae_tile_size": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 16,
+                                  "tooltip": "Tile size (px) for the VAE decode of the incoming "
+                                             "latent. 0 = decode the whole frame at once (best "
+                                             "quality). A positive value (e.g. 512) tiles the decode "
+                                             "to cap VRAM on large hires latents. Can be wired from "
+                                             "KSamplerHiresFix's VAE_TILE_SIZE output."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }

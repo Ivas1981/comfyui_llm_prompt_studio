@@ -31,8 +31,8 @@ def _round8(v):
 class LLMPromptStudioKSamplerHiresFix:
     CATEGORY = "LLM Prompt Studio"
     FUNCTION = "sample"
-    RETURN_TYPES = ("LATENT", "IMAGE")
-    RETURN_NAMES = ("LATENT", "IMAGE")
+    RETURN_TYPES = ("LATENT", "IMAGE", "INT")
+    RETURN_NAMES = ("LATENT", "IMAGE", "VAE_TILE_SIZE")
     OUTPUT_NODE = False
 
     @classmethod
@@ -99,8 +99,15 @@ class LLMPromptStudioKSamplerHiresFix:
                 "preview_method": (PREVIEW_METHODS, {
                     "default": "vae",
                     "tooltip": "How the preview IMAGE is generated: 'vae' = full VAE decode (most "
-                               "accurate), 'latent2rgb' = fast approximate latent->RGB, 'taesd' = "
-                               "TAESD preview if available (else VAE), 'none' = no preview image."}),
+                                "accurate), 'latent2rgb' = fast approximate latent->RGB, 'taesd' = "
+                                "TAESD preview if available (else VAE), 'none' = no preview image."}),
+                "vae_tile_size": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 16,
+                                   "tooltip": "Tile size (px) for the VAE decode of the final "
+                                              "latent. 0 = decode the whole frame at once (best "
+                                              "quality). A positive value (e.g. 512) tiles the decode "
+                                              "to cap VRAM on large hires latents. Also emitted on the "
+                                              "VAE_TILE_SIZE output so it can be wired into "
+                                              "FaceDetailer's vae_tile_size."}),
             },
             "optional": {
                 "hires_upscale_model": ("UPSCALE_MODEL", {"forceInput": True}),
@@ -182,6 +189,27 @@ class LLMPromptStudioKSamplerHiresFix:
         rgb = rgb.permute(0, 2, 3, 1)
         return (rgb * 0.5 + 0.5).clamp(0.0, 1.0)
 
+    @staticmethod
+    def _decode_latent(vae, latent, tile_size):
+        # VRAM-bounded VAE decode with a robust fallback chain. Mirrors the logic
+        # in FaceDetailer so a single tile-size value drives both nodes.
+        samples = latent["samples"]
+        t = int(tile_size or 0)
+        if t > 0 and vae is not None:
+            td = getattr(vae, "tiled_decode", None)
+            if callable(td):
+                try:
+                    return td(samples, tile_x=t, tile_y=t)
+                except Exception:
+                    try:
+                        return td(samples, t, 16)
+                    except Exception:
+                        pass
+        if vae is not None:
+            from nodes import VAEDecode
+            return VAEDecode().decode(vae, latent)[0]
+        return None
+
     def _taesd_preview(self, samples, vae):
         # Best-effort TAESD preview; falls back to the caller on any failure.
         try:
@@ -197,7 +225,7 @@ class LLMPromptStudioKSamplerHiresFix:
             out = out.permute(0, 2, 3, 1)
         return out
 
-    def _preview_image(self, final, preview_method, vae):
+    def _preview_image(self, final, preview_method, vae, vae_tile_size=0):
         samples = final["samples"]
         if preview_method == "none":
             return torch.zeros((samples.shape[0], 1, 1, 3), dtype=samples.dtype)
@@ -210,15 +238,16 @@ class LLMPromptStudioKSamplerHiresFix:
                 pass
         # default "vae"
         if vae is not None:
-            from nodes import VAEDecode
-            return VAEDecode().decode(vae, final)[0]
+            decoded = self._decode_latent(vae, final, vae_tile_size)
+            if decoded is not None:
+                return decoded
         return self._latent_to_rgb(samples)
 
-    def _maybe_preview(self, final, vae_decode, preview_method, vae):
+    def _maybe_preview(self, final, vae_decode, preview_method, vae, vae_tile_size=0):
         if not vae_decode:
             samples = final["samples"]
             return torch.zeros((samples.shape[0], 1, 1, 3), dtype=samples.dtype)
-        return self._preview_image(final, preview_method, vae)
+        return self._preview_image(final, preview_method, vae, vae_tile_size)
 
     def sample(self, model, positive, negative, latent_image, seed, steps, cfg,
                 sampler_name, scheduler, denoise, hires_enabled, hires_upscale_type,
@@ -226,8 +255,8 @@ class LLMPromptStudioKSamplerHiresFix:
                 hires_latent_upscale_factor, hires_upscale_iterations, hires_steps,
                 hires_cfg, hires_denoise, hires_sampler_name, hires_scheduler,
                 hires_use_same_seed, hires_seed, vae_decode, preview_method,
-                hires_latent_upscale_tile=0, hires_upscale_model=None, hires_positive=None,
-                hires_negative=None, optional_vae=None, unique_id=None):
+                vae_tile_size=0, hires_latent_upscale_tile=0, hires_upscale_model=None,
+                hires_positive=None, hires_negative=None, optional_vae=None, unique_id=None):
         with node_span("LLMPromptStudioKSamplerHiresFix", unique_id):
             base = self._sample(model, seed, steps, cfg, sampler_name, scheduler,
                                 positive, negative, latent_image, denoise)
@@ -278,6 +307,7 @@ class LLMPromptStudioKSamplerHiresFix:
                 final = self._sample(model, seed2, hires_steps, cfg2, sam2, sched2,
                                      pos2, neg2, upscaled, hires_denoise)
 
-            image = self._maybe_preview(final, vae_decode, preview_method, optional_vae)
-            return (final, image)
+            image = self._maybe_preview(final, vae_decode, preview_method, optional_vae,
+                                        vae_tile_size)
+            return (final, image, vae_tile_size)
 
