@@ -7,6 +7,8 @@ from ..imaging import image_to_base64
 from ..lm_http import chat_completion, ensure_model_loaded, resolve_vision
 from ..parsing import parse_critic_json
 from ..debug import log_node_enter, log_node_exit, log_error
+from ..vram import (prepare_for_llm, release_after_llm, release_enabled,
+                     mark_keep_loaded, coerce_bool_widget)
 from ._defaults import DEFAULT_CRITIC
 from .model_recommendations import resolve_profile
 
@@ -50,6 +52,12 @@ class LLMPromptStudioCritic:
                                              "multiline": False,
                                              "tooltip": "Live LM Studio server status "
                                                         "(reachable / loaded model), refreshed automatically"}),
+                "release_vram_after_run": ("BOOLEAN", {"default": True,
+                                             "tooltip": "Unload the LM Studio model when this node "
+                                                        "finishes so the diffusion pipeline gets the "
+                                                        "VRAM back. Turn off only if you have enough "
+                                                        "VRAM for the LLM and the checkpoint at the "
+                                                        "same time."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -63,7 +71,8 @@ class LLMPromptStudioCritic:
                  clear_notes_on_approve, auto_loop, max_retries,
                   vision_check=True, revision_view="",
                    flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None,
-                   load_model_profile="auto", server_status=""):
+                   load_model_profile="auto", server_status="",
+                   release_vram_after_run=True):
         _t0 = time.time()
         log_node_enter("Critic", unique_id, {
             "server_url": server_url, "model": model, "threshold": threshold,
@@ -75,8 +84,9 @@ class LLMPromptStudioCritic:
                              gpu_offload,
                              critic_prompt, threshold, image_max_size, temperature, max_tokens,
                              clear_notes_on_approve, auto_loop, max_retries,
-                             vision_check, revision_view, flash_attention,
-                             offload_kv_cache_to_gpu, unique_id, _t0, load_model_profile)
+                              vision_check, revision_view, flash_attention,
+                              offload_kv_cache_to_gpu, unique_id, _t0, load_model_profile,
+                              release_vram_after_run)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
@@ -84,9 +94,9 @@ class LLMPromptStudioCritic:
     def _run(self, image, prompt, server_url, api_key, model, context_length, gpu_offload,
               critic_prompt, threshold, image_max_size, temperature, max_tokens,
               clear_notes_on_approve, auto_loop, max_retries,
-              vision_check=True, revision_view="",
-              flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None, _t0=None,
-              load_model_profile="auto"):
+               vision_check=True, revision_view="",
+               flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None, _t0=None,
+               load_model_profile="auto", release_vram_after_run=True):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -97,53 +107,65 @@ class LLMPromptStudioCritic:
                 "support image inputs). For image analysis choose a vision-capable model "
                 "(Qwen2.5-VL, LLaVA, Gemma-3/4, etc.) or disable the vision_check option.")
 
-        ensure_model_loaded(f"{server_url}::critic", server_url, api_key, model,
-                            context_length, gpu_offload,
-                            flash_attention=flash_attention,
-                            offload_kv_cache_to_gpu=offload_kv_cache_to_gpu)
-        b64 = image_to_base64(image, image_max_size)
-
-        messages = [
-            {"role": "system", "content": critic_prompt},
-            {"role": "user", "content": [
-                {"type": "text",
-                 "text": f"The prompt this image was generated with: {prompt}\n"
-                         f"Evaluate how well the image matches this prompt."},
-                {"type": "image_url",
-                 "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-            ]},
-        ]
-        # Resolve the "load_model_profile" choice. The Critic is always a vision model, so
-        # `has_image=True` here and `response_format` is never produced. "custom" keeps the
-        # old behavior (only temperature/max_tokens are sent); any other choice expands the
-        # call with the recommended profile's sampling params.
-        _resolved = resolve_profile(load_model_profile, model, "critic", has_image=True)
-        if _resolved["params"] is not None:
-            logger.info("Critic node %s: profile '%s' overrides widget sampling params",
-                        unique_id, _resolved["profile"])
-            p = _resolved["params"]
-            raw = chat_completion(server_url, api_key, model, messages,
-                                   p["temperature"], max_tokens,
-                                   repeat_penalty=p["repeat_penalty"], top_k=p["top_k"],
-                                   top_p=p["top_p"], min_p=p["min_p"],
-                                   presence_penalty=p["presence_penalty"],
-                                   response_format=_resolved["response_format"])
-        else:
-            raw = chat_completion(server_url, api_key, model, messages,
-                                   temperature, max_tokens)
-        score, verdict, notes = parse_critic_json(raw)
-        approved = score >= threshold
-
-        log_node_exit("Critic", unique_id, {"score": score, "approved": approved,
-                       "notes_len": len(notes)}, (time.time() - _t0) * 1000)
-        return {
-            "ui": {
-                "approved": [approved],
-                "score": [score],
-                "revision_notes": [notes],
-                "auto_loop": [auto_loop],
-                "max_retries": [max_retries],
-                "clear_notes_on_approve": [clear_notes_on_approve],
-            },
-            "result": (approved, score, notes, verdict, raw),
-        }
+        slot = f"{server_url}::critic"
+        release = coerce_bool_widget(release_vram_after_run, True)
+        prepare_for_llm(server_url, "critic")
+        loaded = False
+        try:
+            ensure_model_loaded(f"{server_url}::critic", server_url, api_key, model,
+                                context_length, gpu_offload,
+                                flash_attention=flash_attention,
+                                offload_kv_cache_to_gpu=offload_kv_cache_to_gpu)
+            loaded = True
+            b64 = image_to_base64(image, image_max_size)
+    
+            messages = [
+                {"role": "system", "content": critic_prompt},
+                {"role": "user", "content": [
+                    {"type": "text",
+                     "text": f"The prompt this image was generated with: {prompt}\n"
+                             f"Evaluate how well the image matches this prompt."},
+                    {"type": "image_url",
+                     "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                ]},
+            ]
+            # Resolve the "load_model_profile" choice. The Critic is always a vision model, so
+            # `has_image=True` here and `response_format` is never produced. "custom" keeps the
+            # old behavior (only temperature/max_tokens are sent); any other choice expands the
+            # call with the recommended profile's sampling params.
+            _resolved = resolve_profile(load_model_profile, model, "critic", has_image=True)
+            if _resolved["params"] is not None:
+                logger.info("Critic node %s: profile '%s' overrides widget sampling params",
+                            unique_id, _resolved["profile"])
+                p = _resolved["params"]
+                raw = chat_completion(server_url, api_key, model, messages,
+                                       p["temperature"], max_tokens,
+                                       repeat_penalty=p["repeat_penalty"], top_k=p["top_k"],
+                                       top_p=p["top_p"], min_p=p["min_p"],
+                                       presence_penalty=p["presence_penalty"],
+                                       response_format=_resolved["response_format"])
+            else:
+                raw = chat_completion(server_url, api_key, model, messages,
+                                       temperature, max_tokens)
+            score, verdict, notes = parse_critic_json(raw)
+            approved = score >= threshold
+    
+            log_node_exit("Critic", unique_id, {"score": score, "approved": approved,
+                           "notes_len": len(notes)}, (time.time() - _t0) * 1000)
+            return {
+                "ui": {
+                    "approved": [approved],
+                    "score": [score],
+                    "revision_notes": [notes],
+                    "auto_loop": [auto_loop],
+                    "max_retries": [max_retries],
+                    "clear_notes_on_approve": [clear_notes_on_approve],
+                },
+                "result": (approved, score, notes, verdict, raw),
+            }
+        finally:
+            if loaded and release and release_enabled():
+                mark_keep_loaded(server_url, False)
+                release_after_llm(slot, server_url, api_key, "critic")
+            elif loaded:
+                mark_keep_loaded(server_url, True)

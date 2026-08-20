@@ -566,6 +566,16 @@ outside the output folder.
 - **Global LLM-response cache** — OFF by default. Set `LLM_PROMPT_STUDIO_LLM_CACHE=true`
   to reuse identical chat-completion responses within a session (bounded LRU, ~256 entries).
   The cache key excludes the API key and lives below the per-node `reuse_last_prompt` cache.
+- **VRAM release after LLM run** — ON by default. Each LLM node (Writer, Image Critic,
+  Scene Builder) unloads its LM Studio model when it finishes, so the diffusion pipeline
+  (KSampler Hires Fix / Face Detailer) gets the VRAM back and the vision model can load
+  after a sampling pass. The boolean widget **`release_vram_after_run`** (in ⚙ Advanced
+  settings, default **true**) controls this per node; set it to **false** to keep the model
+  resident (e.g. when you have enough VRAM for the LLM and the checkpoint at once). A global
+  kill switch, `LLM_PROMPT_STUDIO_KEEP_MODEL_LOADED=1`, disables the release everywhere
+  without editing any node. Because each release costs one reload (~5–10 s on typical
+  hardware, the GGUF stays in OS page cache), repeated runs trade a little latency for
+  avoiding CUDA OOM on small GPUs.
 - The prompt library is written atomically (`.tmp` then rename) to avoid corruption.
 
 ---

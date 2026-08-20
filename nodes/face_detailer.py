@@ -20,6 +20,7 @@ from ._imgutils import (
 )
 from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
 from ._latent_upscaler import project_local_ultralytics_bbox
+from ..vram import release_before_sample
 
 
 def _clamp(v, lo, hi):
@@ -265,6 +266,7 @@ class LLMPromptStudioFaceDetailer:
                           image=None, latent=None,
                           face_positive=None, face_negative=None, unique_id=None):
         with node_span("LLMPromptStudioFaceDetailer", unique_id):
+            release_before_sample()
             if latent is not None:
                 img = _decode_latent(vae, latent["samples"], vae_tile_size)
             elif image is not None:

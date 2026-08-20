@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.0] — 2026-08-20
+
+Added **automatic VRAM release** so an LLM node no longer holds the GPU while ComfyUI runs the
+diffusion pipeline — this prevents `CUDA out of memory` on small GPUs (e.g. 11 GB) during a full
+Writer → Smart Loader → KSampler Hires Fix → Face Detailer → Smart Save run.
+
+### Added
+- **`release_vram_after_run` boolean widget (default `true`)** on Writer, Image Critic and Scene
+  Builder (in ⚙ Advanced settings). When `true`, the node unloads its LM Studio model in a `finally`
+  block after the run so the diffusion nodes get the VRAM back; the next LLM use reloads it.
+- **ComfyUI-side eviction before the LLM loads** (`unload_all_models()` + `soft_empty_cache()`),
+  gated to loopback LM Studio hosts only, so the Critic's vision model can load after a sampling
+  pass without spilling to CPU.
+- **Defensive release in the sampler nodes** — `KSampler Hires Fix` and `Face Detailer` now release
+  any seen LM Studio server (skipping servers pinned keep-loaded) before sampling, catching models
+  loaded manually in the LM Studio UI. Does zero network I/O when no LLM server was seen.
+- **Global kill switch `LLM_PROMPT_STUDIO_KEEP_MODEL_LOADED=1`** — disables all release without
+  editing any node.
+- `lm_http.release_model()` / `wait_until_unloaded()` / `seen_servers()` / `keep_loaded_servers()` /
+  `mark_keep_loaded()` for precise, poll-confirmed unload and state invalidation.
+- New `vram.py` module (ComfyUI-optional, never raises) bridging ComfyUI model management and the
+  LM Studio client, plus `coerce_bool_widget()` to defang stray empty-string widget values from
+  saved workflows.
+
+### Fixed
+- **Stray saved `widgets_values` no longer disable the release.** The new widget is the last
+  `optional` key and both the Python coercion and the JS `configure` wrap treat a non-boolean
+  positional value as the `true` default.
+- **`⚙ Advanced settings` button label** now matches the string the toggle looks for
+  (`⚙ Advanced settings`), so the ▸/▾ label updates correctly.
+
+---
+
 ## [1.1.9] — 2026-08-19
 
 Fixed a fatal crash in the **KSampler Hires Fix** node when the hires pass used a fractional

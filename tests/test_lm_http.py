@@ -45,14 +45,17 @@ def _reset_state():
     lm_http._model_cache.clear()
     lm_http._static_keys.clear()
     lm_http._server_loaded.clear()
+    lm_http._seen_servers.clear()
+    lm_http._keep_loaded.clear()
     yield
     lm_http._last_loaded.clear()
-    lm_http._last_loaded.update(saved)
     lm_http._rejected_v1_keys.clear()
     lm_http._model_instances.clear()
     lm_http._model_cache.clear()
     lm_http._static_keys.clear()
     lm_http._server_loaded.clear()
+    lm_http._seen_servers.clear()
+    lm_http._keep_loaded.clear()
     lm_http._llm_response_cache.clear()
 
 

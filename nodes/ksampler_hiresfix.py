@@ -12,6 +12,7 @@ from ._latent_upscaler import (
     latent_upscale_with_model, project_local_upscale_models, model_native_scale,
 )
 from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
+from ..vram import release_before_sample
 
 
 _LATENT_UPSCALE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp"]
@@ -261,6 +262,7 @@ class LLMPromptStudioKSamplerHiresFix:
                 vae_tile_size=0, hires_latent_upscale_tile=0, hires_upscale_model=None,
                 hires_positive=None, hires_negative=None, optional_vae=None, unique_id=None):
         with node_span("LLMPromptStudioKSamplerHiresFix", unique_id):
+            release_before_sample()
             base = self._sample(model, seed, steps, cfg, sampler_name, scheduler,
                                 positive, negative, latent_image, denoise)
 

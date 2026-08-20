@@ -192,7 +192,7 @@ function setupNodeUI(node) {
             addButton(node, "Refresh models", () => refreshModels(node));
         }
         if (isWriter(node) || isCritic(node) || isScene(node)) {
-            addButton(node, "Advanced settings", () => toggleAdvancedSettings(node));
+            addButton(node, "⚙ Advanced settings", () => toggleAdvancedSettings(node));
             // Collapse by default, but defer so the widget DOM rows exist before we hide them.
             setTimeout(() => setAdvancedCollapsed(node, true), 0);
         }
@@ -322,6 +322,15 @@ app.registerExtension({
                             && v != null && !w.options.values.includes(v)
                             && typeof v === "string" && v !== "") {
                         w.options.values = w.options.values.concat(v);
+                    }
+                    // release_vram_after_run: a saved workflow can carry a stray non-boolean
+                    // (the 5 trailing "" in this node's widgets_values). ComfyUI would assign
+                    // that stray value and silently disable the feature, so force the default
+                    // (the widget's current value, i.e. True) when the saved value isn't a
+                    // real boolean. The Python side also coerces "" -> default as a backstop.
+                    if (w.name === "release_vram_after_run"
+                            && v !== true && v !== false && w.value !== undefined) {
+                        vals[vi] = w.value;
                     }
                 }
             }

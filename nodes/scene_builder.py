@@ -9,6 +9,8 @@ from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ..presets import get_architecture_guidance, append_negative_tags
 from ..debug import log_node_enter, log_node_exit, log_error
+from ..vram import (prepare_for_llm, release_after_llm, release_enabled,
+                     mark_keep_loaded, coerce_bool_widget)
 from ._defaults import DEFAULT_COMPOSER, DEFAULT_COMPOSER_NO_NEGATIVE, DEFAULT_DESCRIBE
 from .model_recommendations import resolve_profile
 
@@ -100,6 +102,12 @@ class LLMPromptStudioSceneBuilder:
                                              "multiline": False,
                                              "tooltip": "Live LM Studio server status "
                                                         "(reachable / loaded model), refreshed automatically"}),
+                "release_vram_after_run": ("BOOLEAN", {"default": True,
+                                             "tooltip": "Unload the LM Studio model when this node "
+                                                        "finishes so the diffusion pipeline gets the "
+                                                        "VRAM back. Turn off only if you have enough "
+                                                        "VRAM for the LLM and the checkpoint at the "
+                                                        "same time."}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -113,7 +121,8 @@ class LLMPromptStudioSceneBuilder:
                    prompt_mode="auto", family="", unique_id=None,
                    flash_attention=None, offload_kv_cache_to_gpu=None, reasoning="off",
                     repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
-                      load_model_profile="auto", server_status="", architecture=""):
+                      load_model_profile="auto", server_status="", architecture="",
+                   release_vram_after_run=True):
         _t0 = time.time()
         log_node_enter("Scene Builder", unique_id, {
             "stage": stage, "server_url": server_url, "model": model,
@@ -128,7 +137,7 @@ class LLMPromptStudioSceneBuilder:
                              vision_check, description_view, prompt_mode, family, unique_id, _t0,
                               flash_attention, offload_kv_cache_to_gpu, reasoning,
                                repeat_penalty, top_k, top_p, min_p,
-                                load_model_profile, architecture)
+                                load_model_profile, architecture, release_vram_after_run)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
@@ -138,7 +147,8 @@ class LLMPromptStudioSceneBuilder:
                max_tokens, max_field_retries, vision_check, description_view, prompt_mode, family,
                unique_id, _t0, flash_attention, offload_kv_cache_to_gpu, reasoning,
                 repeat_penalty, top_k, top_p, min_p,
-                  load_model_profile="auto", architecture=""):
+                   load_model_profile="auto", architecture="",
+                   release_vram_after_run=True):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -149,174 +159,186 @@ class LLMPromptStudioSceneBuilder:
                 "support image inputs). For image analysis choose a vision-capable model "
                 "(Qwen2.5-VL, LLaVA, Gemma-3/4, etc.) or disable the vision_check option.")
 
-        ensure_model_loaded(f"{server_url}::scene", server_url, api_key, model,
-                            context_length, gpu_offload,
-                            flash_attention=flash_attention,
-                            offload_kv_cache_to_gpu=offload_kv_cache_to_gpu)
-
-        # v1-native sampling params: convert "off"/default widget values to None so the
-        # default call stays on the OpenAI-compatible path (backward compatible).
-        top_k_v = top_k if top_k and top_k > 0 else None
-        top_p_v = top_p if (top_p is not None and 0.0 < top_p < 1.0) else None
-        min_p_v = min_p if (min_p is not None and min_p > 0.0) else None
-        repeat_penalty_v = repeat_penalty if repeat_penalty != 1.0 else None
-
-        # Resolve the "load_model_profile" choice. Stage 1 (describe) is prose with an
-        # image, so its kind is "describe" (structured never applies); stage 2 (compose) is
-        # the JSON writer contract. "custom" keeps the widget-derived values above.
-        _stage_is_describe = stage.startswith("1")
-        _kind = "describe" if _stage_is_describe else "compose"
-        _has_image = _stage_is_describe
-        _resolved = resolve_profile(load_model_profile, model, _kind, has_image=_has_image)
-        if _resolved["params"] is not None:
-            logger.info("Scene Builder node %s: profile '%s' overrides widget sampling params",
-                        unique_id, _resolved["profile"])
-            temperature = _resolved["params"]["temperature"]
-            top_p_v = _resolved["params"]["top_p"]
-            top_k_v = _resolved["params"]["top_k"]
-            min_p_v = _resolved["params"]["min_p"]
-            repeat_penalty_v = _resolved["params"]["repeat_penalty"]
-            presence_penalty_v = _resolved["params"]["presence_penalty"]
-            reasoning = _resolved["params"]["reasoning"]
-            response_format = _resolved["response_format"]
-        else:
-            presence_penalty_v = None
-            response_format = None
-        # Stage 1: describe the image (no JSON here, plain text from the model)
-        if stage.startswith("1"):
-            b64 = image_to_base64(image, image_max_size)
+        slot = f"{server_url}::scene"
+        release = coerce_bool_widget(release_vram_after_run, True)
+        prepare_for_llm(server_url, "scene")
+        loaded = False
+        try:
+            ensure_model_loaded(f"{server_url}::scene", server_url, api_key, model,
+                                context_length, gpu_offload,
+                                flash_attention=flash_attention,
+                                offload_kv_cache_to_gpu=offload_kv_cache_to_gpu)
+            loaded = True
+    
+            # v1-native sampling params: convert "off"/default widget values to None so the
+            # default call stays on the OpenAI-compatible path (backward compatible).
+            top_k_v = top_k if top_k and top_k > 0 else None
+            top_p_v = top_p if (top_p is not None and 0.0 < top_p < 1.0) else None
+            min_p_v = min_p if (min_p is not None and min_p > 0.0) else None
+            repeat_penalty_v = repeat_penalty if repeat_penalty != 1.0 else None
+    
+            # Resolve the "load_model_profile" choice. Stage 1 (describe) is prose with an
+            # image, so its kind is "describe" (structured never applies); stage 2 (compose) is
+            # the JSON writer contract. "custom" keeps the widget-derived values above.
+            _stage_is_describe = stage.startswith("1")
+            _kind = "describe" if _stage_is_describe else "compose"
+            _has_image = _stage_is_describe
+            _resolved = resolve_profile(load_model_profile, model, _kind, has_image=_has_image)
+            if _resolved["params"] is not None:
+                logger.info("Scene Builder node %s: profile '%s' overrides widget sampling params",
+                            unique_id, _resolved["profile"])
+                temperature = _resolved["params"]["temperature"]
+                top_p_v = _resolved["params"]["top_p"]
+                top_k_v = _resolved["params"]["top_k"]
+                min_p_v = _resolved["params"]["min_p"]
+                repeat_penalty_v = _resolved["params"]["repeat_penalty"]
+                presence_penalty_v = _resolved["params"]["presence_penalty"]
+                reasoning = _resolved["params"]["reasoning"]
+                response_format = _resolved["response_format"]
+            else:
+                presence_penalty_v = None
+                response_format = None
+            # Stage 1: describe the image (no JSON here, plain text from the model)
+            if stage.startswith("1"):
+                b64 = image_to_base64(image, image_max_size)
+                messages = [
+                    {"role": "system", "content": describe_prompt},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": "Describe this image."},
+                        {"type": "image_url",
+                         "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                    ]},
+                ]
+                raw = chat_completion(server_url, api_key, model, messages,
+                                        temperature, max_tokens,
+                                        reasoning=reasoning, repeat_penalty=repeat_penalty_v,
+                                        top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
+                                        presence_penalty=presence_penalty_v,
+                                        response_format=response_format)
+                description = raw.strip()
+                log_node_exit("Scene Builder", unique_id, {"stage": 1, "desc_len": len(description)},
+                              (time.time() - _t0) * 1000)
+                return {"ui": {"description": [description]},
+                        "result": ("", "", "", description, description)}
+    
+            # Stage 2: compose the prompt from the description
+            if not description_view.strip():
+                raise RuntimeError(
+                    "The description field is empty — run stage 1 (Describe) "
+                    "on this workflow first.")
+    
+            # Architecture adaptation lookups (computed BEFORE the no-negative resolution so an
+            # arch-level force_no_negative can flip the mode). SDXL guidance is empty, so SDXL
+            # output is unchanged when `architecture` is empty/unwired.
+            arch = (architecture or "").strip().lower()
+            arch_guidance = get_architecture_guidance().get(arch, {}) if arch else {}
+    
+            # Resolve the effective mode (same semantics as the Writer).
+            if prompt_mode == "no_negative":
+                no_negative = True
+            elif prompt_mode == "standard":
+                no_negative = False
+            else:
+                no_negative = is_no_negative_family(family) or is_no_negative_architecture(architecture)
+            if not no_negative and arch_guidance.get("force_no_negative"):
+                no_negative = True
+            logger.info("Scene Builder prompt mode: %s (family=%r, arch=%r) -> no_negative=%s",
+                         prompt_mode, family, architecture, no_negative)
+    
+            # Mirror the Writer: only switch to the no-negative composer when we are actually in
+            # no-negative mode; otherwise keep the standard composer verbatim so a real negative
+            # is still produced and required-field validation (require_negative) does not fail.
+            if no_negative:
+                effective_composer = composer_prompt if composer_prompt != DEFAULT_COMPOSER \
+                    else DEFAULT_COMPOSER_NO_NEGATIVE
+            else:
+                effective_composer = composer_prompt
+    
+            # Architecture adaptation (stage 2 only): append architecture-specific guidance to the
+            # composer prompt. SDXL guidance is empty, so SDXL output is unchanged when `architecture`
+            # is empty/unwired. Flux/SD3 force no-negative via is_no_negative_architecture above.
+            if arch_guidance:
+                addendum = arch_guidance.get("system_addendum", "")
+                if addendum:
+                    effective_composer = effective_composer + "\n\n" + addendum
+    
+            user_text = f"Scene description:\n{description_view.strip()}\n\n"
+            if user_changes.strip():
+                user_text += f"User's requested changes to the scene:\n{user_changes.strip()}\n\n"
+            else:
+                user_text += "No changes requested — carry the scene over as is.\n\n"
+            user_text += ("Compose a prompt for SDXL and a scene name, "
+                          "respond strictly in the required JSON format.")
+    
             messages = [
-                {"role": "system", "content": describe_prompt},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "Describe this image."},
-                    {"type": "image_url",
-                     "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                ]},
+                {"role": "system", "content": effective_composer},
+                {"role": "user", "content": user_text},
             ]
             raw = chat_completion(server_url, api_key, model, messages,
-                                    temperature, max_tokens,
-                                    reasoning=reasoning, repeat_penalty=repeat_penalty_v,
-                                    top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
-                                    presence_penalty=presence_penalty_v,
-                                    response_format=response_format)
-            description = raw.strip()
-            log_node_exit("Scene Builder", unique_id, {"stage": 1, "desc_len": len(description)},
-                          (time.time() - _t0) * 1000)
-            return {"ui": {"description": [description]},
-                    "result": ("", "", "", description, description)}
-
-        # Stage 2: compose the prompt from the description
-        if not description_view.strip():
-            raise RuntimeError(
-                "The description field is empty — run stage 1 (Describe) "
-                "on this workflow first.")
-
-        # Architecture adaptation lookups (computed BEFORE the no-negative resolution so an
-        # arch-level force_no_negative can flip the mode). SDXL guidance is empty, so SDXL
-        # output is unchanged when `architecture` is empty/unwired.
-        arch = (architecture or "").strip().lower()
-        arch_guidance = get_architecture_guidance().get(arch, {}) if arch else {}
-
-        # Resolve the effective mode (same semantics as the Writer).
-        if prompt_mode == "no_negative":
-            no_negative = True
-        elif prompt_mode == "standard":
-            no_negative = False
-        else:
-            no_negative = is_no_negative_family(family) or is_no_negative_architecture(architecture)
-        if not no_negative and arch_guidance.get("force_no_negative"):
-            no_negative = True
-        logger.info("Scene Builder prompt mode: %s (family=%r, arch=%r) -> no_negative=%s",
-                     prompt_mode, family, architecture, no_negative)
-
-        # Mirror the Writer: only switch to the no-negative composer when we are actually in
-        # no-negative mode; otherwise keep the standard composer verbatim so a real negative
-        # is still produced and required-field validation (require_negative) does not fail.
-        if no_negative:
-            effective_composer = composer_prompt if composer_prompt != DEFAULT_COMPOSER \
-                else DEFAULT_COMPOSER_NO_NEGATIVE
-        else:
-            effective_composer = composer_prompt
-
-        # Architecture adaptation (stage 2 only): append architecture-specific guidance to the
-        # composer prompt. SDXL guidance is empty, so SDXL output is unchanged when `architecture`
-        # is empty/unwired. Flux/SD3 force no-negative via is_no_negative_architecture above.
-        if arch_guidance:
-            addendum = arch_guidance.get("system_addendum", "")
-            if addendum:
-                effective_composer = effective_composer + "\n\n" + addendum
-
-        user_text = f"Scene description:\n{description_view.strip()}\n\n"
-        if user_changes.strip():
-            user_text += f"User's requested changes to the scene:\n{user_changes.strip()}\n\n"
-        else:
-            user_text += "No changes requested — carry the scene over as is.\n\n"
-        user_text += ("Compose a prompt for SDXL and a scene name, "
-                      "respond strictly in the required JSON format.")
-
-        messages = [
-            {"role": "system", "content": effective_composer},
-            {"role": "user", "content": user_text},
-        ]
-        raw = chat_completion(server_url, api_key, model, messages,
-                                 temperature, max_tokens,
-                                 reasoning=reasoning, repeat_penalty=repeat_penalty_v,
-                                 top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
-                                 presence_penalty=presence_penalty_v,
-                                  response_format=response_format)
-        parsed = parse_prompt_json(raw, allow_plain_text_fallback=False)
-
-        # Field-retry: if the model omitted required JSON fields, re-ask it (up to
-        # max_field_retries times) for a complete answer before falling back. In no-negative
-        # mode the negative is intentionally empty, so it is not treated as missing.
-        attempt = 0
-        while attempt < max_field_retries:
-            missing = find_missing_fields(
-                parsed, require_face=False, require_negative=not no_negative)
-            if not missing:
-                break
-            attempt += 1
-            logger.info("Scene Builder field retry %d/%d: missing %s",
-                        attempt, max_field_retries, ", ".join(missing))
-            _append_or_merge_user(messages,
-                f"You omitted the required JSON field(s): {', '.join(missing)}. "
-                f"Respond again with a COMPLETE JSON object containing ALL required fields.")
-            raw_new = chat_completion(server_url, api_key, model, messages,
-                                          temperature, max_tokens,
-                                          reasoning=reasoning, repeat_penalty=repeat_penalty_v,
-                                          top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
-                                          presence_penalty=presence_penalty_v,
-                                          response_format=response_format)
-            raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
-                    f"missing {', '.join(missing)}]\n{raw_new}")
-            parsed = parse_prompt_json(raw_new, allow_plain_text_fallback=False)
-
-        positive, negative, scene_name, _fp, _fn = parsed
-
-        # In no-negative mode the negative is forced empty (inert at CFG~1).
-        if no_negative:
-            negative = ""
-
-        # Architecture default negatives (standard mode only; inert when no_negative already
-        # forced the negative empty above). Deduped against the generated negative.
-        if arch and not no_negative and arch_guidance:
-            negative = append_negative_tags(negative, arch_guidance.get("default_negative", ""))
-
-        if not positive.strip():
-            raise RuntimeError(
-                f"Model failed to produce a required positive prompt after "
-                f"{max_field_retries} field-retry attempt(s). Try a model with better "
-                "instruction following, or lower max_field_retries and edit manually.")
-        if not no_negative and not negative.strip():
-            raise RuntimeError(
-                f"Model failed to produce a required negative prompt after "
-                f"{max_field_retries} field-retry attempt(s). Try a model with better "
-                "instruction following, or lower max_field_retries and edit manually.")
-        if not scene_name.strip():
-            scene_name = slugify(positive)
-
-        log_node_exit("Scene Builder", unique_id,
-                      {"stage": 2, "positive": positive[:200], "negative": negative[:200],
-                       "scene_name": scene_name[:200]}, (time.time() - _t0) * 1000)
-        return {"ui": {"prompt_view": [positive]},
-                "result": (positive, negative, scene_name, positive, "")}
+                                     temperature, max_tokens,
+                                     reasoning=reasoning, repeat_penalty=repeat_penalty_v,
+                                     top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
+                                     presence_penalty=presence_penalty_v,
+                                      response_format=response_format)
+            parsed = parse_prompt_json(raw, allow_plain_text_fallback=False)
+    
+            # Field-retry: if the model omitted required JSON fields, re-ask it (up to
+            # max_field_retries times) for a complete answer before falling back. In no-negative
+            # mode the negative is intentionally empty, so it is not treated as missing.
+            attempt = 0
+            while attempt < max_field_retries:
+                missing = find_missing_fields(
+                    parsed, require_face=False, require_negative=not no_negative)
+                if not missing:
+                    break
+                attempt += 1
+                logger.info("Scene Builder field retry %d/%d: missing %s",
+                            attempt, max_field_retries, ", ".join(missing))
+                _append_or_merge_user(messages,
+                    f"You omitted the required JSON field(s): {', '.join(missing)}. "
+                    f"Respond again with a COMPLETE JSON object containing ALL required fields.")
+                raw_new = chat_completion(server_url, api_key, model, messages,
+                                              temperature, max_tokens,
+                                              reasoning=reasoning, repeat_penalty=repeat_penalty_v,
+                                              top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
+                                              presence_penalty=presence_penalty_v,
+                                              response_format=response_format)
+                raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
+                        f"missing {', '.join(missing)}]\n{raw_new}")
+                parsed = parse_prompt_json(raw_new, allow_plain_text_fallback=False)
+    
+            positive, negative, scene_name, _fp, _fn = parsed
+    
+            # In no-negative mode the negative is forced empty (inert at CFG~1).
+            if no_negative:
+                negative = ""
+    
+            # Architecture default negatives (standard mode only; inert when no_negative already
+            # forced the negative empty above). Deduped against the generated negative.
+            if arch and not no_negative and arch_guidance:
+                negative = append_negative_tags(negative, arch_guidance.get("default_negative", ""))
+    
+            if not positive.strip():
+                raise RuntimeError(
+                    f"Model failed to produce a required positive prompt after "
+                    f"{max_field_retries} field-retry attempt(s). Try a model with better "
+                    "instruction following, or lower max_field_retries and edit manually.")
+            if not no_negative and not negative.strip():
+                raise RuntimeError(
+                    f"Model failed to produce a required negative prompt after "
+                    f"{max_field_retries} field-retry attempt(s). Try a model with better "
+                    "instruction following, or lower max_field_retries and edit manually.")
+            if not scene_name.strip():
+                scene_name = slugify(positive)
+    
+            log_node_exit("Scene Builder", unique_id,
+                          {"stage": 2, "positive": positive[:200], "negative": negative[:200],
+                           "scene_name": scene_name[:200]}, (time.time() - _t0) * 1000)
+            return {"ui": {"prompt_view": [positive]},
+                    "result": (positive, negative, scene_name, positive, "")}
+        finally:
+            if loaded and release and release_enabled():
+                mark_keep_loaded(server_url, False)
+                release_after_llm(slot, server_url, api_key, "scene")
+            elif loaded:
+                mark_keep_loaded(server_url, True)

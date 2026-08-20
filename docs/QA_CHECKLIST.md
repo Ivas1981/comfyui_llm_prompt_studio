@@ -55,4 +55,28 @@ Tested against ComfyUI 0.19.3 (classic).
 - [ ] Model-size heuristic `(\d+(?:\.\d+)?)b` resolves real model ids (e.g. `qwen2.5-14b-instruct`
       → 14B); an unrecognized size falls back to `baseline` + log.
 - [ ] No `stream` / `generation_view` / live-token UI remains; generation returns the full result
-      once at completion.
+       once at completion.
+
+## Phase 6 — VRAM release
+- [ ] `release_vram_after_run` boolean widget (default `true`) is the **last** `optional` key on
+      Writer / Image Critic / Scene Builder and appears inside ⚙ Advanced settings.
+- [ ] A full run Writer → Smart Loader → Multi-Clip → KSampler Hires Fix → Face Detailer → Smart
+      Save completes on an 11 GB GPU without `CUDA out of memory`; the console shows
+      `before-llm-load` / `after-comfy-unload` / post-release free-VRAM lines, with free VRAM rising
+      by roughly the LLM size at the release point.
+- [ ] The LLM model disappears from LM Studio before the KSampler pass and reloads for the next LLM
+      node (watch `nvidia-smi -l 1` or LM Studio's model panel).
+- [ ] `release_vram_after_run = false` keeps the model loaded through the sampler pass (proves the
+      widget and the sampler-side skip both work).
+- [ ] `LLM_PROMPT_STUDIO_KEEP_MODEL_LOADED=1` (restart ComfyUI) disables all release.
+- [ ] A LAN/remote `server_url` does **not** trigger ComfyUI model eviction (no `after-comfy-unload`
+      line), while the remote unload still happens.
+- [ ] Stopping LM Studio mid-run so the unload POST fails → the node logs a warning and finishes, not
+      raises.
+- [ ] An Image Critic after the sampler loads its vision model successfully (previously OOM / CPU
+      fallback).
+- [ ] A saved workflow with stray trailing `widgets_values` still reads `release_vram_after_run` as
+      **true** (Python coercion + JS `configure` guard), and `system_prompt` / `idea` / `seed` /
+      `server_status` are unchanged.
+- [ ] `python -m pytest tests/test_vram.py tests/test_vram_nodes.py -v` is green; `node --check`
+      passes on both JS files.

@@ -39,6 +39,11 @@ __all__ = [
     "ensure_model_loaded",
     "chat_completion",
     "server_status",
+    "seen_servers",
+    "keep_loaded_servers",
+    "mark_keep_loaded",
+    "release_model",
+    "wait_until_unloaded",
 ]
 
 # Server+model pairs for which a v1 load option key was rejected (e.g. `gpu_offload` on
@@ -70,6 +75,13 @@ _last_loaded = {}
 _server_loaded = {}
 # model instance ids returned by the v1 load endpoint, keyed for precise unload: {(server, model): id}
 _model_instances = {}
+# Servers this process has interacted with (for VRAM release). Keyed by NORMALIZED server
+# URL (not disk-backed like _static_keys, so existing installs never probe localhost on a
+# sample). Cleared on release so a stale server is not probed after the model is gone.
+_seen_servers = set()
+# Servers the user asked to keep loaded (release_vram_after_run=False / env var) — release
+# logic must skip these.
+_keep_loaded = set()
 # cache of model lists, KEYED BY NORMALIZED SERVER URL (api_key is intentionally NOT part
 # of the key or the disk cache: model lists don't depend on it, and we must not persist
 # secrets in plaintext). {server_url: (models, timestamp)}
@@ -257,6 +269,9 @@ def _parse_native_models(data) -> list:
 
 def fetch_models(server_url: str, api_key: str = "", timeout: int = 5) -> list:
     server_url = validate_server_url(server_url)
+    # Record that this process talked to this server, so VRAM release can find it
+    # without probing localhost on every sample. Normalized (not raw) spelling.
+    _seen_servers.add(_normalize_server(server_url))
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     base = _server_root(server_url)
     # Prefer LM Studio's native model list (LMStudioAPI.md §15: "Lists models via native
@@ -885,6 +900,9 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     forces a reload. A failed load is not recorded as "loaded", so the next run will retry."""
     if not model or model.startswith("—"):
         return
+    # Record that this process loaded from this server (normalized spelling), so the
+    # VRAM-release logic can find it later without probing localhost on every sample.
+    _seen_servers.add(_normalize_server(server_url))
     # Remember this model so a saved workflow that uses it stays valid (and selectable)
     # even when the server is offline later and the combo would otherwise be the placeholder.
     remember_model(model, server_url)
@@ -953,6 +971,90 @@ def server_status(server_url: str, api_key: str = "", timeout: int = 5) -> dict:
                 if key:
                     loaded.append(str(key))
     return {"reachable": True, "loaded_models": loaded, "error": None}
+
+
+# ---------------------------------------------------------------------------
+# VRAM release support (consumed by vram.py / the node layer).
+# ---------------------------------------------------------------------------
+
+def seen_servers() -> set:
+    """Servers this process has loaded from / listed models on (normalized URLs)."""
+    return set(_seen_servers)
+
+
+def keep_loaded_servers() -> set:
+    """Servers the user pinned to stay loaded (release must skip these)."""
+    return set(_keep_loaded)
+
+
+def mark_keep_loaded(server_url: str, keep: bool):
+    """Pin (or unpin) a server so release logic skips / performs its unload."""
+    norm = _normalize_server(server_url)
+    if keep:
+        _keep_loaded.add(norm)
+    else:
+        _keep_loaded.discard(norm)
+
+
+def release_model(server_url: str, api_key: str = "", slot=None) -> bool:
+    """Unload the LM Studio model for a server and invalidate all cached load state.
+
+    Clears ``_server_loaded`` / ``_last_loaded`` / ``_model_instances`` (both the raw
+    and normalized URL spellings) so a subsequent ``ensure_model_loaded`` does NOT
+    skip the reload believing the model is still resident. Never raises."""
+    norm = _normalize_server(server_url)
+    has_state = (
+        server_url in _server_loaded or norm in _server_loaded
+        or any(k for k in _last_loaded if k.startswith(norm + "::") or k == norm)
+        or any(k[0] == server_url or k[0] == norm for k in _model_instances)
+    )
+    # Avoid any network I/O when this server was never loaded (so release-only users are
+    # never probed). The unload itself is best-effort and never raises.
+    if has_state:
+        try:
+            unload_all_loaded(server_url, api_key)
+        except Exception as e:  # noqa: BLE001 — release is best-effort
+            logger.debug("release_model: unload_all_loaded failed for %s: %s", server_url, e)
+    # Invalidate cache so the next node reloads. Slots are ``f"{server}::writer"`` etc.,
+    # so drop every _last_loaded entry whose key starts with the normalized server.
+    _server_loaded.pop(server_url, None)
+    _server_loaded.pop(norm, None)
+    if slot is not None:
+        _last_loaded.pop(slot, None)
+    else:
+        # Slots are built as ``f"{server_url}::writer"`` from whatever server_url string the
+        # node passed (which may carry a trailing slash). Compare both the raw and the
+        # normalized server spelling so a release keyed by the normalized URL still finds
+        # slots left by a raw one.
+        for k in list(_last_loaded):
+            k_server = k.split("::", 1)[0]
+            if k_server == server_url or k_server == norm or k == server_url or k == norm:
+                _last_loaded.pop(k, None)
+    for k in list(_model_instances):
+        if _normalize_server(k[0]) == norm or k[0] == server_url:
+            _model_instances.pop(k, None)
+    return True
+
+
+def wait_until_unloaded(server_url: str, api_key: str = "", timeout: float = 10.0,
+                        interval: float = 0.25) -> bool:
+    """Poll ``server_status`` until no model is loaded, or the timeout elapses.
+
+    Returns the outcome (True = confirmed empty); never raises. LM Studio frees VRAM
+    asynchronously, so a brief poll is needed before ComfyUI allocates GPU memory."""
+    deadline = time.time() + timeout
+    try:
+        while time.time() < deadline:
+            try:
+                status = server_status(server_url, api_key)
+            except Exception:  # noqa: BLE001 — yielding failure is fine, keep polling
+                status = {"loaded_models": ["?"]}
+            if not status.get("loaded_models"):
+                return True
+            time.sleep(interval)
+    except Exception:  # noqa: BLE001 — timeout / interruption: treat as "not confirmed"
+        return False
+    return False
 
 
 def _serialize_message_content(content):
