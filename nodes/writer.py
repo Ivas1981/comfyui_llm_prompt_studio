@@ -10,7 +10,7 @@ from ..presets import (apply_preset_to_prompts, get_preset_by_name,
                        get_architecture_guidance, append_negative_tags)
 from .model_recommendations import resolve_profile
 from ..debug import log_node_enter, log_node_exit, log_error
-from ..vram import (prepare_for_llm, release_after_llm, release_enabled,
+from ..vram import (release_after_llm, release_enabled,
                      mark_keep_loaded, coerce_bool_widget)
 from ._defaults import (DEFAULT_SYSTEM, DEFAULT_SYSTEM_NO_NEGATIVE,
                         FACE_PROMPT_INSTRUCTION, FACE_PROMPT_INSTRUCTION_NO_NEGATIVE,
@@ -210,7 +210,6 @@ class LLMPromptStudioWriter:
 
         slot = f"{server_url}::writer"
         release = coerce_bool_widget(release_vram_after_run, True)
-        prepare_for_llm(server_url, "writer")
         loaded = False
         try:
             ensure_model_loaded(f"{server_url}::writer", server_url, api_key, model,

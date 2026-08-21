@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   reduces how much the latent is re-noised — confirmed by new headless passthrough tests. The
   base-pass default stays `1.0` (full generation from an empty latent); `hires_denoise` defaults
   to `0.5`.
+- **Stopped evicting the ComfyUI checkpoint from VRAM.** The `prepare_for_llm` pre-LLM
+  `unload_all_models()` + `soft_empty_cache()` eviction broke subsequent image generation, so it
+  was removed entirely (along with `vram.is_local_server` / `unload_comfy_models`). The plugin now
+  only releases the **LM Studio** model (via `release_after_llm` after each LLM node, and
+  `release_before_sample` before sampling) — the diffusion checkpoint is left untouched.
 
 ---
 
@@ -281,6 +286,26 @@ applies the valid fixes and explicitly ignores the non-bug items.
   name and final sampling parameters (temperature / top_p / top_k / min_p / repeat_penalty /
   presence_penalty / reasoning / structured flag) after `load_model_profile` resolution.
 
+## [1.1.2] — 2026-08-17
+
+### Changed
+- **`detected_family` now folds a distilled LoRA into the effective family.** When Smart Loader
+  applies a distillation LoRA (DMD / LCM / Turbo / Hyper / Lightning / Flash, or `schnell`/`tcd`/`pcm`)
+  on top of a base checkpoint, `detected_family` reports the LoRA's family (the effective distilled
+  family) so Writer / Scene Builder enable no-negative mode automatically. The checkpoint's own family
+  no longer overrides an applied distilled LoRA.
+
+### Added
+- **Smart Loader widget shows the original checkpoint family + a distilled-LoRA notification.**
+  `detected_family_info` displays the checkpoint's true family and detection source
+  (`family: base | source: filename`), and appends ` | LoRA applied: <name> (distilled: <family>)`
+  when a distillation LoRA was applied. The user always sees the real checkpoint family while the
+  downstream `detected_family` value already carries the effective (LoRA-folded) family — no extra
+  `distilled` output/input is needed; wire `detected_family` into the Writer / Scene Builder `family`
+  input as before.
+
+---
+
 ## [1.1.1] — 2026-08-17
 
 ### Fixed
@@ -323,27 +348,7 @@ applies the valid fixes and explicitly ignores the non-bug items.
   are registered even if an early node import touches web-loading code.
 - **CI / requirements cleanup.** `.github/workflows/python-tests.yml` now runs on Python 3.10 and
   3.11 (was a malformed `3.1` float); `requirements.txt` no longer pins `hypothesis` (tests don't
-   use it).
-
----
-
-## [1.1.2] — 2026-08-17
-
-### Changed
-- **`detected_family` now folds a distilled LoRA into the effective family.** When Smart Loader
-  applies a distillation LoRA (DMD / LCM / Turbo / Hyper / Lightning / Flash, or `schnell`/`tcd`/`pcm`)
-  on top of a base checkpoint, `detected_family` reports the LoRA's family (the effective distilled
-  family) so Writer / Scene Builder enable no-negative mode automatically. The checkpoint's own family
-  no longer overrides an applied distilled LoRA.
-
-### Added
-- **Smart Loader widget shows the original checkpoint family + a distilled-LoRA notification.**
-  `detected_family_info` displays the checkpoint's true family and detection source
-  (`family: base | source: filename`), and appends ` | LoRA applied: <name> (distilled: <family>)`
-  when a distillation LoRA was applied. The user always sees the real checkpoint family while the
-  downstream `detected_family` value already carries the effective (LoRA-folded) family — no extra
-  `distilled` output/input is needed; wire `detected_family` into the Writer / Scene Builder `family`
-  input as before.
+  use it).
 
 ---
 

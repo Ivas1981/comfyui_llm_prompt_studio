@@ -29,20 +29,18 @@ def _run_writer(chat_side_effect, **extra):
     kw.update(extra)
     with patch.object(writer_node, "ensure_model_loaded", lambda *a, **k: None), \
          patch.object(writer_node, "chat_completion", side_effect=chat_side_effect), \
-         patch.object(writer_node, "prepare_for_llm") as prep, \
          patch.object(writer_node, "release_after_llm") as rel, \
          patch.object(writer_node, "mark_keep_loaded") as keep, \
          patch.object(writer_node, "release_enabled", return_value=True):
         result = writer_node.LLMPromptStudioWriter().execute(**kw)
-    return result, prep, rel, keep
+    return result, rel, keep
 
 
 def test_writer_releases_once_on_success():
-    result, prep, rel, keep = _run_writer(
+    result, rel, keep = _run_writer(
         [_writer_json(positive="p", negative="n", scene_name="s",
                       face_positive="fp", face_negative="fn")])
     assert result[0] == "p"
-    prep.assert_called_once()
     rel.assert_called_once()
     keep.assert_called_once_with(LOCAL_V1, False)
 
@@ -69,19 +67,17 @@ def test_writer_reuse_cache_hit_no_release():
                       return_value=_writer_json(positive="p", negative="n",
                                                  scene_name="s", face_positive="fp",
                                                  face_negative="fn")) as call, \
-         patch.object(writer_node, "prepare_for_llm") as prep, \
          patch.object(writer_node, "release_after_llm") as rel, \
          patch.object(writer_node, "release_enabled", return_value=True):
         writer_node.LLMPromptStudioWriter().execute(**kw)
-        # Second run hits the cache: no chat, no prepare, no release.
+        # Second run hits the cache: no chat, no release.
         writer_node.LLMPromptStudioWriter().execute(**kw)
     assert call.call_count == 1
-    prep.assert_not_called()
     rel.assert_not_called()
 
 
 def test_writer_no_release_when_flag_false():
-    result, prep, rel, keep = _run_writer(
+    result, rel, keep = _run_writer(
         [_writer_json(positive="p", negative="n", scene_name="s",
                       face_positive="fp", face_negative="fn")],
         release_vram_after_run=False)
@@ -101,26 +97,24 @@ def _run_scene(stage, chat_side_effect, **extra):
     with patch.object(scene_node, "ensure_model_loaded", lambda *a, **k: None), \
          patch.object(scene_node, "chat_completion", side_effect=chat_side_effect), \
          patch.object(scene_node, "image_to_base64", return_value="b64img"), \
-         patch.object(scene_node, "prepare_for_llm") as prep, \
          patch.object(scene_node, "release_after_llm") as rel, \
          patch.object(scene_node, "mark_keep_loaded") as keep, \
          patch.object(scene_node, "release_enabled", return_value=True):
         result = scene_node.LLMPromptStudioSceneBuilder().execute(**kw)
-    return result, prep, rel, keep
+    return result, rel, keep
 
 
 def test_scene_stage1_releases_on_early_return():
     # Stage 1 returns BEFORE any JSON parsing; the finally must still fire.
-    result, prep, rel, keep = _run_scene(
+    result, rel, keep = _run_scene(
         "1 - describe",
         ["A long description of the image."])
-    prep.assert_called_once()
     rel.assert_called_once()
     keep.assert_called_once_with(LOCAL_V1, False)
 
 
 def test_scene_stage2_releases_on_success():
-    result, prep, rel, keep = _run_scene(
+    result, rel, keep = _run_scene(
         "2 - compose",
         [_writer_json(positive="p", negative="n", scene_name="s")],
         description_view="a scene")
@@ -135,7 +129,6 @@ def test_critic_releases_once_on_success():
          patch.object(critic_node, "image_to_base64", return_value="b64img"), \
          patch.object(critic_node, "chat_completion",
                       return_value='{"score": 8, "verdict": "ok", "notes": ""}'), \
-         patch.object(critic_node, "prepare_for_llm") as prep, \
          patch.object(critic_node, "release_after_llm") as rel, \
          patch.object(critic_node, "mark_keep_loaded") as keep, \
          patch.object(critic_node, "release_enabled", return_value=True):
@@ -145,6 +138,5 @@ def test_critic_releases_once_on_success():
             threshold=7, image_max_size=1024, temperature=0.3, max_tokens=1024,
             clear_notes_on_approve=True, auto_loop=False, max_retries=3,
             vision_check=False, unique_id="3", load_model_profile="auto")
-    prep.assert_called_once()
     rel.assert_called_once()
     keep.assert_called_once_with(LOCAL_V1, False)

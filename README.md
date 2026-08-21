@@ -129,10 +129,16 @@ comfyui_llm_prompt_studio/
 ├── imaging.py                # image tensor → base64 JPEG
 ├── model_meta.py             # generation metadata, safetensors, family detection
 ├── server_routes.py          # /llm_prompt_studio/* routes used by the JS bridge
+├── vram.py                   # LM Studio model release helpers
 ├── presets_default.json      # single source of truth: base `defaults` + style `presets`
 ├── nodes/
 │   ├── __init__.py           # node mappings
+│   ├── _contracts.py         # sampler/scheduler combo contract checks
 │   ├── _defaults.py          # loads base `defaults` from presets_default.json
+│   ├── _distilled_presets.py # distilled-family preset tables
+│   ├── _imgutils.py          # image helper utilities
+│   ├── _ksample.py           # shared KSampler execution helper
+│   ├── _latent_upscaler.py   # latent upscale helper
 │   ├── model_recommendations.py  # sampling profiles + JSON schemas + resolve_profile
 │   ├── writer.py
 │   ├── critic.py
@@ -140,14 +146,24 @@ comfyui_llm_prompt_studio/
 │   ├── library_loader.py
 │   ├── scene_builder.py
 │   ├── smart_loader.py
-│   └── multi_clip.py
+│   ├── multi_clip.py
+│   ├── smart_parameters.py   # Smart Parameters node
+│   ├── ksampler_hiresfix.py  # KSampler (Hires Fix) node
+│   └── face_detailer.py      # Face Detailer node
+├── docs/                     # QA checklist, API notes, ComfyUI custom-node guide
+├── models/                   # bundled models (face detectors, resizers)
 ├── tests/                    # pytest golden tests
+├── web/js/
+│   ├── llm_prompt_studio_shared.js    # constants, helpers, shared state
+│   ├── llm_prompt_studio_actions.js   # button handlers, re-queue helper
+│   └── llm_prompt_studio_bridge.js    # entry point: extension + executed handler
 ├── requirements.txt
 ├── pyproject.toml
-└── web/js/
-    ├── llm_prompt_studio_shared.js    # constants, helpers, shared state
-    ├── llm_prompt_studio_actions.js   # button handlers, re-queue helper
-    └── llm_prompt_studio_bridge.js    # entry point: extension + executed handler
+├── LICENSE
+├── README.md
+├── readme_ru.md
+├── CHANGELOG.md
+└── changelog_ru.md
 ```
 
 ---

@@ -142,36 +142,7 @@ def test_wait_until_unloaded_false_on_timeout_no_raise():
 
 
 # ---------------------------------------------------------------------------
-# vram.prepare_for_llm / comfy model eviction
-# ---------------------------------------------------------------------------
-
-def test_prepare_for_llm_evicts_comfy_models_locally():
-    mm = MagicMock()
-    with patch.object(vram, "_model_management", return_value=mm):
-        vram.prepare_for_llm(LOCAL_V1, "writer")
-    mm.unload_all_models.assert_called_once()
-    mm.soft_empty_cache.assert_called_once()
-
-
-def test_prepare_for_llm_skips_remote_server():
-    mm = MagicMock()
-    with patch.object(vram, "_model_management", return_value=mm):
-        vram.prepare_for_llm(LAN_V1, "writer")
-    mm.unload_all_models.assert_not_called()
-    mm.soft_empty_cache.assert_not_called()
-
-
-def test_prepare_and_release_no_raise_without_model_management():
-    # comfy.model_management is absent in tests -> behavior degrades gracefully.
-    assert vram._model_management() is None
-    with patch.object(lm_http, "release_model"), \
-         patch.object(lm_http, "wait_until_unloaded", return_value=True):
-        vram.prepare_for_llm(LOCAL_V1, "writer")
-        vram.release_after_llm("slot", LOCAL_V1, "", "writer")
-
-
-# ---------------------------------------------------------------------------
-# vram.release_before_sample
+# vram.release_before_sample (LM Studio only; ComfyUI models are never evicted)
 # ---------------------------------------------------------------------------
 
 def test_release_before_sample_no_http_when_no_server_seen():
@@ -209,10 +180,6 @@ def test_keep_loaded_env_disables_release():
     vram._KEEP_LOADED = True
     try:
         assert vram.release_enabled() is False
-        mm = MagicMock()
-        with patch.object(vram, "_model_management", return_value=mm):
-            vram.prepare_for_llm(LOCAL_V1, "writer")
-        mm.unload_all_models.assert_not_called()
     finally:
         vram._KEEP_LOADED = False
 

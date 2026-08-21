@@ -1,13 +1,11 @@
-"""VRAM release helpers bridging ComfyUI model management and LM Studio.
+"""VRAM release helpers for LM Studio models (ComfyUI checkpoint eviction removed).
 
 This module is intentionally ComfyUI-optional: it must import and run in
 standalone tests where ``comfy.model_management`` is absent, and never raise on
 import. The dependency direction is one-way: ``nodes/* -> vram.py -> lm_http.py``
 — ``lm_http.py`` must NOT import this module, to keep the import graph acyclic.
 """
-import ipaddress
 import os
-from urllib.parse import urlparse
 
 from . import lm_http
 from .debug import debug_active, log
@@ -79,43 +77,6 @@ def log_vram(stage: str, note: str = ""):
         log("DEBUG", "VRAM", stage, {"note": note, "free_bytes": free})
 
 
-def is_local_server(server_url) -> bool:
-    """True when the LM Studio host shares this machine's GPU.
-
-    Localhost, ``*.localhost`` and loopback IPs are local; everything else (LAN /
-    remote) shares no GPU and must not trigger ComfyUI-side model eviction."""
-    try:
-        parsed = urlparse(str(server_url or "").strip())
-    except ValueError:
-        return False
-    host = parsed.hostname
-    if not host:
-        return False
-    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
-        return True
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    return bool(ip.is_loopback)
-
-
-def unload_comfy_models(reason: str) -> bool:
-    """Evict every ComfyUI model from VRAM into CPU RAM. Never raises."""
-    mm = _model_management()
-    if mm is None:
-        return False
-    try:
-        mm.unload_all_models()
-        soft = getattr(mm, "soft_empty_cache", None)
-        if callable(soft):
-            soft()
-        return True
-    except Exception as e:  # noqa: BLE001 — releasing VRAM is best-effort
-        logger.warning("[VRAM] ComfyUI model eviction failed (%s): %s", reason, e)
-        return False
-
-
 def release_enabled() -> bool:
     """False when the global keep-loaded kill switch is set."""
     return not _KEEP_LOADED
@@ -127,17 +88,6 @@ def mark_keep_loaded(server_url: str, keep: bool):
     Delegates to ``lm_http.mark_keep_loaded`` so the node layer can call it through
     the single ``vram`` import it already has."""
     return lm_http.mark_keep_loaded(server_url, keep)
-
-
-def prepare_for_llm(server_url: str, note: str = ""):
-    """Evict ComfyUI models before loading the LLM (loopback hosts only)."""
-    if not release_enabled():
-        return
-    if not is_local_server(server_url):
-        return
-    log_vram("before-llm-load", note)
-    unload_comfy_models(note or "prepare-for-llm")
-    log_vram("after-comfy-unload", note)
 
 
 def release_after_llm(slot, server_url, api_key, note=""):

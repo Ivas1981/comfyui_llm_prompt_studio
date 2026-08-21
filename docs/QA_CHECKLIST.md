@@ -61,16 +61,16 @@ Tested against ComfyUI 0.19.3 (classic).
 - [ ] `release_vram_after_run` boolean widget (default `true`) is the **last** `optional` key on
       Writer / Image Critic / Scene Builder and appears inside ⚙ Advanced settings.
 - [ ] A full run Writer → Smart Loader → Multi-Clip → KSampler Hires Fix → Face Detailer → Smart
-      Save completes on an 11 GB GPU without `CUDA out of memory`; the console shows
-      `before-llm-load` / `after-comfy-unload` / post-release free-VRAM lines, with free VRAM rising
-      by roughly the LLM size at the release point.
+      Save completes; the console shows LLM release free-VRAM lines (`before-llm-release` /
+      `after-llm-release`) with free VRAM rising by roughly the LLM size at the release point, and
+      the ComfyUI checkpoint stays loaded throughout (no `after-comfy-unload` line anymore).
 - [ ] The LLM model disappears from LM Studio before the KSampler pass and reloads for the next LLM
       node (watch `nvidia-smi -l 1` or LM Studio's model panel).
 - [ ] `release_vram_after_run = false` keeps the model loaded through the sampler pass (proves the
       widget and the sampler-side skip both work).
 - [ ] `LLM_PROMPT_STUDIO_KEEP_MODEL_LOADED=1` (restart ComfyUI) disables all release.
-- [ ] A LAN/remote `server_url` does **not** trigger ComfyUI model eviction (no `after-comfy-unload`
-      line), while the remote unload still happens.
+- [ ] A LAN/remote `server_url` still releases the remote LM Studio model, while the ComfyUI
+      checkpoint is never evicted (the plugin no longer touches diffusion VRAM).
 - [ ] Stopping LM Studio mid-run so the unload POST fails → the node logs a warning and finishes, not
       raises.
 - [ ] An Image Critic after the sampler loads its vision model successfully (previously OOM / CPU

@@ -7,7 +7,7 @@ from ..imaging import image_to_base64
 from ..lm_http import chat_completion, ensure_model_loaded, resolve_vision
 from ..parsing import parse_critic_json
 from ..debug import log_node_enter, log_node_exit, log_error
-from ..vram import (prepare_for_llm, release_after_llm, release_enabled,
+from ..vram import (release_after_llm, release_enabled,
                      mark_keep_loaded, coerce_bool_widget)
 from ._defaults import DEFAULT_CRITIC
 from .model_recommendations import resolve_profile
@@ -109,7 +109,6 @@ class LLMPromptStudioCritic:
 
         slot = f"{server_url}::critic"
         release = coerce_bool_widget(release_vram_after_run, True)
-        prepare_for_llm(server_url, "critic")
         loaded = False
         try:
             ensure_model_loaded(f"{server_url}::critic", server_url, api_key, model,

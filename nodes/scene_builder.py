@@ -9,7 +9,7 @@ from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ..presets import get_architecture_guidance, append_negative_tags
 from ..debug import log_node_enter, log_node_exit, log_error
-from ..vram import (prepare_for_llm, release_after_llm, release_enabled,
+from ..vram import (release_after_llm, release_enabled,
                      mark_keep_loaded, coerce_bool_widget)
 from ._defaults import DEFAULT_COMPOSER, DEFAULT_COMPOSER_NO_NEGATIVE, DEFAULT_DESCRIBE
 from .model_recommendations import resolve_profile
@@ -161,7 +161,6 @@ class LLMPromptStudioSceneBuilder:
 
         slot = f"{server_url}::scene"
         release = coerce_bool_widget(release_vram_after_run, True)
-        prepare_for_llm(server_url, "scene")
         loaded = False
         try:
             ensure_model_loaded(f"{server_url}::scene", server_url, api_key, model,

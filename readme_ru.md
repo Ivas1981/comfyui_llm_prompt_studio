@@ -131,10 +131,16 @@ comfyui_llm_prompt_studio/
 ├── imaging.py                # тензор изображения → base64 JPEG
 ├── model_meta.py             # метаданные генерации, safetensors, определение семейства
 ├── server_routes.py          # маршруты /llm_prompt_studio/* для JS-моста
+├── vram.py                   # хелперы выгрузки модели LM Studio
 ├── presets_default.json      # единственный источник истины: базовые `defaults` + стилевые `presets`
 ├── nodes/
 │   ├── __init__.py           # отображения узлов
+│   ├── _contracts.py         # проверки контракта комбинаций сэмплер/планировщик
 │   ├── _defaults.py          # загружает базовые `defaults` из presets_default.json
+│   ├── _distilled_presets.py # таблицы пресетов дистиллированных семейств
+│   ├── _imgutils.py          # вспомогательные функции изображений
+│   ├── _ksample.py           # общий хелпер выполнения KSampler
+│   ├── _latent_upscaler.py   # хелпер апскейла латента
 │   ├── model_recommendations.py  # профили сэмплирования + JSON-схемы + resolve_profile
 │   ├── writer.py
 │   ├── critic.py
@@ -142,14 +148,24 @@ comfyui_llm_prompt_studio/
 │   ├── library_loader.py
 │   ├── scene_builder.py
 │   ├── smart_loader.py
-│   └── multi_clip.py
+│   ├── multi_clip.py
+│   ├── smart_parameters.py   # узел Smart Parameters
+│   ├── ksampler_hiresfix.py  # узел KSampler (Hires Fix)
+│   └── face_detailer.py      # узел Face Detailer
+├── docs/                     # чек-лист QA, заметки по API, гайд по кастомным узлам ComfyUI
+├── models/                   # встроенные модели (детекторы лиц, ресайзеры)
 ├── tests/                    # золотые тесты pytest
+├── web/js/
+│   ├── llm_prompt_studio_shared.js    # константы, хелперы, общее состояние
+│   ├── llm_prompt_studio_actions.js   # обработчики кнопок, хелпер повторной очереди
+│   └── llm_prompt_studio_bridge.js    # точка входа: расширение + обработчик executed
 ├── requirements.txt
 ├── pyproject.toml
-└── web/js/
-    ├── llm_prompt_studio_shared.js    # константы, хелперы, общее состояние
-    ├── llm_prompt_studio_actions.js   # обработчики кнопок, хелпер повторной очереди
-    └── llm_prompt_studio_bridge.js    # точка входа: расширение + обработчик executed
+├── LICENSE
+├── README.md
+├── readme_ru.md
+├── CHANGELOG.md
+└── changelog_ru.md
 ```
 
 ---
