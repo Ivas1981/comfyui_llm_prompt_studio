@@ -108,3 +108,27 @@ def test_profiles_have_reasoning_off():
         assert "repeat_penalty" in p
         assert "presence_penalty" in p
         assert "min_p" in p
+
+
+def test_profiles_follow_modern_min_p_consensus():
+    # 2024-2026 local-inference consensus: min_p is the primary truncation sampler,
+    # top_k disabled (0), top_p only a generous fallback, penalties near neutral.
+    # Structured (JSON) output is near-greedy for the highest schema parse rate.
+    assert mr.PROFILES["baseline"]["min_p"] == 0.05
+    assert mr.PROFILES["baseline"]["top_k"] == 0
+    assert mr.PROFILES["baseline"]["top_p"] == 0.95
+    assert mr.PROFILES["baseline"]["repeat_penalty"] == 1.05
+
+    assert mr.PROFILES["structured"]["temperature"] == 0.1
+    assert mr.PROFILES["structured"]["min_p"] == 0.05
+    assert mr.PROFILES["structured"]["top_k"] == 0
+    assert mr.PROFILES["structured"]["structured"] is True
+
+    # creative must not stack repeat + presence penalties (incoherent loops).
+    assert mr.PROFILES["creative"]["repeat_penalty"] == 1.05
+    assert mr.PROFILES["creative"]["presence_penalty"] == 0.0
+    assert mr.PROFILES["creative"]["top_k"] == 0
+
+    assert mr.PROFILES["strict"]["temperature"] == 0.3
+    assert mr.PROFILES["strict"]["min_p"] == 0.02
+    assert mr.PROFILES["strict"]["top_k"] == 0

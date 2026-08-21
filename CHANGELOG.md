@@ -36,6 +36,19 @@ VRAM-eviction findings in the audit were obsolete (superseded by the earlier VRA
 - **Smart Loader `apply_lora="auto"` docstring + tooltip.** Clarified that auto mode applies the
   *chosen* LoRA to a base (non-distilled) checkpoint (the LoRA may be any LoRA, not only a distillation
   one). Behavior is unchanged. (#11)
+- **Retuned the four sampler profiles from 2023-era presets to the 2024–2026 local-inference
+  consensus** (`nodes/model_recommendations.py`, based on published llama.cpp / vLLM / HF sampling
+  research and vendor cards for Qwen3 / Gemma / Llama 4 / Mistral):
+  - `min_p` (0.05) is now the primary truncation sampler; `top_k` is disabled (0) for general use,
+    and `top_p` is kept only as a generous fallback cap (0.9–0.95) for servers that don't expose
+    `min_p` (the transport layer already strips `min_p` if the server rejects it).
+  - Penalties stay near neutral (repeat_penalty 1.05, presence_penalty 0.0) — the old `creative`
+    profile stacked repeat_penalty 1.15 *and* presence_penalty 0.3, which the research shows pushes
+    weak models into incoherent token-avoidance loops.
+  - `structured` (JSON writer/critic) is now near-greedy (temperature 0.1 instead of 0.7) for the
+    highest schema parse rate, with `min_p` only guarding against degenerate tokens.
+  - `strict` (small <7B models) uses temperature 0.3 + a small `min_p` floor (0.02) to keep weak
+    models coherent. `baseline` / `creative` temperatures are unchanged (0.7 / 1.1).
 
 ### Docs
 - Added an **Intended Usage** section to the README / readme_ru (single user / machine / ComfyUI

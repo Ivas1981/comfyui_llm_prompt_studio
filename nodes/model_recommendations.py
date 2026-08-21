@@ -1,41 +1,66 @@
 """Model profile recommendations for the LLM Prompt Studio nodes.
 
-Provides the four sampler profiles deduced from the benchmark results, the strict
-JSON-schema response contracts, and a UNIVERSAL model recommendation that needs no
-hard-coded model list: it infers the model size from its id (``(\\d+(?:\\.\\d+)?)b``)
-and maps it to a profile + whether structured output is safe. This keeps the pack
-working with any model on any machine, including when no benchmark data is present.
+Provides the four sampler profiles, the strict JSON-schema response contracts, and a
+UNIVERSAL model recommendation that needs no hard-coded model list: it infers the model
+size from its id (``(\\d+(?:\\.\\d+)?)b``) and maps it to a profile + whether structured
+output is safe. This keeps the pack working with any model on any machine, including
+when no benchmark data is present.
 
 No dependency on ``research/`` — this module is the single source of truth the nodes
 consume.
+
+Sampler values follow the 2024-2026 local-inference consensus (llama.cpp / vLLM /
+Hugging Face Transformers, see references in CHANGELOG):
+
+- ``min_p`` (0.05) has replaced ``top_p``/``top_k`` as the default truncation sampler.
+  It sets a floor relative to the most-likely token, so it scales with the model's own
+  confidence and tolerates a higher temperature without admitting garbage tokens.
+- ``top_k`` is left disabled (0) for general use — it is a static count cutoff that the
+  research shows is largely superseded by ``min_p`` (model cards such as Gemma that
+  explicitly require a ``top_k`` are handled via the per-model path, not here).
+- ``top_p`` is kept only as a generous fallback cap (0.9-0.95) for servers that do not
+  expose ``min_p``; if the server rejects ``min_p`` the transport layer strips it and
+  ``top_p`` still bounds the candidate pool.
+- Penalties stay near neutral (repeat_penalty ~1.05, presence_penalty 0.0). Stacking
+  repeat + presence penalties pushes weak models into incoherent token-avoidance loops.
+- Structured (JSON) output is driven near-greedy (temperature ~0.1) for the highest
+  schema parse rate; ``min_p`` only guards against degenerate tokens.
 """
 
 import re
 
 # ---------------------------------------------------------------------------
-# Sampler profiles (mirror research/benchmark_models.SAMPLER_PROFILES).
-# Every profile uses reasoning="off" — the benchmark showed reasoning_on does not
-# improve these tasks.
+# Sampler profiles. Every profile uses reasoning="off" — reasoning/thinking mode is a
+# separate concern (the node's `reasoning` widget for the `custom` profile) and does not
+# improve these image-prompt tasks.
 # ---------------------------------------------------------------------------
 PROFILES = {
     "baseline": {
-        "temperature": 0.7, "top_p": 0.9, "top_k": 40,
-        "repeat_penalty": 1.1, "presence_penalty": 0.0, "min_p": 0.0,
+        # General-purpose prompt writing: temperature + min_p, top_k off, gentle top_p
+        # fallback, neutral penalties.
+        "temperature": 0.7, "top_p": 0.95, "top_k": 0,
+        "repeat_penalty": 1.05, "presence_penalty": 0.0, "min_p": 0.05,
         "reasoning": "off", "structured": False,
     },
     "structured": {
-        "temperature": 0.7, "top_p": 0.9, "top_k": 40,
-        "repeat_penalty": 1.1, "presence_penalty": 0.0, "min_p": 0.0,
+        # JSON writer/critic contract: near-greedy temperature maximizes schema parse
+        # rate; min_p only blocks degenerate tokens while staying deterministic.
+        "temperature": 0.1, "top_p": 1.0, "top_k": 0,
+        "repeat_penalty": 1.0, "presence_penalty": 0.0, "min_p": 0.05,
         "reasoning": "off", "structured": True,
     },
     "creative": {
-        "temperature": 1.1, "top_p": 0.95, "top_k": 60,
-        "repeat_penalty": 1.15, "presence_penalty": 0.3, "min_p": 0.05,
+        # Brainstorming: higher temperature for variety, min_p floor keeps it coherent.
+        # No penalty stacking (repeat + presence) — min_p alone handles repetition.
+        "temperature": 1.1, "top_p": 0.95, "top_k": 0,
+        "repeat_penalty": 1.05, "presence_penalty": 0.0, "min_p": 0.05,
         "reasoning": "off", "structured": False,
     },
     "strict": {
-        "temperature": 0.3, "top_p": 0.85, "top_k": 20,
-        "repeat_penalty": 1.05, "presence_penalty": 0.0, "min_p": 0.0,
+        # Small models (<7B) / determinism: low temperature + small min_p floor keeps
+        # weak models coherent (they break JSON at high temperature).
+        "temperature": 0.3, "top_p": 0.9, "top_k": 0,
+        "repeat_penalty": 1.05, "presence_penalty": 0.0, "min_p": 0.02,
         "reasoning": "off", "structured": False,
     },
 }
