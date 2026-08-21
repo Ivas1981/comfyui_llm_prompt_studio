@@ -1211,7 +1211,14 @@ def chat_completion(server_url, api_key, model, messages,
             _llm_cache_store(cache_key, result)
             return result
         except Exception as e:  # noqa: BLE001 — graceful fallback to OpenAI-compatible path
-            logger.warning("Native /api/v1/chat failed (%s); falling back to OpenAI path.", e)
+            e_text = str(e)
+            # A seed/key rejection is an *expected* fallback (LM Studio's native
+            # /api/v1/chat does not accept seed), not a real error, so keep it quiet.
+            if "unrecognized_keys" in e_text and "seed" in e_text:
+                logger.debug("Native /api/v1/chat rejected seed; falling back to "
+                             "OpenAI-compatible path so the seed is honored.")
+            else:
+                logger.warning("Native /api/v1/chat failed (%s); falling back to OpenAI path.", e)
             # Vision rejection on the native path is the classic reason to fall back here.
             if has_images:
                 logger.debug("Falling back to OpenAI /chat/completions for vision request.")
@@ -1382,15 +1389,24 @@ def _is_reasoning_rejection(text: str) -> bool:
                  or ("invalid" in low and "reasoning" in low)))
 
 
-def _post_v1_chat(url, headers, payload, timeout):
+def _post_v1_chat(url, headers, payload, timeout, protected_keys=None):
     """POST to the native ``/api/v1/chat`` endpoint, resilient to ``unrecognized_keys`` 400s.
 
-    Mirrors :func:`load_model`: if the server rejects optional body keys (e.g. ``seed`` on
-    builds that don't accept it), the rejected keys are dropped from the payload and the
-    request is retried, so a single unsupported parameter no longer fails the whole call and
-    forces a fallback to the OpenAI path. Other 400s are returned unchanged for the caller's
-    reasoning-rejection / error-enrichment handling. Connection errors propagate so the
-    caller's reachability guard can turn them into a clear ``RuntimeError``."""
+    Mirrors :func:`load_model`: if the server rejects OPTIONAL body keys (e.g.
+    ``flash_attention``/``reasoning`` on builds that don't accept them), the rejected keys are
+    dropped from the payload and the request is retried, so a single unsupported parameter no
+    longer fails the whole call and forces a fallback to the OpenAI path.
+
+    ``protected_keys`` names user-intent parameters (currently just ``seed``) that must NOT be
+    silently dropped: LM Studio's native ``/api/v1/chat`` rejects ``seed`` with
+    ``unrecognized_keys``, and dropping it would make seed control look broken while the model
+    actually ignores the seed. When a protected key is rejected we keep it in the body, so the
+    call keeps returning 400 and :func:`_chat_v1` lets the caller fall back to the
+    OpenAI-compatible ``/v1/chat/completions`` endpoint, which DOES honor ``seed``. Other 400s
+    are returned unchanged for the caller's reasoning-rejection / error-enrichment handling.
+    Connection errors propagate so the caller's reachability guard can turn them into a clear
+    ``RuntimeError``."""
+    protected = set(protected_keys or set())
     body = dict(payload)
     last_resp = None
     for _ in range(_MAX_REJECTED_RETRIES + 1):
@@ -1403,6 +1419,14 @@ def _post_v1_chat(url, headers, payload, timeout):
             dropped = set()
             for k in _parse_rejected_keys(resp, set(body.keys())):
                 if k in body:
+                    if k in protected:
+                        # User-intent key: never silently drop it. Keep it so the caller
+                        # (which falls back to the OpenAI path that honors seed) sees the
+                        # rejection instead of running with the seed ignored.
+                        logger.debug(
+                            "Native /api/v1/chat rejected protected key '%s'; will fall "
+                            "back to OpenAI-compatible path so the seed is honored.", k)
+                        continue
                     body.pop(k, None)
                     dropped.add(k)
             if not dropped:
@@ -1475,7 +1499,11 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
     started = time.time()
 
     try:
-        resp = _post_v1_chat(url, headers, payload, timeout)
+        # `seed` is a protected key: if LM Studio's native /api/v1/chat rejects it we must
+        # NOT drop it (that would make seed control silently do nothing); instead the call
+        # keeps failing and chat_completion falls back to the OpenAI-compatible endpoint,
+        # which honors seed.
+        resp = _post_v1_chat(url, headers, payload, timeout, protected_keys={"seed"})
     except requests.RequestException as e:
         raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
     if resp.status_code >= 400:

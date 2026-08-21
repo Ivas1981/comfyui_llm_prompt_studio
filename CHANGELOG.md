@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.1] — 2026-08-21
+
+### Added
+- **Seed `control_after_generate` on the sampling nodes.** `LLM Prompt Studio KSampler (Hires Fix)`
+  and `LLM Prompt Studio Face Detailer` now expose the ComfyUI seed control (randomize /
+  increment / decrement / fixed) on their `seed` — and the KSampler's `hires_seed` — matching the
+  Writer's `seed`. After each Generate the widget auto-updates per the chosen mode. The KSampler's
+  `hires_seed` only takes effect when `hires_use_same_seed` is off (otherwise the base `seed`
+  drives the hires pass).
+
+### Fixed
+- **Seed actually reaches LM Studio now.** The native `/api/v1/chat` endpoint rejects `seed`
+  (`unrecognized_keys`), and the client's resilient retry *silently dropped* it — so seed control
+  looked broken while the model ignored the seed entirely. `seed` is now a protected key: when the
+  native endpoint rejects it, the request falls back to the OpenAI-compatible `/v1/chat/completions`
+  endpoint, which **does** honor `seed` (verified: same seed → identical output, different seed →
+  different output). Verified end-to-end against LM Studio with `qwen2.5-coder-1.5b-instruct`.
+
+### Changed
+- **Verified `denoise` / `hires_denoise` propagation.** Both values are forwarded to
+  `KSampler().sample(...)` (base pass and hires pass respectively), so lowering them genuinely
+  reduces how much the latent is re-noised — confirmed by new headless passthrough tests. The
+  base-pass default stays `1.0` (full generation from an empty latent); `hires_denoise` defaults
+  to `0.5`.
+
+---
+
 ## [1.2.0] — 2026-08-20
 
 Added **automatic VRAM release** so an LLM node no longer holds the GPU while ComfyUI runs the

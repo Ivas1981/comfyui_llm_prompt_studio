@@ -172,20 +172,38 @@ def test_chat_completion_openai_fallback_forwards_sampling_params():
     assert "min_p" not in body
 
 
-def test_post_v1_chat_drops_unrecognized_seed_and_retries():
-    # A server that rejects `seed` (unrecognized_keys) must not fail the native call: the
+def test_post_v1_chat_drops_unrecognized_optional_key_and_retries():
+    # A server that rejects an OPTIONAL key (e.g. top_k) must not fail the native call: the
     # key is dropped and the request retried once, successfully.
     reject = _ok_response(status=400,
                           text='{"error":{"code":"unrecognized_keys",'
-                               '"message":"Unrecognized key(s) in object: \'seed\'"}}')
+                               '"message":"Unrecognized key(s) in object: \'top_k\'"}}')
     ok = _ok_response(status=200, text=json.dumps(
         {"output": [{"type": "message", "content": "ok"}]}))
     with patch("requests.post", side_effect=[reject, ok]) as post:
         resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
-                                     {"model": "m", "seed": 0}, 5)
+                                     {"model": "m", "seed": 0, "top_k": 40}, 5)
     assert resp.status_code == 200
-    # The retry request omitted the rejected key.
-    assert "seed" not in post.call_args_list[1][1]["json"]
+    # The retry request omitted the rejected optional key.
+    assert "top_k" not in post.call_args_list[1][1]["json"]
+
+
+def test_post_v1_chat_keeps_protected_seed_when_rejected():
+    # A USER-INTENT key (`seed`) must NOT be silently dropped when the native endpoint
+    # rejects it: instead the call keeps failing so the caller (chat_completion) can fall
+    # back to the OpenAI-compatible route that actually honors seed. Without this protection,
+    # seed control would silently do nothing.
+    reject = _ok_response(status=400,
+                          text='{"error":{"code":"unrecognized_keys",'
+                               '"message":"Unrecognized key(s) in object: \'seed\'"}}')
+    with patch("requests.post", return_value=reject) as post:
+        resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
+                                     {"model": "m", "seed": 7}, 5,
+                                     protected_keys={"seed"})
+    # seed stays in the body and the call is NOT retried into a success.
+    assert resp.status_code == 400
+    assert post.call_count == 1
+    assert post.call_args_list[0][1]["json"]["seed"] == 7
 
 
 def test_post_v1_chat_passes_through_non_key_errors():
@@ -194,29 +212,31 @@ def test_post_v1_chat_passes_through_non_key_errors():
     err = _ok_response(status=400, text=json.dumps({"error": {"message": "bad request"}}))
     with patch("requests.post", return_value=err) as post:
         resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
-                                     {"model": "m", "seed": 0}, 5)
+                                     {"model": "m", "seed": 0, "top_k": 40}, 5)
     assert resp.status_code == 400
     assert post.call_count == 1
 
 
-def test_chat_completion_native_succeeds_when_seed_rejected():
-    # Native /api/v1/chat rejects `seed` (unrecognized_keys) -> drop it, retry, succeed,
-    # with NO fallback to the OpenAI /chat/completions route.
+def test_chat_completion_falls_back_to_openai_when_native_rejects_seed():
+    # Native /api/v1/chat rejects `seed` (unrecognized_keys) -> the call is NOT retried into a
+    # success with seed silently dropped; instead chat_completion falls back to the
+    # OpenAI-compatible /v1/chat/completions endpoint, which honors `seed`. Regression test
+    # for seed control appearing broken while the model ignored the seed entirely.
     reject = _ok_response(status=400,
                           text='{"error":{"code":"unrecognized_keys",'
                                '"message":"Unrecognized key(s) in object: \'seed\'"}}')
-    ok = _ok_response(status=200, text=json.dumps(
-        {"output": [{"type": "message", "content": "native result"}]}))
+    oai_ok = _ok_response(status=200, text=json.dumps({
+        "choices": [{"message": {"content": "openai result"}}]}))
     with patch("requests.get", return_value=_models_response([{"key": "m", "capabilities": {}}])), \
-         patch("requests.post", side_effect=[reject, ok]) as post:
+         patch("requests.post", side_effect=[reject, oai_ok]) as post:
         out = lm_http.chat_completion(LOCAL_V1, "", "m",
                                       [{"role": "user", "content": "hi"}], 0.7, 100,
-                                      seed=0)
-    assert out == "native result"
-    # Both POSTs are the native /api/v1/chat (retry after dropping seed), no OpenAI call.
-    assert post.call_count == 2
-    assert all("chat/completions" not in c[0][0] for c in post.call_args_list)
-    assert "seed" not in post.call_args_list[1][1]["json"]
+                                      seed=7)
+    assert out == "openai result"
+    # The fallback POST is the OpenAI /chat/completions route and still carries the seed.
+    oai_calls = [c for c in post.call_args_list if "chat/completions" in c[0][0]]
+    assert oai_calls, "expected a fallback to /chat/completions"
+    assert oai_calls[0][1]["json"]["seed"] == 7
 
 
 def test_load_model_success_v1():

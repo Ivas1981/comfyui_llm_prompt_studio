@@ -401,7 +401,13 @@ node straight into **FaceDetailer**, so no extra VAE decode is needed between th
   `hires_scheduler`, `hires_use_same_seed`, `hires_seed`, `vae_decode`, `preview_method`; optional
   `hires_upscale_model` (UPSCALE_MODEL), `hires_positive`, `hires_negative`, `optional_vae`.
 - **Outputs:** `LATENT`, `IMAGE` (the IMAGE is only produced when `vae_decode` is on, otherwise it
-  returns a 1×1 placeholder so downstream graphs stay valid).
+   returns a 1×1 placeholder so downstream graphs stay valid).
+- **Seed control:** `seed` and `hires_seed` carry ComfyUI's `control_after_generate` toggle
+  (randomize / increment / decrement / fixed) so the field auto-updates after each Generate.
+  `hires_seed` is only used when `hires_use_same_seed` is off; otherwise the base `seed` drives
+  the hires pass. Both `denoise` (base, default `1.0`) and `hires_denoise` (hires, default `0.5`)
+  are forwarded to `KSampler().sample(...)`, so lowering them genuinely reduces how much the
+  latent is re-noised.
 - **Hires pass:** enabled when `hires_enabled` is true and the derived target size differs from
   the base latent. The hires output size is computed automatically as `base × per_pass_scale^iterations`,
   where `per_pass_scale` is `hires_latent_upscale_factor` for the latent types and the model scale
@@ -449,7 +455,10 @@ pixel path). The `latent` input is the intended input when chained after the Hir
   `detection_threshold`, `feather`, `inpaint_model`; optional `image`, `latent`,
   `face_positive`, `face_negative`.
 - **Outputs:** `IMAGE` (the input image with each detected face refined; returned unchanged when no
-  face is found).
+   face is found).
+- **Seed control:** `seed` carries ComfyUI's `control_after_generate` toggle (randomize / increment /
+   decrement / fixed). Per detected face the seed is incremented (`seed + i`) so each refined face is
+   deterministic but distinct.
 - **Detection:** `haar` (OpenCV, no extra dependencies) or `yolo` (ultralytics — `ultralytics` must
   be installed and a model such as `face_yolov8s.pt` present).
 - **Per-face prompts:** when `face_positive` / `face_negative` are wired (e.g. from the Writer's

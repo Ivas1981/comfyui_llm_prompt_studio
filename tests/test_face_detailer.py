@@ -206,3 +206,8 @@ def test_decode_latent_falls_back_when_tiled_raises():
     out = fd._decode_latent(vae, s, 512)
     assert vae.decoded == [s] and torch.allclose(out, s * 2)
 
+
+def test_seed_widget_exposes_control_after_generate():
+    req = fd.LLMPromptStudioFaceDetailer.INPUT_TYPES()["required"]
+    assert req["seed"][1].get("control_after_generate") is True
+

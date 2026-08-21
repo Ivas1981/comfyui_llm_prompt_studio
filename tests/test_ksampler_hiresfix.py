@@ -275,3 +275,36 @@ def test_vae_tile_size_zero_emits_zero_and_uses_plain_decode(monkeypatch):
     assert tile == 0
     # 0 = whole-frame decode, no tiling.
     assert vae.tiled_calls == []
+
+
+# -- seed propagation & control_after_generate ------------------------------
+def test_base_pass_uses_seed_and_denoise(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    node.sample(**_base_args(seed=777, denoise=0.85, hires_enabled=False))
+    assert _FakeKSampler.last["seed"] == 777
+    assert _FakeKSampler.last["denoise"] == 0.85
+
+
+def test_hires_pass_uses_hires_seed_and_hires_denoise(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    node.sample(**_base_args(seed=1, hires_use_same_seed=False, hires_seed=999,
+                             hires_denoise=0.35))
+    # The hires pass is the last sample call.
+    assert _FakeKSampler.last["seed"] == 999
+    assert _FakeKSampler.last["denoise"] == 0.35
+
+
+def test_hires_pass_inherits_base_seed_when_same_seed(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    node.sample(**_base_args(seed=42, hires_use_same_seed=True, hires_seed=999))
+    assert _FakeKSampler.last["seed"] == 42
+
+
+def test_seed_widgets_expose_control_after_generate():
+    req = kh.LLMPromptStudioKSamplerHiresFix.INPUT_TYPES()["required"]
+    assert req["seed"][1].get("control_after_generate") is True
+    assert req["hires_seed"][1].get("control_after_generate") is True
+

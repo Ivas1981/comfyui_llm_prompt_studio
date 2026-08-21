@@ -44,7 +44,10 @@ class LLMPromptStudioKSamplerHiresFix:
                 "positive": ("CONDITIONING",),
                 "negative": ("CONDITIONING",),
                 "latent_image": ("LATENT",),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
+                                "control_after_generate": True,
+                                "tooltip": "Randomize / increment / decrement / fixed after "
+                                           "each Generate (the control is shown next to the field)."}),
                 "steps": ("INT", {"default": 20, "min": 1, "max": 10000, "step": 1}),
                 "cfg": ("FLOAT", {"default": 7.0, "min": 0.0, "max": 100.0, "step": 0.1}),
                 "sampler_name": (SAMPLERS_WITH_BASE, {"default": "dpmpp_2m"}),
@@ -91,7 +94,12 @@ class LLMPromptStudioKSamplerHiresFix:
                 "hires_sampler_name": (SAMPLERS_WITH_BASE, {"default": "base"}),
                 "hires_scheduler": (SCHEDULERS_WITH_BASE, {"default": "base"}),
                 "hires_use_same_seed": ("BOOLEAN", {"default": True}),
-                "hires_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "hires_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
+                                 "control_after_generate": True,
+                                 "tooltip": "Hires-pass seed. Used only when "
+                                            "hires_use_same_seed is off; otherwise the base "
+                                            "seed drives the hires pass. Has its own "
+                                            "randomize/increment/decrement/fixed control."}),
                 "vae_decode": ("BOOLEAN", {"default": True,
                                  "tooltip": "Decode the final latent into an IMAGE preview. Turn "
                                             "off to skip the VAE decode (saves VRAM)."}),

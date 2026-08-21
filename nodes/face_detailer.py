@@ -72,7 +72,11 @@ class LLMPromptStudioFaceDetailer:
                 "vae": ("VAE",),
                 "positive": ("CONDITIONING",),
                 "negative": ("CONDITIONING",),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
+                                "control_after_generate": True,
+                                "tooltip": "Randomize / increment / decrement / fixed after "
+                                           "each Generate (the control is shown next to the field). "
+                                           "Per-detected-face the seed is incremented."}),
                 "steps": ("INT", {"default": 20, "min": 1, "max": 10000, "step": 1}),
                 "cfg": ("FLOAT", {"default": 7.0, "min": 0.0, "max": 100.0, "step": 0.1}),
                 "sampler_name": (SAMPLERS_WITH_BASE, {"default": "dpmpp_2m"}),
