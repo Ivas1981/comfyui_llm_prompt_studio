@@ -383,18 +383,21 @@ api.addEventListener("executed", (e) => {
             if (approved) {
                 loopCounters.set(key, 0);
                 if (clear_on_approve) {
-                    for (const n of app.graph.nodes) {
-                        if (isWriter(n)) {
-                            const rn = getW(n, "revision_notes");
-                            if (rn) rn.value = "";
-                        }
+                    // Clear revision notes only on the Writer linked to this Critic via the
+                    // prompt connection — never on every Writer in the graph.
+                    const linked = upstreamWriter(node);
+                    if (linked) {
+                        const rn = getW(linked, "revision_notes");
+                        if (rn) rn.value = "";
                     }
                 }
             } else if (count < max_retries) {
-                const writer = upstreamWriter(node) || app.graph.nodes.find(isWriter);
+                const writer = upstreamWriter(node);
                 if (!writer) {
                     loopCounters.set(key, 0);
-                    console.warn("[LLMPromptStudio.Bridge] Auto-loop: no Writer node found, stopping.");
+                    console.warn("[LLMPromptStudio.Bridge] Auto-loop: no Writer linked to this " +
+                                 "Critic (connect the Critic's prompt input to a Writer output), " +
+                                 "stopping.");
                 } else {
                     loopCounters.set(key, count + 1);
                     const rn = getW(writer, "revision_notes");

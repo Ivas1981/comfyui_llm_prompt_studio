@@ -27,7 +27,7 @@ def _run_writer(chat_side_effect, **extra):
               face_prompt_instruction="", prompt_mode="standard", family="",
               unique_id="1", style_preset="— none —")
     kw.update(extra)
-    with patch.object(writer_node, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer_node, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer_node, "chat_completion", side_effect=chat_side_effect), \
          patch.object(writer_node, "release_after_llm") as rel, \
          patch.object(writer_node, "mark_keep_loaded") as keep, \
@@ -62,7 +62,7 @@ def test_writer_reuse_cache_hit_no_release():
               generate_face_prompts=False, max_field_retries=0,
               face_prompt_instruction="", prompt_mode="standard", family="",
               unique_id="R1", style_preset="— none —")
-    with patch.object(writer_node, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer_node, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer_node, "chat_completion",
                       return_value=_writer_json(positive="p", negative="n",
                                                  scene_name="s", face_positive="fp",
@@ -94,7 +94,7 @@ def _run_scene(stage, chat_side_effect, **extra):
               vision_check=False, description_view="", prompt_mode="standard",
               family="", unique_id="2", style_preset="— none —")
     kw.update(extra)
-    with patch.object(scene_node, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(scene_node, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(scene_node, "chat_completion", side_effect=chat_side_effect), \
          patch.object(scene_node, "image_to_base64", return_value="b64img"), \
          patch.object(scene_node, "release_after_llm") as rel, \
@@ -124,7 +124,7 @@ def test_scene_stage2_releases_on_success():
 
 
 def test_critic_releases_once_on_success():
-    with patch.object(critic_node, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(critic_node, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(critic_node, "resolve_vision", return_value=True), \
          patch.object(critic_node, "image_to_base64", return_value="b64img"), \
          patch.object(critic_node, "chat_completion",

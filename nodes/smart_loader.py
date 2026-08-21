@@ -7,8 +7,10 @@ from ..debug import node_span
 
 
 class LLMPromptStudioSmartLoader:
-    """Loads a checkpoint, detects its distillation family and optionally applies
-    a distillation LoRA. Exposes both the built-in VAE and a user-selected VAE."""
+    """Loads a checkpoint, detects its family and architecture, and optionally applies a
+    chosen LoRA. In ``auto`` mode the LoRA is applied only to a base (non-distilled)
+    checkpoint; the LoRA itself may be any LoRA (distillation or otherwise). Exposes both
+    the built-in VAE and a user-selected VAE."""
     CATEGORY = "LLM Prompt Studio"
     FUNCTION = "load"
 
@@ -23,7 +25,10 @@ class LLMPromptStudioSmartLoader:
                 "ckpt_name": (combo_checkpoints(),),
                 "family_override": (cls.FAMILY_OVERRIDES,),
                 "lora_name": (combo_loras(),),
-                "apply_lora": (cls.APPLY_MODES,),
+                "apply_lora": (cls.APPLY_MODES,
+                               {"tooltip": "auto = apply the chosen LoRA only to a "
+                                           "base (non-distilled) checkpoint; always = "
+                                           "apply it regardless; never = don't apply"}),
                 "strength_model": ("FLOAT", {"default": 1.0, "min": 0.0,
                                              "max": 2.0, "step": 0.01}),
                 "vae_user": (combo_vae(),),

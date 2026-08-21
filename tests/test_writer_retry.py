@@ -21,7 +21,7 @@ def _json(**fields):
 
 def _run(chat_side_effect, generate_face_prompts=False, max_field_retries=2,
          face_prompt_instruction="", prompt_mode="auto", family=""):
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion", side_effect=chat_side_effect) as call:
         result = writer.LLMPromptStudioWriter().execute(
             server_url="http://localhost:1234/v1", api_key="", model="m",
@@ -130,7 +130,7 @@ def test_reuse_cache_key_excludes_family_but_includes_inputs():
     # change to style_preset/system_prompt/idea/etc. regenerates, while `family` stays
     # excluded (it is driven by the loaded checkpoint and should carry across swaps).
     writer._prompt_cache.clear()
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion",
                       return_value=_json(positive="p", negative="n", scene_name="s")) as call, \
          patch.object(writer, "get_preset_by_name", return_value=None):
@@ -158,3 +158,37 @@ def test_reuse_cache_key_excludes_family_but_includes_inputs():
         writer.LLMPromptStudioWriter().execute(family="turbo", idea="dog",
                                                style_preset="Anime / Manga", **base)
         assert call.call_count == 3
+
+
+def test_reuse_cache_key_includes_architecture():
+    # A1 regression: the reuse cache key must include `architecture` (it changes token
+    # style, negatives and the no-negative path for Flux/SD3), so two architectures never
+    # share a cached prompt. The previously-cached result must NOT be reused across a
+    # different architecture.
+    writer._prompt_cache.clear()
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
+         patch.object(writer, "chat_completion",
+                      return_value=_json(positive="p", negative="n", scene_name="s")) as call, \
+         patch.object(writer, "get_preset_by_name", return_value=None):
+        base = dict(server_url="http://localhost:1234/v1", api_key="", model="m",
+                    context_length=8192, gpu_offload=1.0, system_prompt="SYS",
+                    revision_notes="", temperature=0.7, max_tokens=512, seed=0,
+                    reuse_last_prompt=True, generate_face_prompts=False, max_field_retries=2,
+                    face_prompt_instruction="", prompt_mode="auto", unique_id="A1")
+
+        writer.LLMPromptStudioWriter().execute(family="", idea="cat",
+                                               style_preset="— none —",
+                                               architecture="sdxl", **base)
+        assert call.call_count == 1
+
+        # Same inputs but a different architecture -> must regenerate (architecture IS a key).
+        writer.LLMPromptStudioWriter().execute(family="", idea="cat",
+                                               style_preset="— none —",
+                                               architecture="flux", **base)
+        assert call.call_count == 2
+
+        # Identical architecture again -> reused (no regenerate).
+        writer.LLMPromptStudioWriter().execute(family="", idea="cat",
+                                               style_preset="— none —",
+                                               architecture="flux", **base)
+        assert call.call_count == 2

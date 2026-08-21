@@ -29,7 +29,7 @@ def _json(**fields):
 def _run_writer(chat_side_effect, prompt_mode="auto", family="", generate_face_prompts=False,
                 max_field_retries=2, face_prompt_instruction="", revision_notes="",
                 unique_id="1", architecture=""):
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion", side_effect=chat_side_effect):
         result = writer.LLMPromptStudioWriter().execute(
             server_url="http://localhost:1234/v1", api_key="", model="m",
@@ -43,7 +43,7 @@ def _run_writer(chat_side_effect, prompt_mode="auto", family="", generate_face_p
 
 def _run_scene(chat_side_effect, prompt_mode="auto", family="", description="a cat sitting",
                architecture=""):
-    with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(scene_builder, "chat_completion", side_effect=chat_side_effect):
         return scene_builder.LLMPromptStudioSceneBuilder().execute(
             stage="2 - compose", image=None, server_url="http://localhost:1234/v1", api_key="",
@@ -131,7 +131,7 @@ def test_no_negative_runtime_error_only_on_empty_positive():
 def test_cache_key_distinguishes_modes():
     _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
                 prompt_mode="standard", unique_id="cache-z")
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion",
                       side_effect=lambda *a, **k: _json(positive="a cat", negative="blurry",
                                                         scene_name="cat")) as call:
@@ -152,7 +152,7 @@ def test_cache_key_survives_checkpoint_family_change():
                 prompt_mode="standard", family="base", unique_id="cache-f")
     # Swapping to a different checkpoint (different detected family) with reuse on must NOT
     # regenerate: the same prompts are carried over to the new checkpoint.
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion",
                       side_effect=lambda *a, **k: _json(positive="WRONG", negative="WRONG",
                                                         scene_name="WRONG")) as call:
@@ -203,7 +203,7 @@ def test_preset_no_negative_uses_no_negative_variant():
     def spy(*a, **k):
         captured.append(a[3])  # the messages list
         return _json(positive="a cat", negative="IGNORED", scene_name="cat")
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion", side_effect=spy):
         result = writer.LLMPromptStudioWriter().execute(
             server_url="http://localhost:1234/v1", api_key="", model="m",
@@ -228,7 +228,7 @@ def test_scene_standard_uses_standard_composer_when_default():
     def spy(*a, **k):
         captured.append(a[3])  # the messages list
         return _json(positive="a cat", negative="blurry", scene_name="cat")
-    with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(scene_builder, "chat_completion", side_effect=spy):
         scene_builder.LLMPromptStudioSceneBuilder().execute(
             stage="2 - compose", image=None, server_url="http://localhost:1234/v1", api_key="",

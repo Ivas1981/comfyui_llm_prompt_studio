@@ -90,8 +90,10 @@ export async function postJSON(route, body) {
     return res.json();
 }
 
-export async function getJSON(route) {
-    const res = await api.fetchApi(route, { method: "GET" });
+export async function getJSON(route, headers) {
+    const opts = { method: "GET" };
+    if (headers) opts.headers = headers;
+    const res = await api.fetchApi(route, opts);
     if (!res.ok) {
         const text = await res.text();
         let parsed = null;

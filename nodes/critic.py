@@ -111,11 +111,14 @@ class LLMPromptStudioCritic:
         release = coerce_bool_widget(release_vram_after_run, True)
         loaded = False
         try:
-            ensure_model_loaded(f"{server_url}::critic", server_url, api_key, model,
-                                context_length, gpu_offload,
-                                flash_attention=flash_attention,
-                                offload_kv_cache_to_gpu=offload_kv_cache_to_gpu)
-            loaded = True
+            loaded = ensure_model_loaded(f"{server_url}::critic", server_url, api_key, model,
+                                 context_length, gpu_offload,
+                                 flash_attention=flash_attention,
+                                 offload_kv_cache_to_gpu=offload_kv_cache_to_gpu)
+            if not loaded:
+                raise RuntimeError(
+                    f"Model '{model}' could not be loaded into LM Studio. Start the "
+                    "server, load the model, and press Refresh on the node.")
             b64 = image_to_base64(image, image_max_size)
     
             messages = [

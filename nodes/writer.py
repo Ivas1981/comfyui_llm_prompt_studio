@@ -181,13 +181,15 @@ class LLMPromptStudioWriter:
                  load_model_profile="auto", architecture="",
                  release_vram_after_run=True):
         # Reuse mode: return the cached prompt without calling the LLM. The key is the node
-        # id + prompt_mode so a mode switch still regenerates. `family` is intentionally
-        # excluded: it is driven by the loaded checkpoint, and with reuse on we want the same
-        # prompts to carry over when the user swaps to a different checkpoint. The remaining
-        # fields are the inputs that actually shape the generated prompt, so a change to any
-        # of them must bypass the cache and regenerate.
+        # id + the inputs that actually shape the generated prompt, so a change to any of
+        # them bypasses the cache and regenerates. `family` is intentionally excluded: it is
+        # driven by the loaded checkpoint, and with reuse on we want the same prompts to
+        # carry over when the user swaps to a different checkpoint. `architecture` IS included
+        # because it changes token style, negatives and (for Flux/SD3) the no-negative path,
+        # so two architectures must never share a cached prompt.
         cache_key = (unique_id, prompt_mode, style_preset, system_prompt,
-                     idea, revision_notes, generate_face_prompts, face_prompt_instruction)
+                     idea, revision_notes, generate_face_prompts, face_prompt_instruction,
+                     architecture)
         # Reuse mode: return cached result without calling the LLM
         if reuse_last_prompt:
             cached = _prompt_cache.get(cache_key)
@@ -212,11 +214,14 @@ class LLMPromptStudioWriter:
         release = coerce_bool_widget(release_vram_after_run, True)
         loaded = False
         try:
-            ensure_model_loaded(f"{server_url}::writer", server_url, api_key, model,
+            loaded = ensure_model_loaded(f"{server_url}::writer", server_url, api_key, model,
                                 context_length, gpu_offload,
                                 flash_attention=flash_attention,
                                 offload_kv_cache_to_gpu=offload_kv_cache_to_gpu)
-            loaded = True
+            if not loaded:
+                raise RuntimeError(
+                    f"Model '{model}' could not be loaded into LM Studio. Start the "
+                    "server, load the model, and press Refresh on the node.")
     
             # Architecture adaptation lookups (computed BEFORE the no-negative resolution so an
             # arch-level ``force_no_negative`` can flip the mode; see below). SDXL guidance is

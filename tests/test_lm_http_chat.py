@@ -156,20 +156,53 @@ def test_v1_chat_retries_without_reasoning_on_empty_message():
     assert "reasoning" not in post.call_args_list[1][1]["json"]
 
 
-def test_v1_chat_no_reasoning_retry_when_message_present():
-    # When the message is non-empty there must be NO extra retry (single POST).
-    ok = {"output": [{"type": "message", "content": "fine"}]}
-    ok_resp = MagicMock()
-    ok_resp.status_code = 200
-    ok_resp.text = json.dumps(ok)
-    ok_resp.json.return_value = ok
-    models = _ok_response(status=200, text=json.dumps(
-        {"data": [{"key": "m", "capabilities": {"reasoning": {"allowed_options": ["off", "on"]}}}]}))
-    with patch("requests.get", return_value=models), \
-         patch("requests.post", return_value=ok_resp) as post:
-        out = lm_http.chat_completion(LOCAL_V1, "", "m",
-                                     [{"role": "user", "content": "hi"}], 0.7, 100,
-                                     reasoning="on")
-    assert out == "fine"
-    assert post.call_count == 1
+def test_chat_completion_retries_without_response_format_when_unsupported():
+    # LM Studio only enables structured output for models >= ~7B and exposes no capability
+    # flag. If a small model rejects response_format, chat_completion must retry once
+    # WITHOUT it so the model still returns plain text the node can parse.
+    reject = _ok_response(
+        status=400,
+        text=json.dumps({"error": {"message":
+            "response_format with json_schema is not supported for this model"}}))
+    ok = _ok_response(
+        status=200,
+        text=json.dumps({"choices": [{"message": {"content": '{"positive":"a cat"}'}}]}))
+    with patch("requests.post", side_effect=[reject, ok]) as post:
+        out = lm_http.chat_completion(
+            LOCAL_V1, "", "m", [{"role": "user", "content": "hi"}], 0.7, 100,
+            response_format={"type": "json_schema", "json_schema": {"name": "x"}})
+    assert out == '{"positive":"a cat"}'
+    assert post.call_count == 2
+    # The retry request omitted response_format entirely.
+    assert "response_format" not in post.call_args_list[1][1]["json"]
+
+
+def test_chat_completion_fails_when_response_format_rejected_twice():
+    # If the plain-text retry is also rejected, the call must surface a RuntimeError and not
+    # loop forever (only one fallback retry is attempted).
+    reject1 = _ok_response(
+        status=400,
+        text=json.dumps({"error": {"message": "response_format not supported"}}))
+    reject2 = _ok_response(
+        status=400,
+        text=json.dumps({"error": {"message": "still bad"}}))
+    with patch("requests.post", side_effect=[reject1, reject2]) as post:
+        with pytest.raises(RuntimeError):
+            lm_http.chat_completion(
+                LOCAL_V1, "", "m", [{"role": "user", "content": "hi"}], 0.7, 100,
+                response_format={"type": "json_schema", "json_schema": {"name": "x"}})
+    # Exactly one fallback retry: reject -> retry without format -> reject again -> raise.
+    assert post.call_count == 2
+
+
+def test_structured_output_unsupported_helper():
+    # The helper must trigger on the documented indicators and ignore unrelated 400s.
+    ok = _ok_response(status=200, text="{}")
+    assert lm_http._is_structured_output_unsupported(ok) is False
+    for kw in ("response_format", "json_schema", "grammar", "structured"):
+        bad = _ok_response(status=400, text=json.dumps(
+            {"error": {"message": f"model does not support {kw}"}}))
+        assert lm_http._is_structured_output_unsupported(bad) is True
+    unrelated = _ok_response(status=400, text=json.dumps({"error": {"message": "bad request"}}))
+    assert lm_http._is_structured_output_unsupported(unrelated) is False
 

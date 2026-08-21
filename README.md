@@ -1,13 +1,30 @@
 # ComfyUI LLM Prompt Studio
 
-A ComfyUI custom-node pack that drives SDXL prompt engineering with a **local LLM**
-served by [LM Studio](https://lmstudio.ai) or any **local OpenAI-compatible server**.
+A ComfyUI custom-node pack that drives **architecture-aware prompt engineering** with a
+**local LLM** served by [LM Studio](https://lmstudio.ai) or any **local OpenAI-compatible
+server**. It adapts its output to the base model you load — SDXL, SD1.5, Pony,
+Illustrious, Flux and SD3 — not just SDXL.
 
 It closes the full loop: **generate a prompt → render the image → critique it with a
 vision model → auto-revise → save approved results with full metadata**, plus a prompt
 library, scene rebuilding from images, and smart model/LoRA loading.
 
 No cloud, no API keys required — everything runs on your machine.
+
+## Intended Usage
+
+This pack is built for a **single-user, single-machine, single-ComfyUI-instance** workflow:
+
+- **One user per machine** — it loads/unloads the LLM model on your local LM Studio server
+  and tailors prompts to *your* loaded checkpoint. It is not designed for multi-tenant or
+  shared-host use.
+- **One ComfyUI instance** — the nodes share one LM Studio server and assume they own the
+  loaded model; running several ComfyUI instances against the same server can race on model
+  load/unload.
+- **One workflow at a time** — run one prompt-generation/critique pipeline per session so the
+  auto-revision loop and VRAM release behave predictably.
+- **A local LLM in LM Studio** (or any local OpenAI-compatible server) with a model loaded
+  before you queue the nodes.
 
 ---
 

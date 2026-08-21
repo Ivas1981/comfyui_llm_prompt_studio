@@ -190,8 +190,8 @@ export function pollServerStatus(node) {
             const w = getW(node, "server_status");
             if (!w) return;
             const data = await getJSON(
-                "/llm_prompt_studio/status?server_url=" + encodeURIComponent(server_url) +
-                "&api_key=" + encodeURIComponent(api_key));
+                "/llm_prompt_studio/status?server_url=" + encodeURIComponent(server_url),
+                api_key ? { "Authorization": "Bearer " + api_key } : undefined);
             if (!data || !data.reachable) {
                 w.value = "● Server down";
             } else if (data.loaded_models && data.loaded_models.length) {

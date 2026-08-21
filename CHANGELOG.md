@@ -6,6 +6,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.2] — 2026-08-21
+
+Audit fixes (from `plans/Audit1.md`): P0 logic bugs, P1 reliability, and P2 docs / tech-debt.
+VRAM-eviction findings in the audit were obsolete (superseded by the earlier VRAM-release work).
+
+### Fixed
+- **Writer reuse cache ignored `architecture`.** Two different base architectures (e.g. `sdxl` vs
+  `flux`) could share a cached prompt, so architecture-specific token style / negatives / no-negative
+  handling were lost on reuse. `architecture` is now part of the cache key (`family` stays excluded,
+  by design). (#1)
+- **Auto-revision loop picked the wrong Writer.** When a Critic had no `upstreamWriter`, the loop fell
+  back to the *first* Writer in the graph and fed it revision notes. It now stops with a clear warning
+  instead of hijacking an unrelated Writer. (#2)
+- **Approval cleared revision notes on every Writer.** On approval, `revision_notes` is now cleared
+  only on the Writer linked to that Critic (via the prompt connection), not on all Writers. (#3)
+- **Silent failure when the LLM model failed to load.** `ensure_model_loaded` now returns `True`/`False`
+  and the Writer / Critic / Scene Builder raise a clear "model could not be loaded" error instead of
+  proceeding into a confusing streaming/JSON failure. (#20)
+- **Structured output (JSON schema) hard-failed on small models.** LM Studio only enables structured
+  output for models ≳7B and exposes no capability flag. `chat_completion` now retries **once without**
+  `response_format` when the server rejects it, so a small model still returns plain text the node can
+  parse. (#7)
+- **`api_key` leaked into the status URL.** The server-status route now reads the key from the
+  `Authorization: Bearer` header (sent by the JS widget) instead of the query string, keeping it out of
+  browser history / server logs. (#16)
+
+### Changed
+- **Smart Loader `apply_lora="auto"` docstring + tooltip.** Clarified that auto mode applies the
+  *chosen* LoRA to a base (non-distilled) checkpoint (the LoRA may be any LoRA, not only a distillation
+  one). Behavior is unchanged. (#11)
+
+### Docs
+- Added an **Intended Usage** section to the README / readme_ru (single user / machine / ComfyUI
+  instance / workflow; local LLM required). (#22)
+- Reworded the intro and `pyproject.toml` description from "SDXL prompt engineering" to
+  **architecture-aware** (SDXL / SD1.5 / Pony / Illustrious / Flux / SD3). (#23)
+- Renamed `tests/test_lm_http_stream.py` → `tests/test_lm_http_chat.py`. (#24)
+- Added mock-based unit tests for the cache-key architecture scoping (A1), the
+  `ensure_model_loaded` return contract (A4), and the structured-output fallback (B1).
+
+---
+
 ## [1.2.1] — 2026-08-21
 
 ### Added

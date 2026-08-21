@@ -711,6 +711,18 @@ def _is_unrecognized_keys(resp) -> bool:
     return "unrecognized" in msg or "unknown key" in msg
 
 
+def _is_structured_output_unsupported(resp) -> bool:
+    """True when the server rejected the request because it cannot honor `response_format`
+    (structured output / JSON schema / grammar). LM Studio only enables structured output
+    for models >= ~7B and exposes no reliable capability flag, so a small model answers with
+    a 4xx naming one of these indicators. We then retry the call WITHOUT response_format."""
+    if resp is None or getattr(resp, "status_code", 0) < 400:
+        return False
+    txt = (getattr(resp, "text", "") or "").lower()
+    return any(k in txt for k in
+               ("response_format", "json_schema", "json schema", "grammar", "structured"))
+
+
 def _parse_rejected_keys(resp, body_keys) -> set:
     """Extract the rejected body-key names from an `unrecognized_keys` 400 response.
 
@@ -897,9 +909,17 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     It skips the unload+reload when the requested model is already loaded with the identical
     config (tracked server-scoped, since LM Studio serves one model at a time). A changed
     config (context_length / gpu_offload / flash-attention / KV-offload / batch-size / experts)
-    forces a reload. A failed load is not recorded as "loaded", so the next run will retry."""
+    forces a reload.     A failed load is not recorded as "loaded", so the next run will retry.
+
+    Returns ``True`` when the model is ready (already loaded with a matching config, or
+    successfully loaded now), and ``False`` when the load failed. Callers should treat a
+    ``False`` return as fatal and stop before the (unusable) LLM call, so the user gets a
+    clear "model not loaded" error instead of a confusing streaming/JSON failure."""
     if not model or model.startswith("—"):
-        return
+        # Nothing was requested (placeholder selection): there is no model to load, which is
+        # a success from this function's point of view. The node layer already guards the
+        # placeholder before reaching here, but be defensive and report success.
+        return True
     # Record that this process loaded from this server (normalized spelling), so the
     # VRAM-release logic can find it later without probing localhost on every sample.
     _seen_servers.add(_normalize_server(server_url))
@@ -915,7 +935,7 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     # there is nothing to do — avoid a needless unload+reload.
     if _server_loaded.get(server_url) == fingerprint:
         _last_loaded[slot] = fingerprint
-        return
+        return True
     # Evict every resident model (other nodes' included) before loading the selected one.
     unload_all_loaded(server_url, api_key)
     if not load_model(server_url, api_key, model, context_length, gpu_offload,
@@ -930,9 +950,10 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
             "Model '%s' for slot '%s' was not loaded. The next LLM call will fail "
             "until the model is available (check that LM Studio is running and the "
             "model id is correct).", model, slot)
-    else:
-        _server_loaded[server_url] = fingerprint  # record the exact loaded config
-        _last_loaded[slot] = fingerprint
+        return False
+    _server_loaded[server_url] = fingerprint  # record the exact loaded config
+    _last_loaded[slot] = fingerprint
+    return True
 
 
 def server_status(server_url: str, api_key: str = "", timeout: int = 5) -> dict:
@@ -1255,7 +1276,8 @@ def chat_completion(server_url, api_key, model, messages,
     # (mirrors the native v1 retry).
     optional_keys = ["presence_penalty", "frequency_penalty", "min_p", "reasoning"]
     dropped = False
-    for _ in range(2):
+    tried_without_format = False
+    for _ in range(3):
         try:
             resp = requests.post(
                 f"{server_url.rstrip('/')}/chat/completions",
@@ -1276,6 +1298,17 @@ def chat_completion(server_url, api_key, model, messages,
                 logger.debug("OpenAI path dropped unsupported key(s) %s; retrying.",
                              sorted(to_drop))
                 continue
+        # Structured output (response_format) is not supported by every model (e.g. LM
+        # Studio requires ~7B+ and exposes no capability flag). If the server rejects it,
+        # retry once WITHOUT response_format so a small model still returns plain text that
+        # the node's JSON parser can recover from. The retry is attempted at most once.
+        if (response_format is not None and not tried_without_format
+                and _is_structured_output_unsupported(resp)):
+            body.pop("response_format", None)
+            tried_without_format = True
+            logger.warning("Structured output (response_format) rejected by the server; "
+                           "retrying without it (model '%s' will return plain text).", model)
+            continue
         break
     if resp.status_code >= 400:
         txt = resp.text or ""

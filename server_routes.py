@@ -27,11 +27,18 @@ async def llm_prompt_studio_models(request):
 async def llm_prompt_studio_status(request):
     """Report LM Studio reachability and what is loaded, for the front-end indicator.
 
-    Reads ``server_url`` / ``api_key`` from the query string (or falls back to the
-    default local server). ``server_status`` never raises, so this route always
-    returns a JSON object the JS widget can render directly."""
+    Reads ``server_url`` from the query string and ``api_key`` from the
+    ``Authorization: Bearer <key>`` header (the JS widget no longer puts the key in
+    the URL, which would leak it into browser history / server logs). ``server_status``
+    never raises, so this route always returns a JSON object the JS widget can render
+    directly."""
     server_url = request.query.get("server_url", "http://localhost:1234/v1")
-    api_key = request.query.get("api_key", "")
+    auth = request.headers.get("Authorization", "")
+    api_key = ""
+    if auth.lower().startswith("bearer "):
+        api_key = auth[len("Bearer "):].strip()
+    elif auth:
+        api_key = auth.strip()
     try:
         status = server_status(server_url, api_key)
     except Exception as e:  # noqa: BLE001 - never let the route crash

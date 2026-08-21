@@ -424,6 +424,36 @@ def test_ensure_model_loaded_old_string_state_forces_reload():
     load.assert_called_once()
 
 
+def test_ensure_model_loaded_returns_true_on_success():
+    # A4: the function now reports success so callers can stop before a doomed LLM call.
+    with patch("requests.get", return_value=_ok_response(status=404)), \
+         patch.object(lm_http, "load_model", return_value=True):
+        assert lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m") is True
+
+
+def test_ensure_model_loaded_returns_false_on_failure():
+    with patch("requests.get", return_value=_ok_response(status=404)), \
+         patch.object(lm_http, "load_model", return_value=False):
+        assert lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m") is False
+
+
+def test_ensure_model_loaded_returns_true_for_placeholder():
+    # A placeholder (no real model selected) is treated as "nothing to load" -> success.
+    assert lm_http.ensure_model_loaded("s", LOCAL_V1, "", "— none —") is True
+
+
+def test_ensure_model_loaded_returns_true_when_already_loaded():
+    fp = ("m", 8192, 1.0, None, None, None, None)
+    lm_http._server_loaded[LOCAL_V1] = fp
+    with patch("requests.get") as get, \
+         patch.object(lm_http, "load_model") as load:
+        assert lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m") is True
+    load.assert_not_called()
+    get.assert_not_called()
+
+
+
+
 # ---------------------------------------------------------------------------
 # Global LLM-response cache (opt-in, off by default).
 # ---------------------------------------------------------------------------
