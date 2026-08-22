@@ -20,6 +20,29 @@ def tensor_resize(tensor, w, h):
     return t.permute(0, 2, 3, 1)
 
 
+def mask_resize(mask, w, h, binarize=0.5):
+    """Resize a 2D ``[H, W]`` or 3D ``[B, H, W]`` mask to ``(B, h, w)`` via bilinear.
+
+    Unlike :func:`tensor_resize` (which only handles 4D ``[B, H, W, C]`` images),
+    this operates on ``[B, H, W]`` masks. The result is a float tensor; when
+    ``binarize`` is not ``None`` values are thresholded at ``binarize`` to 0/1.
+    """
+    if not isinstance(mask, torch.Tensor):
+        mask = torch.from_numpy(np.asarray(mask))
+    t = mask.to(torch.float32)
+    if t.dim() == 2:
+        t = t[None, ...]                       # [1, H, W]
+    if w is None or h is None or w <= 0 or h <= 0:
+        return t
+    t = t.unsqueeze(1)                         # [B, 1, H, W]
+    t = torch.nn.functional.interpolate(
+        t, size=(int(h), int(w)), mode="bilinear", align_corners=False)
+    t = t.squeeze(1)                           # [B, H, W]
+    if binarize is not None:
+        t = (t >= float(binarize)).to(torch.float32)
+    return t
+
+
 def to_pil(tensor):
     """Convert a single-image ``(1, H, W, C)`` tensor to a ``PIL.Image``."""
     arr = (tensor[0].clamp(0.0, 1.0).cpu().numpy() * 255.0).astype("uint8")

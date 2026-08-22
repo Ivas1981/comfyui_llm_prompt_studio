@@ -496,9 +496,10 @@ pixel path). The `latent` input is the intended input when chained after the Hir
   be installed and a model such as `face_yolov8s.pt` present).
 - **Per-face prompts:** when `face_positive` / `face_negative` are wired (e.g. from the Writer's
   `face_positive` / `face_negative` outputs via Smart Multi-Clip), they override `positive` /
-  `negative` for each cropped face; otherwise the main conditioning is used. The face crop is
-  upscaled by `guide_size` and refined with the node's own KSampler, then pasted back with a
-  feathered mask.
+   `negative` for each cropped face; otherwise the main conditioning is used. Each face crop
+   is upscaled so its shorter side reaches `guide_size` (faces already larger than
+   `guide_size` are skipped), then refined with the node's own KSampler and pasted back with a
+   feathered mask.
 
 ---
 

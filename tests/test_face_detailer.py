@@ -90,14 +90,16 @@ def test_latent_path_refines(monkeypatch):
     node = fd.LLMPromptStudioFaceDetailer()
     vae = _FakeVAE()
     # patch detection to a fixed box in a 64px image (latent 8x8)
-    monkeypatch.setattr(node, "_detect", lambda *a, **k: [(8, 8, 24, 24)])
+    monkeypatch.setattr(node, "_detect", lambda *a, **k: [(8, 8, 24, 24, None)])
     latent = {"samples": torch.zeros((1, 4, 8, 8))}
     out = node.detect_and_detail(
         model=object(), vae=vae, positive=object(), negative=object(),
         seed=0, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
         denoise=0.5, guide_size=512, max_size=1024, crop_factor=1.5,
         detection_method="haar", yolo_model_name="face_yolov8s.pt",
-        detection_threshold=0.5, feather=5, inpaint_model=False, latent=latent)
+        yolo_seg_model_name="(none)",
+        detection_threshold=0.5,         feather=5, mask_shape="square", bbox_scale=1.0, iterations=1,
+        inpaint_model=False, latent=latent)
     assert out[0].shape == (1, 64, 64, 3)
     # latent path decodes the whole latent for detection, then encodes the refined crop
     assert vae.encode_calls == 1
@@ -108,14 +110,16 @@ def test_pixel_path_encodes(monkeypatch):
     _install(monkeypatch)
     node = fd.LLMPromptStudioFaceDetailer()
     vae = _FakeVAE()
-    monkeypatch.setattr(node, "_detect", lambda *a, **k: [(8, 8, 24, 24)])
+    monkeypatch.setattr(node, "_detect", lambda *a, **k: [(8, 8, 24, 24, None)])
     image = torch.zeros((1, 64, 64, 3))
     out = node.detect_and_detail(
         model=object(), vae=vae, positive=object(), negative=object(),
         seed=0, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
         denoise=0.5, guide_size=512, max_size=1024, crop_factor=1.5,
         detection_method="haar", yolo_model_name="face_yolov8s.pt",
-        detection_threshold=0.5, feather=5, inpaint_model=False, image=image)
+        yolo_seg_model_name="(none)",
+        detection_threshold=0.5,         feather=5, mask_shape="square", bbox_scale=1.0, iterations=1,
+        inpaint_model=False, image=image)
     assert out[0].shape == (1, 64, 64, 3)
     # pixel path encodes the refined crop
     assert vae.encode_calls == 1
@@ -133,7 +137,9 @@ def test_no_faces_returns_original(monkeypatch):
         seed=0, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
         denoise=0.5, guide_size=512, max_size=1024, crop_factor=1.5,
         detection_method="haar", yolo_model_name="face_yolov8s.pt",
-        detection_threshold=0.5, feather=5, inpaint_model=False, latent=latent)
+        yolo_seg_model_name="(none)",
+        detection_threshold=0.5,         feather=5, mask_shape="square", bbox_scale=1.0, iterations=1,
+        inpaint_model=False, latent=latent)
     assert out[0].shape == (1, 64, 64, 3)
 
 
@@ -210,4 +216,243 @@ def test_decode_latent_falls_back_when_tiled_raises():
 def test_seed_widget_exposes_control_after_generate():
     req = fd.LLMPromptStudioFaceDetailer.INPUT_TYPES()["required"]
     assert req["seed"][1].get("control_after_generate") is True
+
+
+# -- mask_resize -------------------------------------------------------------
+def test_mask_resize_returns_3d_and_preserves_shape():
+    m = torch.zeros((16, 16))
+    m[4:12, 4:12] = 1.0
+    r = iu.mask_resize(m, 8, 8)                       # downscale
+    assert r.shape == (1, 8, 8)
+    assert r.dtype.is_floating_point
+    assert r[0, 3:5, 3:5].mean() > 0.5               # central block still set
+    up = iu.mask_resize(m, 32, 32)                   # upscale
+    assert up.shape == (1, 32, 32)
+    # alternate binarize threshold still yields a 0/1 mask
+    b = iu.mask_resize(m, 32, 32, binarize=0.9)
+    assert set(b.unique().tolist()).issubset({0.0, 1.0})
+
+
+# -- yolo_seg detection ------------------------------------------------------
+class _Box:
+    def __init__(self, xyxy):
+        self.xyxy = torch.tensor([xyxy])     # [1, 4] like ultralytics
+        self.conf = torch.tensor([0.9])       # [1]
+
+
+class _FakeMasks:
+    def __init__(self, data):
+        self.data = data                              # torch tensor [N, H, W]
+
+
+class _FakeResult:
+    def __init__(self, boxes, masks):
+        self.boxes = boxes
+        self.masks = masks
+
+
+class _FakeYOLO:
+    def __init__(self, path):
+        self.path = path
+
+    def __call__(self, arr, verbose=False, retina_masks=False):
+        H, W = arr.shape[0], arr.shape[1]
+        boxes = [_Box([8.0, 8.0, 56.0, 56.0])]
+        # circular/elliptical mask, not a rectangle -> proves shape is used
+        ys, xs = torch.meshgrid(torch.arange(H, dtype=torch.float32),
+                                torch.arange(W, dtype=torch.float32), indexing="ij")
+        cy, cx = H / 2.0, W / 2.0
+        m = ((xs - cx) ** 2 / (20.0 ** 2) + (ys - cy) ** 2 / (20.0 ** 2)) <= 1.0
+        data = m.unsqueeze(0).to(torch.float32)
+        return [_FakeResult(boxes, _FakeMasks(data))]
+
+
+def _install_ultralytics(monkeypatch):
+    import sys, types
+    fake = types.ModuleType("ultralytics")
+
+    def YOLO(path):
+        return _FakeYOLO(path)
+    fake.YOLO = YOLO
+    monkeypatch.setitem(sys.modules, "ultralytics", fake)
+
+
+def test_detect_yolo_seg_returns_shape_mask(monkeypatch):
+    _install_ultralytics(monkeypatch)
+    node = fd.LLMPromptStudioFaceDetailer()
+    monkeypatch.setattr(node, "_resolve_yolo_seg", lambda name: "/fake/seg.pt")
+    img = torch.zeros((1, 64, 64, 3))
+    boxes = node._detect_yolo_seg(img, "seg.pt", 0.5)
+    assert len(boxes) == 1
+    x1, y1, x2, y2, seg = boxes[0]
+    assert (x1, y1, x2, y2) == (8, 8, 56, 56)
+    assert seg is not None
+    assert seg.shape == (64, 64)
+    assert seg.dim() == 2
+    # ellipse mask: corners are outside, center is inside
+    assert seg[0, 0].item() == 0
+    assert seg[32, 32].item() == 1
+
+
+def test_detect_yolo_seg_falls_back_to_rectangle_when_no_masks(monkeypatch):
+    _install_ultralytics(monkeypatch)
+
+    class _FlatResult(_FakeResult):
+        def __init__(self, boxes):
+            self.boxes = boxes
+            self.masks = None
+    orig = _FakeYOLO.__call__
+    _FakeYOLO.__call__ = lambda self, arr, **k: [_FlatResult([_Box([1.0, 1.0, 20.0, 20.0])])]
+    try:
+        node = fd.LLMPromptStudioFaceDetailer()
+        monkeypatch.setattr(node, "_resolve_yolo_seg", lambda name: "/fake/seg.pt")
+        boxes = node._detect_yolo_seg(torch.zeros((1, 64, 64, 3)), "seg.pt", 0.5)
+        assert len(boxes) == 1
+        assert boxes[0][4] is None                     # no seg mask -> rectangle path
+    finally:
+        _FakeYOLO.__call__ = orig
+
+
+# -- seg-mask refinement -----------------------------------------------------
+def test_refine_face_seg_mask_smaller_than_rectangle(monkeypatch):
+    _install(monkeypatch)
+    node = fd.LLMPromptStudioFaceDetailer()
+    vae = _FakeVAE()
+    base = dict(model=object(), vae=vae, img=torch.zeros((1, 64, 64, 3)), i=0,
+                x1f=8, y1f=8, x2f=56, y2f=56, positive=object(), negative=object(),
+                face_positive=None, face_negative=None, seed=0, steps=20, cfg=7.0,
+                sampler_name="euler", scheduler="karras", denoise=0.5,
+                guide_size=512, max_size=1024, crop_factor=1.5, feather=0,
+                inpaint_model=False)
+    seg = torch.zeros((64, 64))
+    seg[24:40, 24:40] = 1.0                           # true shape inside bbox
+    rect_out = node._refine_face(seg_mask=None, **base)
+    seg_out = node._refine_face(seg_mask=seg, **base)
+    assert rect_out is not None and seg_out is not None
+    _, _, _, _, _, rect_mask = rect_out
+    _, _, _, _, _, seg_mask = seg_out
+    # seg mask covers only the true shape -> strictly smaller than the rectangle
+    assert seg_mask.sum() < rect_mask.sum()
+    assert seg_mask.sum() > 0
+
+
+def test_refine_face_seg_empty_shape_skips(monkeypatch):
+    _install(monkeypatch)
+    node = fd.LLMPromptStudioFaceDetailer()
+    vae = _FakeVAE()
+    seg = torch.zeros((64, 64))                       # nothing detected
+    out = node._refine_face(
+        model=object(), vae=vae, img=torch.zeros((1, 64, 64, 3)), i=0,
+        x1f=8, y1f=8, x2f=56, y2f=56, positive=object(), negative=object(),
+        face_positive=None, face_negative=None, seed=0, steps=20, cfg=7.0,
+        sampler_name="euler", scheduler="karras", denoise=0.5,
+        guide_size=512, max_size=1024, crop_factor=1.5, feather=0,
+        inpaint_model=False, seg_mask=seg)
+    assert out is None
+
+
+# -- mask_shape (square / oval) --------------------------------------------
+def test_build_shape_mask_oval_inscribed_in_rect():
+    m_sq = fd.LLMPromptStudioFaceDetailer._build_shape_mask("square", 64, 64, 8, 56, 8, 56)
+    m_ov = fd.LLMPromptStudioFaceDetailer._build_shape_mask("oval", 64, 64, 8, 56, 8, 56)
+    assert m_sq.sum().item() == 48 * 48
+    assert m_ov.sum().item() < m_sq.sum().item()
+    assert m_ov[0, 8, 8].item() == 0    # rectangle corner -> outside ellipse
+    assert m_ov[0, 32, 32].item() == 1  # center -> inside ellipse
+
+
+def test_build_shape_mask_empty_rect_is_zero():
+    m = fd.LLMPromptStudioFaceDetailer._build_shape_mask("square", 64, 64, 10, 10, 20, 20)
+    assert m.sum().item() == 0
+
+
+def test_refine_face_oval_composite_smaller_than_square(monkeypatch):
+    _install(monkeypatch)
+    node = fd.LLMPromptStudioFaceDetailer()
+    vae = _FakeVAE()
+    base = dict(model=object(), vae=vae, img=torch.zeros((1, 64, 64, 3)), i=0,
+                x1f=8, y1f=8, x2f=56, y2f=56, positive=object(), negative=object(),
+                face_positive=None, face_negative=None, seed=0, steps=20, cfg=7.0,
+                sampler_name="euler", scheduler="karras", denoise=0.5,
+                guide_size=512, max_size=1024, crop_factor=1.5, feather=0,
+                inpaint_model=False)
+    sq = node._refine_face(mask_shape="square", **base)
+    ov = node._refine_face(mask_shape="oval", **base)
+    assert sq is not None and ov is not None
+    _, _, _, _, _, sq_mask = sq
+    _, _, _, _, _, ov_mask = ov
+    assert ov_mask.sum() < sq_mask.sum()
+
+
+# -- bbox_scale -------------------------------------------------------------
+def test_refine_face_bbox_scale_expands_mask(monkeypatch):
+    _install(monkeypatch)
+    node = fd.LLMPromptStudioFaceDetailer()
+    vae = _FakeVAE()
+    base = dict(model=object(), vae=vae, img=torch.zeros((1, 64, 64, 3)), i=0,
+                x1f=16, y1f=16, x2f=48, y2f=48, positive=object(), negative=object(),
+                face_positive=None, face_negative=None, seed=0, steps=20, cfg=7.0,
+                sampler_name="euler", scheduler="karras", denoise=0.5,
+                guide_size=512, max_size=1024, crop_factor=1.0, feather=0,
+                inpaint_model=False, mask_shape="square")
+    base_out = node._refine_face(bbox_scale=1.0, **base)
+    scaled_out = node._refine_face(bbox_scale=2.0, **base)
+    assert base_out is not None and scaled_out is not None
+    _, _, _, _, _, base_mask = base_out
+    _, _, _, _, _, scaled_mask = scaled_out
+    assert scaled_mask.sum() > base_mask.sum()
+
+
+# -- iterations --------------------------------------------------------------
+def test_refine_face_iterations_sample_called_n_times(monkeypatch):
+    import nodes
+
+    class _CountKSampler:
+        n = 0
+
+        def sample(self, model, seed, steps, cfg, sampler_name, scheduler, positive,
+                   negative, latent_image, denoise=1.0):
+            _CountKSampler.n += 1
+            return [{"samples": latent_image["samples"].clone()}]
+    monkeypatch.setattr(nodes, "KSampler", _CountKSampler)
+    node = fd.LLMPromptStudioFaceDetailer()
+    vae = _FakeVAE()
+    _CountKSampler.n = 0
+    out = node._refine_face(
+        model=object(), vae=vae, img=torch.zeros((1, 64, 64, 3)), i=0,
+        x1f=8, y1f=10, x2f=56, y2f=58, positive=object(), negative=object(),
+        face_positive=None, face_negative=None, seed=0, steps=20, cfg=7.0,
+        sampler_name="euler", scheduler="karras", denoise=0.5,
+        guide_size=512, max_size=1024, crop_factor=1.5, feather=0,
+        inpaint_model=False, iterations=3)
+    assert out is not None
+    assert _CountKSampler.n == 3
+
+
+# -- multiple faces ----------------------------------------------------------
+def test_multiple_faces_get_distinct_seeds(monkeypatch):
+    import nodes
+
+    seen = []
+
+    class _CapKSampler:
+        def sample(self, model, seed, steps, cfg, sampler_name, scheduler, positive,
+                   negative, latent_image, denoise=1.0):
+            seen.append(seed)
+            return [{"samples": latent_image["samples"].clone()}]
+    monkeypatch.setattr(nodes, "KSampler", _CapKSampler)
+    node = fd.LLMPromptStudioFaceDetailer()
+    vae = _FakeVAE()
+    monkeypatch.setattr(node, "_detect", lambda *a, **k: [
+        (8, 8, 24, 24, None), (32, 32, 48, 48, None)])
+    image = torch.zeros((1, 64, 64, 3))
+    node.detect_and_detail(
+        model=object(), vae=vae, positive=object(), negative=object(),
+        seed=0, steps=20, cfg=7.0, sampler_name="euler", scheduler="karras",
+        denoise=0.5, guide_size=512, max_size=1024, crop_factor=1.5,
+        detection_method="haar", yolo_model_name="face_yolov8s.pt",
+        yolo_seg_model_name="(none)", detection_threshold=0.5, feather=5,
+        mask_shape="square", bbox_scale=1.0, iterations=1, inpaint_model=False,
+        image=image)
+    assert seen == [0, 1]
 
