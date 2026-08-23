@@ -98,8 +98,6 @@ def test_release_model_no_http_when_nothing_loaded():
         lm_http.release_model(LOCAL_V1, "")
     get.assert_not_called()
     post.assert_not_called()
-    # Must not raise.
-    assert True
 
 
 def test_release_model_clears_both_url_spellings():

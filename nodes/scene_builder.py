@@ -158,7 +158,15 @@ class LLMPromptStudioSceneBuilder:
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
                 "and press the Refresh button on the node.")
-        if vision_check and not resolve_vision(server_url, api_key, model):
+        # Stage 1 ("describe") sends an image; stage 2 ("compose") only consumes the
+        # pre-computed text description. This drives whether the vision check applies.
+        _stage_is_describe = stage.startswith("1")
+        _has_image = _stage_is_describe
+
+        # The vision check only matters for stage 1 (describe), which actually sends an
+        # image. Stage 2 (compose) consumes only the pre-computed text description and never
+        # touches the image, so a non-vision model must still be allowed there.
+        if vision_check and _has_image and not resolve_vision(server_url, api_key, model):
             raise RuntimeError(
                 f"Model '{model}' is not a vision model (the server reports it does not "
                 "support image inputs). For image analysis choose a vision-capable model "
@@ -187,9 +195,7 @@ class LLMPromptStudioSceneBuilder:
             # Resolve the "load_model_profile" choice. Stage 1 (describe) is prose with an
             # image, so its kind is "describe" (structured never applies); stage 2 (compose) is
             # the JSON writer contract. "custom" keeps the widget-derived values above.
-            _stage_is_describe = stage.startswith("1")
             _kind = "describe" if _stage_is_describe else "compose"
-            _has_image = _stage_is_describe
             # B4: pull the loaded LLM model's architecture / param count from LM Studio's
             # native API to drive the auto-profile (e.g. Gemma -> top_k=64). Skipped for
             # custom mode and never raises.

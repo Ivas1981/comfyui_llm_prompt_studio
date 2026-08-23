@@ -199,7 +199,7 @@ comfyui_llm_prompt_studio/
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
     `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
     `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`, `server_status`.
+    `top_k`, `top_p`, `min_p`, `server_status`, `release_vram_after_run`.
   - **`prompt_mode`** выбирает, как обрабатывается негативный промпт: `auto` (по умолчанию)
     переключается на системный промпт без негатива, когда семейство чекпоинта дистиллировано
     (DMD / LCM / Turbo / Hyper / Lightning / Flash, **либо** применена дистиллированная LoRA к
@@ -242,7 +242,10 @@ comfyui_llm_prompt_studio/
     находящиеся в данный момент в памяти сервера — из любого узла — перед загрузкой выбранной**,
     так что в VRAM остаётся только выбранная вами модель. Вам больше не нужно предварительно
     загружать модель в GUI LM Studio.
-- **Выходы:** `positive`, `negative`, `raw`, `scene_name`, `face_positive`, `face_negative`.
+ - **Выходы:** `positive`, `negative`, `raw`, `scene_name`, `face_positive`, `face_negative`.
+ - **`release_vram_after_run`** (по умолчанию вкл.) выгружает модель LM Studio после завершения
+   работы узла, чтобы диффузионный конвейер вернул VRAM. Выключайте только если LLM и чекпоинт
+   одновременно помещаются в VRAM.
 - Включите **`generate_face_prompts`**, чтобы также получать короткие промпты только для лица
   для FaceDetailer/inpainting. Пустые поля лица автоматически откатываются к основным
   `positive`/`negative`.
@@ -271,7 +274,8 @@ comfyui_llm_prompt_studio/
   - **Входы:** `image`, `prompt`, `server_url`, `api_key`, `model`, `load_model_profile`,
     `context_length`, `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`,
     `temperature`, `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`,
-    `vision_check`, `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`.
+    `vision_check`, `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`,
+    `release_vram_after_run`.
   - **`load_model_profile`** работает точно так же, как у Писателя (по умолчанию `auto`,
     универсальная рекомендация по размеру, `custom` сохраняет значения виджетов). Поскольку Критик
     всегда является зрительной моделью, его профиль расширяет вызов `chat_completion`
@@ -282,7 +286,10 @@ comfyui_llm_prompt_studio/
     `temperature`, `max_tokens`, `repeat_penalty`, `top_k`, `top_p`, `min_p` скрыты за кнопкой
     **«⚙ Расширенные настройки»** (рядом с `load_model_profile`), свёрнуты по умолчанию;
     нажмите её, чтобы показать/скрыть.
-  - **Выходы:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
+   - **Выходы:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
+ - **`release_vram_after_run`** (по умолчанию вкл.) выгружает модель LM Studio после завершения
+   работы узла, чтобы диффузионный конвейер вернул VRAM. Выключайте только если LLM и чекпоинт
+   одновременно помещаются в VRAM.
 - `approved = score >= threshold`. Подключите `approved` в Smart Save для фильтрации сохранения.
 - **Цикл авто-переработки**: включите `auto_loop`, чтобы критик автоматически подавал свои
   `revision_notes` обратно в Писателя и ставил в очередь заново, пока изображение не пройдёт или
@@ -319,12 +326,14 @@ comfyui_llm_prompt_studio/
     `describe_prompt`, `composer_prompt`, `user_changes`, `image_max_size`, `temperature`,
     `max_tokens`,     `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`,
     `family`, `architecture`, `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`.
+    `top_k`, `top_p`, `min_p`, `release_vram_after_run`.
   - **`load_model_profile`** работает как у Писателя. Этап определяет «вид»: этап 1
     (`describe`) — проза из зрительного ввода, поэтому всегда `baseline` **без**
     структурированного вывода; этап 2 (`compose`) — это JSON-контракт Писателя и получает
-    `baseline` + структурированный для моделей ≥7B (как у Писателя). `custom` сохраняет
-    значения виджетов сэмплирования.
+    профиль `structured` (near-greedy ~0.1 + структурированный JSON) для моделей ≥7B, как у
+    Писателя. `custom` сохраняет значения виджетов сэмплирования. `vision_check` применяется
+    только к этапу 1 (анализ изображения) — этап 2 компонует по сохранённому текстовому
+    описанию и не требует зрительной модели.
   - **`Advanced settings` (Расширенные настройки)** (кнопка): как у Писателя — `context_length`,
     `gpu_offload`, `flash_attention`, `offload_kv_cache_to_gpu` **и виджеты сэмплирования**
     `temperature`, `max_tokens`, `repeat_penalty`, `top_k`, `top_p`, `min_p` скрыты за кнопкой
@@ -337,7 +346,10 @@ comfyui_llm_prompt_studio/
    - **`architecture`** (опционально, только этап 2) ведёт себя как у Писателя: адаптирует стиль
     токенов и добавляет архитектурно-специфичные негативы по умолчанию для `Flux` / `SD3` /
     `SD1.5` / `Pony` / `Illustrious` и принудительно включает режим без негатива для `Flux` / `SD3`.
-- **Выходы:** `positive`, `negative`, `scene_name`, `prompt_view`, `description`.
+ - **Выходы:** `positive`, `negative`, `scene_name`, `prompt_view`, `description`.
+ - **`release_vram_after_run`** (по умолчанию вкл.) выгружает модель LM Studio после завершения
+   работы узла, чтобы диффузионный конвейер вернул VRAM. Выключайте только если LLM и чекпоинт
+   одновременно помещаются в VRAM.
   Этап 1 помещает зрительное описание в `description`; этап 2 составляет промпт.
 - **`max_field_retries`** (по умолчанию 2): на этапе 2, если JSON модели пропускает обязательные
   поля, узел переспрашивает полный ответ; пустой `scene_name` откатывается к slug от `positive`.
@@ -349,7 +361,8 @@ comfyui_llm_prompt_studio/
 Загружает чекпоинт и автоматически обрабатывает дистиллированную LoRA.
 - **Входы:** `ckpt_name`, `family_override`, `lora_name`, `apply_lora`,
   `strength_model`, `vae_user`.
-- **Выходы:** `MODEL`, `CLIP`, `VAE_MODEL`, `VAE_USER`, `detected_family`, `detected_family_info`.
+- **Выходы:** `MODEL`, `CLIP`, `VAE_MODEL`, `VAE_USER`, `detected_family`,
+  `detected_family_info`, `detected_architecture`, `detected_architecture_info`, `ckpt_name`.
 - Определяет семейство чекпоинта по имени файла + метаданным safetensors:
   `base`, `dmd`, `lcm`, `turbo`, `hyper`, `lightning`, `flash` (плюс `schnell`/`tcd` → `turbo`,
   `pcm` → `lcm`). `family_override` принудительно задаёт его.

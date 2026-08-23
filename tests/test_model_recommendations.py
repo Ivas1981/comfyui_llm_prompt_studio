@@ -22,8 +22,10 @@ def test_parse_size_takes_last_match():
 
 
 def test_recommend_for_baseline_structured_on_large():
+    # >=7B auto uses the "structured" profile (near-greedy t=0.1) so the JSON writer
+    # contract stays at the documented schema-parse-maximizing temperature.
     rec = mr.recommend_for("qwen2.5-14b-instruct", "writer")
-    assert rec == {"profile": "baseline", "structured": True}
+    assert rec == {"profile": "structured", "structured": True}
 
 
 def test_recommend_for_strict_on_small():
@@ -43,10 +45,10 @@ def test_recommend_for_describe_is_baseline_no_structured():
 
 def test_resolve_profile_auto_writer_no_image():
     res = mr.resolve_profile("auto", "qwen2.5-14b-instruct", "writer", has_image=False)
-    assert res["profile"] == "baseline"
+    assert res["profile"] == "structured"
     assert res["structured"] is True
     assert res["response_format"] is mr.WRITER_RESPONSE_SCHEMA
-    assert res["params"]["temperature"] == 0.7
+    assert res["params"]["temperature"] == 0.1
 
 
 def test_resolve_profile_auto_small_model_no_structured():
@@ -166,17 +168,17 @@ def test_resolve_profile_gemma_architecture_override():
 def test_resolve_profile_accepts_optional_params_gracefully():
     # Headless / server_routes callers that omit architecture/param_count must work.
     res = mr.resolve_profile("auto", "qwen2.5-14b-instruct", "writer", has_image=False)
-    assert res["profile"] == "baseline"
+    assert res["profile"] == "structured"
 
 
 def test_recommend_for_uses_param_count_over_name():
     # B4.4: when the API reports an active param count, it overrides the name heuristic.
     # A 4B model by name would be "strict", but a 70B MoE reported via param_count is
-    # "baseline" (the real strength is what matters).
+    # "structured" (the real strength is what matters).
     assert mr.recommend_for("tiny-model", "writer", param_count=70.0) == \
-        {"profile": "baseline", "structured": True}
+        {"profile": "structured", "structured": True}
     assert mr.recommend_for("huge-model", "writer", param_count=4.0) == \
         {"profile": "strict", "structured": False}
     # Without param_count the name heuristic is used as the fallback.
     assert mr.recommend_for("qwen2.5-14b-instruct", "writer", param_count=None) == \
-        {"profile": "baseline", "structured": True}
+        {"profile": "structured", "structured": True}

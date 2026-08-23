@@ -70,8 +70,8 @@ class LLMPromptStudioSmartLoader:
             if should_apply and lora_name and lora_name != "[none]":
                 lora_path = folder_paths.get_full_path("loras", lora_name)
                 lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
-                model, _ = comfy.sd.load_lora_for_models(
-                    model, clip, lora, strength_model, 0)
+                model, clip = comfy.sd.load_lora_for_models(
+                    model, clip, lora, strength_model, strength_model)
                 # A distillation LoRA (dmd/lcm/turbo/hyper/lightning/flash) applied on top of a
                 # base checkpoint makes the whole pipeline distilled, so it drives no-negative
                 # mode downstream.

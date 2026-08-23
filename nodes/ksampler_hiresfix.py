@@ -173,6 +173,9 @@ class LLMPromptStudioKSamplerHiresFix:
     def _pixel_stage(self, latent, upscale_model, method, width, height, vae, iterations):
         from nodes import VAEDecode, VAEEncode
         from comfy.utils import tiled_scale
+        if vae is None:
+            raise RuntimeError(
+                "pixel (model) hires upscale requires a connected VAE (optional_vae input)")
         iterations = max(1, int(iterations))
         pixels = VAEDecode().decode(vae, latent)[0]
         up = pixels.permute(0, 3, 1, 2)

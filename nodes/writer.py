@@ -270,13 +270,7 @@ class LLMPromptStudioWriter:
                     else DEFAULT_SYSTEM_NO_NEGATIVE
             else:
                 effective_system = system_prompt
-            if generate_face_prompts:
-                inst = face_prompt_instruction.strip() if face_prompt_instruction else ""
-                if not inst:
-                    inst = FACE_PROMPT_INSTRUCTION_NO_NEGATIVE if no_negative \
-                        else FACE_PROMPT_INSTRUCTION
-                effective_system = effective_system + inst
-    
+
             # Override the system prompt with the preset's only when the user left it at default.
             # In no-negative mode we prefer the preset's dedicated no-negative variant so the
             # negative is correctly required to be empty; otherwise its standard variant is used.
@@ -290,7 +284,17 @@ class LLMPromptStudioWriter:
                 if REASONING_HINT and "ALWAYS finish your reply with the complete JSON object" \
                         not in effective_system:
                     effective_system = effective_system + REASONING_HINT
-    
+
+            # Append the face-prompt instruction AFTER the preset override so a preset's system
+            # prompt does not wipe the generate_face_prompts contract (face_positive/face_negative
+            # would otherwise silently fall back to the main prompts).
+            if generate_face_prompts:
+                inst = face_prompt_instruction.strip() if face_prompt_instruction else ""
+                if not inst:
+                    inst = FACE_PROMPT_INSTRUCTION_NO_NEGATIVE if no_negative \
+                        else FACE_PROMPT_INSTRUCTION
+                effective_system = effective_system + inst
+
             # Architecture adaptation: append architecture-specific guidance to the system prompt
             # (only when a detected architecture is wired in). SDXL guidance is empty, so SDXL
             # generation is unchanged when `architecture` is empty/unwired. A Flux/SD3 architecture

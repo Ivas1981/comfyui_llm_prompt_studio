@@ -198,7 +198,7 @@ Generates an SDXL prompt from an idea.
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
     `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
     `use_preset_system_prompt`, `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`, `server_status`.
+    `top_k`, `top_p`, `min_p`, `server_status`, `release_vram_after_run`.
   - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
     to a no-negative system prompt when the checkpoint family is distilled (DMD / LCM /
     Turbo / Hyper / Lightning / Flash, **or** a distillation LoRA applied to a base checkpoint —
@@ -210,8 +210,8 @@ Generates an SDXL prompt from an idea.
     **sampling + load profile** for the selected model. `auto` (default) applies the
     profile chosen by a *universal* heuristic — the model size is read from its id
     (`qwen2.5-14b-instruct` → 14B, `nvidia/nemotron-3-nano-4b` → 4B) and mapped to a
-    profile with **no hard-coded model list**: ≥7B models get `baseline` + structured JSON
-    output, <7B models get `strict`, and unrecognized sizes fall back to a safe `baseline`.
+    profile with **no hard-coded model list**: ≥7B models get the `structured` profile
+    (near-greedy ~0.1 temperature + structured JSON output for the highest schema parse rate), <7B models get `strict`, and unrecognized sizes fall back to a safe `baseline`.
     The other choices pick a fixed profile (`baseline` / `structured` / `creative` /
     `strict`), and `custom` keeps your individually-set sampling widgets (full backward
     compatibility with old workflows). When a profile is active, its sampling parameters
@@ -238,8 +238,11 @@ Generates an SDXL prompt from an idea.
     (`flash_attention`, `offload_kv_cache_to_gpu`), and **unloads every model currently resident
     on the server — from any node — before loading the selected one**, so only the model you picked
     stays in VRAM. You no longer need to pre-load the model in the LM Studio GUI.
-- **Outputs:** `positive`, `negative`, `raw`, `scene_name`, `face_positive`,
-  `face_negative`.
+ - **Outputs:** `positive`, `negative`, `raw`, `scene_name`, `face_positive`,
+   `face_negative`.
+ - **`release_vram_after_run`** (default on) unloads the LM Studio model after the node
+   finishes so the diffusion pipeline reclaims the VRAM. Turn it off only when the LLM and the
+   checkpoint fit in VRAM simultaneously.
 - Toggle **`generate_face_prompts`** to also get short face-only prompts for
   FaceDetailer/inpainting. Empty face fields automatically fall back to the main
   `positive`/`negative`.
@@ -270,7 +273,8 @@ A vision model scores how well the image matches the prompt.
   - **Inputs:** `image`, `prompt`, `server_url`, `api_key`, `model`, `load_model_profile`,
     `context_length`, `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`,
     `temperature`, `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`,
-    `vision_check`, `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`.
+    `vision_check`, `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`,
+    `release_vram_after_run`.
   - **`load_model_profile`** works exactly as on the Writer (default `auto`, universal
     size-based recommendation, `custom` keeps the widget values). Because the Critic is
     always a vision model, its profile expands the `chat_completion` call with the
@@ -281,7 +285,10 @@ A vision model scores how well the image matches the prompt.
     `max_tokens`, `repeat_penalty`, `top_k`, `top_p`, `min_p` are hidden behind a
     **«⚙ Advanced settings»** button (next to `load_model_profile`), collapsed by default;
     click it to show/hide them.
- - **Outputs:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
+  - **Outputs:** `approved` (bool), `score` (int), `revision_notes`, `verdict`, `raw`.
+ - **`release_vram_after_run`** (default on) unloads the LM Studio model after the node
+   finishes so the diffusion pipeline reclaims the VRAM. Turn it off only when the LLM and the
+   checkpoint fit in VRAM simultaneously.
 - `approved = score >= threshold`. Wire `approved` into Smart Save to gate saving.
 - **Auto-revision loop**: enable `auto_loop` to have the critic automatically feed its
   `revision_notes` back into the Writer and re-queue until the image passes or
@@ -318,12 +325,14 @@ Two-stage scene construction from an image.
     `describe_prompt`, `composer_prompt`, `user_changes`, `image_max_size`, `temperature`,
     `max_tokens`,     `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`,
     `family`, `architecture`, `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`.
+    `top_k`, `top_p`, `min_p`, `release_vram_after_run`.
   - **`load_model_profile`** works as on the Writer. The stage decides the "kind": stage 1
     (`describe`) is prose from a vision input, so it is always `baseline` with **no**
     structured output; stage 2 (`compose`) is the JSON writer contract and gets
-    `baseline` + structured for ≥7B models (just like the Writer). `custom` keeps the
-    widget sampling values.
+    the `structured` profile (near-greedy ~0.1 + structured JSON) for ≥7B models, just like
+    the Writer. `custom` keeps the widget sampling values. `vision_check` only applies to stage
+    1 (the image-analysis stage) — stage 2 composes from the saved text description and does
+    not require a vision model.
   - **`Advanced settings`** (button): same as the Writer — `context_length`, `gpu_offload`,
     `flash_attention`, `offload_kv_cache_to_gpu` **and the sampling widgets** `temperature`,
     `max_tokens`, `repeat_penalty`, `top_k`, `top_p`, `min_p` are hidden behind a
@@ -336,7 +345,10 @@ Two-stage scene construction from an image.
    - **`architecture`** (optional, stage 2 only) behaves as on the Writer: it adapts the token
     style and appends architecture-specific default negatives for `Flux` / `SD3` / `SD1.5` /
     `Pony` / `Illustrious`, and forces the no-negative path for `Flux` / `SD3`.
-- **Outputs:** `positive`, `negative`, `scene_name`, `prompt_view`, `description`.
+ - **Outputs:** `positive`, `negative`, `scene_name`, `prompt_view`, `description`.
+ - **`release_vram_after_run`** (default on) unloads the LM Studio model after the node
+   finishes so the diffusion pipeline reclaims the VRAM. Turn it off only when the LLM and the
+   checkpoint fit in VRAM simultaneously.
   Stage 1 puts the vision description into `description`; stage 2 composes the prompt.
 - **`max_field_retries`** (default 2): in stage 2, if the model's JSON omits required
   fields, the node re-asks for a complete answer; an empty `scene_name` falls back to a
@@ -349,7 +361,8 @@ Two-stage scene construction from an image.
 Loads a checkpoint and handles distillation LoRA automatically.
 - **Inputs:** `ckpt_name`, `family_override`, `lora_name`, `apply_lora`,
   `strength_model`, `vae_user`.
-- **Outputs:** `MODEL`, `CLIP`, `VAE_MODEL`, `VAE_USER`, `detected_family`, `detected_family_info`.
+- **Outputs:** `MODEL`, `CLIP`, `VAE_MODEL`, `VAE_USER`, `detected_family`,
+  `detected_family_info`, `detected_architecture`, `detected_architecture_info`, `ckpt_name`.
 - Detects the checkpoint family from the filename + safetensors metadata:
   `base`, `dmd`, `lcm`, `turbo`, `hyper`, `lightning`, `flash` (plus `schnell`/`tcd` → `turbo`,
   `pcm` → `lcm`). `family_override` forces it.
@@ -434,10 +447,14 @@ node straight into **FaceDetailer**, so no extra VAE decode is needed between th
   `hires_upscale_method`, `hires_latent_upscale_model`, `hires_latent_upscale_factor`,
   `hires_upscale_iterations`, `hires_latent_upscale_tile`, `hires_steps`, `hires_cfg`,
   `hires_denoise`, `hires_sampler_name`,
-  `hires_scheduler`, `hires_use_same_seed`, `hires_seed`, `vae_decode`, `preview_method`; optional
-  `hires_upscale_model` (UPSCALE_MODEL), `hires_positive`, `hires_negative`, `optional_vae`.
-- **Outputs:** `LATENT`, `IMAGE` (the IMAGE is only produced when `vae_decode` is on, otherwise it
-   returns a 1×1 placeholder so downstream graphs stay valid).
+   `hires_scheduler`, `hires_use_same_seed`, `hires_seed`, `vae_decode`, `preview_method`,
+   `vae_tile_size`; optional `hires_upscale_model` (UPSCALE_MODEL), `hires_positive`,
+   `hires_negative`, `optional_vae`.
+ - **Outputs:** `LATENT`, `IMAGE`, `VAE_TILE_SIZE` (the IMAGE is only produced when `vae_decode`
+   is on, otherwise it returns a 1×1 placeholder so downstream graphs stay valid; `VAE_TILE_SIZE`
+   echoes the `vae_tile_size` input so it can be wired into FaceDetailer's `vae_tile_size`).
+ - **`vae_tile_size`** (default 0 = whole frame) tiles the final VAE decode to cap VRAM on
+   large hires latents, and is emitted on the `VAE_TILE_SIZE` output.
 - **Seed control:** `seed` and `hires_seed` carry ComfyUI's `control_after_generate` toggle
   (randomize / increment / decrement / fixed) so the field auto-updates after each Generate.
   `hires_seed` is only used when `hires_use_same_seed` is off; otherwise the base `seed` drives
@@ -487,9 +504,10 @@ path — one shared VAE decode for detection, crops straight from the latent) or
 pixel path). The `latent` input is the intended input when chained after the Hires Fix node.
 
 - **Inputs:** `model`, `vae`, `positive`, `negative`, `seed`, `steps`, `cfg`, `sampler_name`,
-  `scheduler`, `denoise`, `guide_size`, `max_size`, `detection_method`, `yolo_model_name`,
-  `detection_threshold`, `feather`, `inpaint_model`; optional `image`, `latent`,
-  `face_positive`, `face_negative`.
+  `scheduler`, `denoise`, `guide_size`, `max_size`, `crop_factor`, `detection_method`,
+  `yolo_model_name`, `yolo_seg_model_name`, `detection_threshold`, `feather`, `mask_shape`,
+  `bbox_scale`, `iterations`, `inpaint_model`; optional `image`, `latent`,
+  `face_positive`, `face_negative`, `vae_tile_size`.
 - **Outputs:** `IMAGE` (the input image with each detected face refined; returned unchanged when no
    face is found).
 - **Seed control:** `seed` carries ComfyUI's `control_after_generate` toggle (randomize / increment /

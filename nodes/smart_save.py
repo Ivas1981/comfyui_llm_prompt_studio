@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 
 import folder_paths
 import numpy as np
@@ -8,6 +9,8 @@ from PIL import Image
 from ..library import resolve_library_path, safe_path_in_output, save_prompt_to_library
 from ..model_meta import collect_generation_meta
 from ..debug import node_span
+
+logger = logging.getLogger("llm_prompt_studio")
 
 
 def _slug_part(name, max_len=40):
@@ -115,8 +118,22 @@ class LLMPromptStudioSmartSave:
                 path = self._next_path(folder, base)
                 save_kwargs = {"quality": jpeg_quality}
                 if exif is not None:
-                    save_kwargs["exif"] = exif.tobytes()
-                img.save(path, "JPEG", **save_kwargs)
+                    try:
+                        save_kwargs["exif"] = exif.tobytes()
+                    except Exception as e:  # noqa: BLE001 — a malformed EXIF/UserComment
+                        # must not abort the whole batch; save without metadata instead.
+                        logger.warning("Smart Save could not serialize EXIF for %s: %s", path, e)
+                        save_kwargs.pop("exif", None)
+                try:
+                    img.save(path, "JPEG", **save_kwargs)
+                except Exception as e:  # noqa: BLE001 — keep partial results on a save error
+                    if save_kwargs.get("exif") is not None:
+                        logger.warning("Smart Save failed with EXIF for %s (%s); retrying without "
+                                       "metadata.", path, e)
+                        save_kwargs.pop("exif", None)
+                        img.save(path, "JPEG", **save_kwargs)
+                    else:
+                        raise
                 results.append(path)
                 rel = os.path.relpath(folder, out_dir)
                 if not rel.startswith(".."):

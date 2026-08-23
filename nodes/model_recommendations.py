@@ -169,7 +169,10 @@ def recommend_for(model_id, kind, param_count=None):
         return {"profile": "baseline", "structured": False}
     if size < 7.0:
         return {"profile": "strict", "structured": False}
-    return {"profile": "baseline", "structured": True}
+    # >=7B: capable models parse JSON reliably, and structured (JSON) output is driven
+    # near-greedy (temperature ~0.1) per the module docstring — the dedicated "structured"
+    # profile is exactly that, so it is used here rather than the 0.7 "baseline".
+    return {"profile": "structured", "structured": True}
 
 
 def _normalize_neutral(params):
