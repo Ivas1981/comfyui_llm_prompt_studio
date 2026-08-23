@@ -98,8 +98,9 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
 ## Requirements
 
 - ComfyUI — **recommended and tested on ComfyUI 0.19.3 (classic)**.
-- Python packages: `requests`, `numpy`, `pillow` (declared in `requirements.txt`;
-  usually already present in a ComfyUI environment).
+- Python packages: `requests`, `numpy`, `pillow`, `opencv-python-headless` (declared in
+  `requirements.txt`; usually already present in a ComfyUI environment). `opencv` is required
+  for the Face Detailer's default `haar` detection.
 - **LM Studio** running a local server (default `http://localhost:1234/v1`).
   - A chat/instruct model for the Writer / Critic text tasks.
   - A **vision-capable** model (Qwen2.5-VL, LLaVA, Gemma-3, …) for the Critic and
@@ -120,7 +121,7 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
    ```
 2. Install dependencies (if missing):
    ```
-   pip install requests numpy pillow
+    pip install requests numpy pillow opencv-python-headless
    ```
 3. Start LM Studio, load a model and enable the local server.
 4. Restart ComfyUI. You should see in the console:
@@ -196,7 +197,7 @@ Generates an SDXL prompt from an idea.
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
     `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
-    `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
+    `use_preset_system_prompt`, `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
     `top_k`, `top_p`, `min_p`, `server_status`.
   - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
     to a no-negative system prompt when the checkpoint family is distilled (DMD / LCM /
@@ -251,7 +252,9 @@ Generates an SDXL prompt from an idea.
   `scene_name` then falls back to a slug of `positive`; empty `positive`/`negative` raise
   an error.
 - Button **🔄 Refresh models** re-reads the model list from the server.
-- **Style presets** (`style_preset`): pick a built-in style to append its style tags to the
+- **Style presets** (`style_preset` + `use_preset_system_prompt`): pick a built-in style to append its style tags to the
+  prompt. `use_preset_system_prompt` (default on) additionally overrides the system prompt with the
+  preset's; turn it off to keep your own system prompt while still applying the preset's style tags.
   generated prompt (and override the system prompt when the system-prompt widget is left at
   default). Presets that opt out of no-negative mode are skipped automatically in that mode.
   Use "Reload presets" / "Reset to defaults" in the node menu to manage them.
@@ -492,8 +495,17 @@ pixel path). The `latent` input is the intended input when chained after the Hir
 - **Seed control:** `seed` carries ComfyUI's `control_after_generate` toggle (randomize / increment /
    decrement / fixed). Per detected face the seed is incremented (`seed + i`) so each refined face is
    deterministic but distinct.
-- **Detection:** `haar` (OpenCV, no extra dependencies) or `yolo` (ultralytics — `ultralytics` must
-  be installed and a model such as `face_yolov8s.pt` present).
+   - **Detection:** `haar` (OpenCV — `opencv-python`/`opencv-python-headless` is auto-installed
+     from `requirements.txt`), `yolo` (bounding-box; `ultralytics`
+    must be installed and a model such as `face_yolov8s.pt` present), or `yolo_seg`
+    (segmentation — uses `yolo_seg_model_name` instead of a rectangle, giving a per-face mask
+    of the real shape). `detection_threshold` (default 0.5) filters weak detections.
+  - **Mask & crop refinement:** `mask_shape` (`square` / `oval`) sets the inpaint mask for
+    `haar`/`yolo`; `bbox_scale` (0.1–3.0, default 1.0) expands/contracts the crop around the
+    face center (e.g. to include jaw/neck); `iterations` (1–10, default 1) repeats the
+   refinement pass over the upscaled crop for stronger cleanup. `feather` (px) softens the
+   mask edge when compositing back. `vae_tile_size` (px, default 0 = whole frame) enables
+   tiled VAE decoding of the refined crop to bound VRAM on large faces.
 - **Per-face prompts:** when `face_positive` / `face_negative` are wired (e.g. from the Writer's
   `face_positive` / `face_negative` outputs via Smart Multi-Clip), they override `positive` /
    `negative` for each cropped face; otherwise the main conditioning is used. Each face crop

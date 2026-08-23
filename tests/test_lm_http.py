@@ -781,3 +781,53 @@ def test_chat_completion_enriches_model_load_failure():
             lm_http.chat_completion(LOCAL_V1, "", "m", messages, 0.7, 100)
     assert "failed to load on the server" in str(exc.value)
     assert "exited before becoming healthy" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# B4: native /api/v1/models entry cache + architecture / param_count helpers.
+# ---------------------------------------------------------------------------
+
+def test_get_model_entry_matches_and_caches():
+    models = _models_response([{"key": "gemma-3-12b", "architecture": "gemma3",
+                                "params_string": "12B", "loaded_instances": []}])
+    with patch("requests.get", return_value=models):
+        entry = lm_http.get_model_entry(LOCAL_V1, "", "gemma-3-12b")
+    assert entry is not None
+    assert entry["architecture"] == "gemma3"
+    # A second call within the TTL must not re-hit the network (cache returns the object).
+    with patch("requests.get", side_effect=AssertionError("should be cached")):
+        assert lm_http.get_model_entry(LOCAL_V1, "", "gemma-3-12b") is entry
+
+
+def test_get_model_entry_not_listed_returns_none():
+    models = _models_response([{"key": "other"}])
+    with patch("requests.get", return_value=models):
+        assert lm_http.get_model_entry(LOCAL_V1, "", "missing") is None
+
+
+def test_get_model_entry_network_error_returns_none():
+    with patch("requests.get", side_effect=__import__("requests").RequestException("down")):
+        assert lm_http.get_model_entry(LOCAL_V1, "", "m") is None
+
+
+def test_model_architecture_and_param_count():
+    entry = {"key": "m", "architecture": "gemma3", "params_string": "26B-A4B"}
+    with patch.object(lm_http, "get_model_entry", return_value=entry):
+        assert lm_http.model_architecture(LOCAL_V1, "", "m") == "gemma3"
+        assert lm_http.model_param_count(LOCAL_V1, "", "m") == 4.0
+    # MoE suffix absent -> single number.
+    with patch.object(lm_http, "get_model_entry", return_value={"params_string": "7B"}):
+        assert lm_http.model_param_count(LOCAL_V1, "", "m") == 7.0
+    # No entry -> None (graceful fallback, no regression on non-LM-Studio servers).
+    with patch.object(lm_http, "get_model_entry", return_value=None):
+        assert lm_http.model_architecture(LOCAL_V1, "", "m") is None
+        assert lm_http.model_param_count(LOCAL_V1, "", "m") is None
+
+
+def test_invalidate_model_entry_cache():
+    with patch("requests.get", return_value=_models_response([{"key": "m"}])):
+        assert lm_http.get_model_entry(LOCAL_V1, "", "m") is not None
+    lm_http.invalidate_model_entry_cache(LOCAL_V1, "m")
+    with patch("requests.get", side_effect=AssertionError("should refetch after invalidation")):
+        with pytest.raises(AssertionError):
+            lm_http.get_model_entry(LOCAL_V1, "", "m")

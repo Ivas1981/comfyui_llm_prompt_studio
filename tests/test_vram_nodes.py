@@ -46,9 +46,22 @@ def test_writer_releases_once_on_success():
 
 
 def test_writer_releases_on_chat_error():
+    import pytest
     def _boom(*a, **k):
         raise RuntimeError("llm down")
-    result, prep, rel, keep = _run_writer(_boom)
+    with patch.object(writer_node, "ensure_model_loaded", lambda *a, **k: True), \
+         patch.object(writer_node, "chat_completion", side_effect=_boom), \
+         patch.object(writer_node, "release_after_llm") as rel, \
+         patch.object(writer_node, "mark_keep_loaded") as keep, \
+         patch.object(writer_node, "release_enabled", return_value=True):
+        with pytest.raises(RuntimeError):
+            writer_node.LLMPromptStudioWriter().execute(
+                server_url=LOCAL_V1, api_key="", model="m", context_length=8192,
+                gpu_offload=1.0, system_prompt="SYS", idea="a cat", revision_notes="",
+                temperature=0.7, max_tokens=512, seed=0, reuse_last_prompt=False,
+                generate_face_prompts=False, max_field_retries=0,
+                face_prompt_instruction="", prompt_mode="standard", family="",
+                unique_id="1", style_preset="— none —")
     # The error propagates, but the finally still released the model.
     rel.assert_called_once()
     keep.assert_called_once_with(LOCAL_V1, False)
@@ -70,10 +83,11 @@ def test_writer_reuse_cache_hit_no_release():
          patch.object(writer_node, "release_after_llm") as rel, \
          patch.object(writer_node, "release_enabled", return_value=True):
         writer_node.LLMPromptStudioWriter().execute(**kw)
-        # Second run hits the cache: no chat, no release.
+        # Second Run hits the cache: no chat. The first (cache-miss) run still
+        # releases in its finally, so exactly one release happens across both runs.
         writer_node.LLMPromptStudioWriter().execute(**kw)
     assert call.call_count == 1
-    rel.assert_not_called()
+    rel.assert_called_once()
 
 
 def test_writer_no_release_when_flag_false():
@@ -92,7 +106,7 @@ def _run_scene(stage, chat_side_effect, **extra):
               composer_prompt="C", user_changes="", image_max_size=1024,
               temperature=0.7, max_tokens=1024, max_field_retries=0,
               vision_check=False, description_view="", prompt_mode="standard",
-              family="", unique_id="2", style_preset="— none —")
+              family="", unique_id="2")
     kw.update(extra)
     with patch.object(scene_node, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(scene_node, "chat_completion", side_effect=chat_side_effect), \
@@ -118,7 +132,7 @@ def test_scene_stage2_releases_on_success():
         "2 - compose",
         [_writer_json(positive="p", negative="n", scene_name="s")],
         description_view="a scene")
-    assert result[0] == "p"
+    assert result["result"][0] == "p"
     rel.assert_called_once()
     keep.assert_called_once_with(LOCAL_V1, False)
 

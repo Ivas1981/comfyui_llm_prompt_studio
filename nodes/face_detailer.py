@@ -287,7 +287,7 @@ class LLMPromptStudioFaceDetailer:
                      seed, steps, cfg, sampler_name, scheduler, denoise,
                      guide_size, max_size, crop_factor, feather, inpaint_model,
                      seg_mask=None, mask_shape="square", bbox_scale=1.0,
-                     iterations=1):
+                     iterations=1, vae_tile_size=0):
         # Optional scaling of the detected face bbox around its center. >1 captures
         # more of the region (jaw/neck), <1 keeps only the face center. 1.0 = exact.
         if bbox_scale is not None and float(bbox_scale) != 1.0:
@@ -384,7 +384,7 @@ class LLMPromptStudioFaceDetailer:
             refined = sample_latent(model, seed + k, steps, cfg, sampler_name,
                                     scheduler, pos, neg, lat_k, denoise)
             samples = refined["samples"]
-        ref_crop = vae.decode(samples)
+            ref_crop = _decode_latent(vae, samples, vae_tile_size)
         ref_crop = tensor_resize(ref_crop, cw, ch)  # back to crop resolution
 
         # Composite only the face region; the margin stays untouched (mask = 0).
@@ -423,14 +423,18 @@ class LLMPromptStudioFaceDetailer:
             else:
                 raise ValueError("Face Detailer requires `latent` or `image` input")
 
-            boxes = self._detect(img, detection_method, yolo_model_name,
-                                 yolo_seg_model_name, detection_threshold)
-            if not boxes:
-                return (img,)
-
             result = img.clone()
             face_idx = 0
             for i in range(img.shape[0]):
+                # Detect faces per image in the batch: the seg masks returned by
+                # _detect_yolo_seg are sized to the image passed in, so detection must
+                # run on the individual crop `img[i:i+1]` to keep mask coordinates
+                # aligned to that frame (previously detection ran once on the whole
+                # batch and reused the same boxes for every image).
+                boxes = self._detect(img[i:i + 1], detection_method, yolo_model_name,
+                                     yolo_seg_model_name, detection_threshold)
+                if not boxes:
+                    continue
                 for (x1f, y1f, x2f, y2f, seg_mask) in boxes:
                     out = self._refine_face(
                         model, vae, img, i, x1f, y1f, x2f, y2f,
@@ -438,7 +442,8 @@ class LLMPromptStudioFaceDetailer:
                         seed + face_idx, steps, cfg, sampler_name, scheduler, denoise,
                         guide_size, max_size, crop_factor, feather, inpaint_model,
                         seg_mask=seg_mask, mask_shape=mask_shape,
-                        bbox_scale=bbox_scale, iterations=iterations)
+                        bbox_scale=bbox_scale, iterations=iterations,
+                        vae_tile_size=vae_tile_size)
                     face_idx += 1
                     if out is None:
                         continue

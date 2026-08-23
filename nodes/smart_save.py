@@ -113,7 +113,10 @@ class LLMPromptStudioSmartSave:
                 arr = (t.cpu().numpy() * 255).clip(0, 255).astype(np.uint8)
                 img = Image.fromarray(arr).convert("RGB")
                 path = self._next_path(folder, base)
-                img.save(path, "JPEG", quality=jpeg_quality, exif=exif.tobytes())
+                save_kwargs = {"quality": jpeg_quality}
+                if exif is not None:
+                    save_kwargs["exif"] = exif.tobytes()
+                img.save(path, "JPEG", **save_kwargs)
                 results.append(path)
                 rel = os.path.relpath(folder, out_dir)
                 if not rel.startswith(".."):

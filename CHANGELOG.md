@@ -6,6 +6,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Face Detailer segmentation & refinement options** (`ca232bc`). `detection_method` now
+  offers `yolo_seg` (YOLO segmentation mask instead of a bounding box) with a
+  `yolo_seg_model_name` selector; `mask_shape` (`square` / `oval`) sets the inpaint mask
+  shape, `bbox_scale` (0.1–3.0) expands/contracts the crop, and `iterations` (1–10) re-refines
+  each face multiple times.
+- **LM Studio API auto-profile (B4).** Writer / Scene Builder / Critic now read the loaded
+  model's real `architecture` and `params_string` from LM Studio's native `/api/v1/models`
+  (best-effort, cached, never raises) and feed them into `resolve_profile`. Per-architecture
+  sampler overrides (e.g. Gemma → `top_k=64`, via `ARCH_SAMPLER_OVERRIDES`) are applied on top
+  of the profile, and the strict/baseline split uses the model's real parameter count instead of
+  guessing from the filename. Non-LM-Studio / OpenAI-compatible servers fall back to the name
+  heuristic unchanged.
+- **Distilled-preset AYS per architecture (A6).** `recommend()` now picks the AYS variant by
+  checkpoint architecture: `AYS SD1` for SD1.5, `AYS SDXL` for SDXL/Pony/Illustrious/unknown,
+  and the family's own scheduler (e.g. `simple`) for Flux/SD3 where AYS does not apply. Removed
+  the redundant TCDScheduler hint text from the TCD presets.
+- **Face Detailer: per-image batch detection + tiled VAE.** Detection now runs per frame inside a
+  batch (segmentation masks stay aligned to each image) and the refined crop is decoded with
+  `vae_tile_size` (tiled VAE) to cap VRAM; added the `vae_tile_size` widget.
+- **Writer: `use_preset_system_prompt` toggle.** New checkbox (default on) controls whether a
+  selected style preset overrides the system prompt, replacing the old "only when left at
+  default" heuristic so a customized system prompt is preserved even with a preset loaded.
+
+### Fixed
+- **Basic-auth middleware loop on the project's own API.** The `research/comfyui-basic-auth`
+  node rejected every `/llm_prompt_studio/*` request with `401 parse_error=ValueError` because
+  the project's JS sends `Authorization: Bearer <api_key>` (status route) while the middleware
+  only accepts `Basic`. The middleware now exempts the `/llm_prompt_studio/` namespace (those
+  routes have their own Bearer/key auth) and `.strip()`s the configured credentials so `.bat`-set
+  env values with stray whitespace no longer mismatch. (#25)
+- **Smart Save EXIF crash (A1).** `img.save(..., exif=exif.tobytes())` no longer passes
+  `exif=None` (Pillow rejects it); EXIF is attached only when present.
+- **Family detection word boundaries (`model_meta`).** A lowercase letter immediately following a
+  capitalized marker (e.g. `Flash` in `Flashback`, `Hyper` in `Hyperion`) no longer false-matches
+  the Flash/Hyper families.
+- **Preset migration.** `load_presets_raw` now normalizes stale preset shapes in memory via
+  `_migrate` (backfilled fields) so callers never hit an old schema; the migration is not written
+  to disk on read.
+- **Critic sentinel score.** A model that returns no usable JSON score (sentinel `<0`) now logs a
+  warning instead of silently looping as "always rejected".
+- **Field-retry token budget.** Writer / Scene Builder now grow `max_tokens` (×1.25, capped at
+  the 8192 widget max) on each field-retry so a truncated prompt gets room to complete instead of
+  retrying at the same too-small budget.
+
+### Notes
+- Commits `dd57b5b` (status-route Bearer auth move) and `fd66f13` (min_p sampler retune)
+  landed after `[1.2.2]` and are already summarized in the 1.2.2 audit / retune sections.
+
+---
+
 ## [1.2.2] — 2026-08-21
 
 Audit fixes (from `plans/Audit1.md`): P0 logic bugs, P1 reliability, and P2 docs / tech-debt.

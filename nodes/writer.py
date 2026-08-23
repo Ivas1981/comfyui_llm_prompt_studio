@@ -3,7 +3,8 @@ import time
 import traceback
 
 from ..combos import combo_models
-from ..lm_http import chat_completion, ensure_model_loaded
+from ..lm_http import (chat_completion, ensure_model_loaded,
+                       model_architecture, model_param_count)
 from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ..presets import (apply_preset_to_prompts, get_preset_by_name,
@@ -17,6 +18,10 @@ from ._defaults import (DEFAULT_SYSTEM, DEFAULT_SYSTEM_NO_NEGATIVE,
                         REASONING_HINT)
 
 logger = logging.getLogger("llm_prompt_studio")
+
+# Hard ceiling for max_tokens so the field-retry growth below can never exceed the
+# node widget's max (8192) and blow up the request.
+_MAX_TOKENS_CAP = 8192
 
 # Helper: append a user message, or merge into the last user message if one already exists.
 def _append_or_merge_user(messages, text):
@@ -89,7 +94,12 @@ class LLMPromptStudioWriter:
                                                         "default": FACE_PROMPT_INSTRUCTION}),
                 "prompt_mode": (["auto", "standard", "no_negative"], {"default": "auto"}),
                 "style_preset": (_preset_names(), {"default": "— none —",
-                                 "tooltip": "Apply a style preset's system prompt and style tags"}),
+                                  "tooltip": "Apply a style preset's system prompt and style tags"}),
+                "use_preset_system_prompt": ("BOOLEAN", {"default": True,
+                                  "tooltip": "When a style preset is selected, override the "
+                                             "system prompt with the preset's (unless you have "
+                                             "customized it). Turn off to keep your own system "
+                                             "prompt even with a preset loaded."}),
                 "flash_attention": ("BOOLEAN", {"default": False,
                                     "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage"}),
                 "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
@@ -145,7 +155,7 @@ class LLMPromptStudioWriter:
                  reuse_last_prompt=False, generate_face_prompts=False,
                  max_field_retries=2, face_prompt_instruction="",
                  prompt_mode="auto", family="", unique_id=None,
-                 style_preset="— none —", flash_attention=None,
+                 style_preset="— none —", use_preset_system_prompt=True, flash_attention=None,
                   offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
                    top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto",
                      server_status="", architecture="", release_vram_after_run=True):
@@ -165,21 +175,23 @@ class LLMPromptStudioWriter:
                              idea, revision_notes, temperature, max_tokens, seed,
                              reuse_last_prompt, generate_face_prompts, max_field_retries,
                              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
-                             style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
-               repeat_penalty, top_k, top_p, min_p,
-                 load_model_profile, architecture, release_vram_after_run)
+                              style_preset, use_preset_system_prompt, flash_attention,
+                              offload_kv_cache_to_gpu, reasoning,
+                repeat_penalty, top_k, top_p, min_p,
+                  load_model_profile, architecture, release_vram_after_run)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
 
     def _run(self, server_url, api_key, model, context_length, gpu_offload, system_prompt, idea,
-             revision_notes, temperature, max_tokens, seed,
-             reuse_last_prompt, generate_face_prompts, max_field_retries,
-             face_prompt_instruction, prompt_mode, family, unique_id, _t0,
-             style_preset, flash_attention, offload_kv_cache_to_gpu, reasoning,
-               repeat_penalty, top_k, top_p, min_p,
-                 load_model_profile="auto", architecture="",
-                 release_vram_after_run=True):
+              revision_notes, temperature, max_tokens, seed,
+              reuse_last_prompt, generate_face_prompts, max_field_retries,
+              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
+              style_preset, use_preset_system_prompt=True, flash_attention=None,
+              offload_kv_cache_to_gpu=None, reasoning="off",
+                repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
+                  load_model_profile="auto", architecture="",
+                  release_vram_after_run=True):
         # Reuse mode: return the cached prompt without calling the LLM. The key is the node
         # id + the inputs that actually shape the generated prompt, so a change to any of
         # them bypasses the cache and regenerates. `family` is intentionally excluded: it is
@@ -268,7 +280,7 @@ class LLMPromptStudioWriter:
             # Override the system prompt with the preset's only when the user left it at default.
             # In no-negative mode we prefer the preset's dedicated no-negative variant so the
             # negative is correctly required to be empty; otherwise its standard variant is used.
-            if preset and system_prompt == DEFAULT_SYSTEM:
+            if preset and use_preset_system_prompt:
                 if no_negative and preset.get("system_prompt_no_negative"):
                     effective_system = preset["system_prompt_no_negative"]
                 else:
@@ -295,10 +307,25 @@ class LLMPromptStudioWriter:
             min_p_v = min_p if (min_p is not None and min_p > 0.0) else None
             repeat_penalty_v = repeat_penalty if repeat_penalty != 1.0 else None
     
+            # B4: pull the loaded LLM model's architecture / param count from LM Studio's
+            # native API to drive the auto-profile (e.g. Gemma -> top_k=64). Skipped for
+            # custom mode (the node uses widget values there) and never raises.
+            llm_architecture = ""
+            llm_param_count = None
+            if load_model_profile != "custom":
+                try:
+                    llm_architecture = model_architecture(
+                        server_url, api_key, model) or ""
+                    llm_param_count = model_param_count(server_url, api_key, model)
+                except Exception as e:  # noqa: BLE001 — API auto-profile is best-effort
+                    logger.debug("Writer LLM auto-profile probe failed: %s", e)
+
             # Resolve the "load_model_profile" choice into concrete sampling params. "custom"
             # keeps the widget-derived values above (full backward compatibility); any other
             # choice overrides the individual sampling widgets with the recommended profile.
-            _resolved = resolve_profile(load_model_profile, model, "writer", has_image=False)
+            _resolved = resolve_profile(load_model_profile, model, "writer",
+                                       has_image=False, architecture=llm_architecture,
+                                       param_count=llm_param_count)
             if _resolved["params"] is not None:
                 logger.info("Writer node %s: profile '%s' overrides widget sampling params",
                             unique_id, _resolved["profile"])
@@ -345,24 +372,29 @@ class LLMPromptStudioWriter:
             # max_field_retries times) for a complete answer before falling back. In no-negative
             # mode the negative is intentionally empty, so it is not treated as missing.
             attempt = 0
+            cur_max_tokens = max_tokens
             while attempt < max_field_retries:
                 missing = find_missing_fields(
                     parsed, require_face=generate_face_prompts, require_negative=not no_negative)
                 if not missing:
                     break
                 attempt += 1
-                logger.info("Field retry %d/%d for node %s: missing %s",
-                            attempt, max_field_retries, unique_id, ", ".join(missing))
+                # Grow the token budget on each retry so a prompt that was truncated
+                # (and therefore missing fields) gets room to complete. Capped at the
+                # widget maximum so it can never exceed what the UI allows.
+                cur_max_tokens = min(int(cur_max_tokens * 1.25), _MAX_TOKENS_CAP)
+                logger.info("Field retry %d/%d for node %s: missing %s (max_tokens=%d)",
+                            attempt, max_field_retries, unique_id, ", ".join(missing),
+                            cur_max_tokens)
                 _append_or_merge_user(messages,
                     f"You omitted the required JSON field(s): {', '.join(missing)}. "
                     f"Respond again with a COMPLETE JSON object containing ALL required fields.")
                 raw_new = chat_completion(server_url, api_key, model, messages,
-                                              temperature, max_tokens, seed=seed,
-                                              reasoning=reasoning,
-                                              repeat_penalty=repeat_penalty_v, top_k=top_k_v,
-                                              top_p=top_p_v, min_p=min_p_v,
-                                              presence_penalty=presence_penalty_v,
-                                              response_format=response_format)
+                                               temperature, cur_max_tokens, seed=seed,
+                                               reasoning=reasoning, repeat_penalty=repeat_penalty_v,
+                                               top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
+                                               presence_penalty=presence_penalty_v,
+                                               response_format=response_format)
                 raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                        f"missing {', '.join(missing)}]\n{raw_new}")
                 parsed = parse_prompt_json(raw_new, allow_plain_text_fallback=False)

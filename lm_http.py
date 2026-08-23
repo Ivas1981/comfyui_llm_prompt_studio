@@ -32,6 +32,10 @@ __all__ = [
     "model_supports_vision",
     "resolve_vision",
     "model_supports_reasoning",
+    "get_model_entry",
+    "invalidate_model_entry_cache",
+    "model_architecture",
+    "model_param_count",
     "map_reasoning_level",
     "unload_all_loaded",
     "maybe_unload_old",
@@ -388,45 +392,142 @@ def _model_matches(entry: dict, model_id: str) -> bool:
     return any(str(c).lower() == low for c in candidates if c)
 
 
-def model_supports_vision(server_url: str, api_key: str, model_id: str,
-                          timeout: int = 5) -> Optional[bool]:
-    """Best-effort authoritative vision capability from LM Studio's native endpoint.
+# Cache of native model entries, keyed by (normalized_server_url, model_id). Stores
+# (entry_dict_or_None, timestamp). A single fetch backs architecture / param_count /
+# vision / reasoning probes so we hit /api/v1/models at most once per (server, model)
+# per TTL. Never raises.
+_MODEL_ENTRY_CACHE_TTL = 120  # seconds
+_model_entry_cache = {}
 
-    Queries ``GET {server}/api/v1/models`` and returns
-    ``entry["capabilities"]["vision"]`` (bool) when the model is present, else ``None``.
 
-    Never raises: network errors, parse errors, missing ``/api/v1/models`` and 404 all
-    return ``None`` so callers fall back to the name heuristic without regressing on
-    servers that lack the native endpoint."""
+def get_model_entry(server_url, api_key, model_id, timeout=5):
+    """Return the native ``/api/v1/models`` entry dict for ``model_id``, or ``None``.
+
+    The single authoritative fetch backing :func:`model_architecture`,
+    :func:`model_param_count`, :func:`model_supports_vision` and
+    :func:`model_supports_reasoning`. Results are cached per ``(server, model)`` with a
+    TTL so repeated probes within one run are cheap. Never raises: network errors,
+    parse errors, a missing ``/api/v1/models`` and a 404 all return ``None`` so the
+    caller falls back to the name heuristic without regressing on servers that lack the
+    native endpoint (text-generation-webui, koboldcpp, vLLM, plain OpenAI-compatible)."""
+    try:
+        srv = _normalize_server(server_url)
+    except Exception:
+        return None
+    key = (srv, model_id)
+    cached = _model_entry_cache.get(key)
+    if cached is not None:
+        entry, ts = cached
+        if time.time() - ts < _MODEL_ENTRY_CACHE_TTL:
+            return entry
     try:
         base = _server_root(validate_server_url(server_url))
         resp = requests.get(f"{base}/api/v1/models",
                             headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
                             timeout=timeout)
     except requests.RequestException:
+        _model_entry_cache[key] = (None, time.time())
         return None
     if resp.status_code != 200:
+        _model_entry_cache[key] = (None, time.time())
         return None
     try:
         data = resp.json()
     except ValueError:
+        _model_entry_cache[key] = (None, time.time())
         return None
     models = data.get("data") if isinstance(data, dict) else None
     if models is None:
         models = data.get("models") if isinstance(data, dict) else None
     if not isinstance(models, list):
+        _model_entry_cache[key] = (None, time.time())
         return None
     for entry in models:
-        if not isinstance(entry, dict):
-            continue
-        if _model_matches(entry, model_id):
-            caps = entry.get("capabilities") or {}
-            vision = caps.get("vision")
-            if isinstance(vision, bool):
-                return vision
-            # capabilities present but vision key absent -> unknown, keep looking
-            if caps:
-                return None
+        if isinstance(entry, dict) and _model_matches(entry, model_id):
+            _model_entry_cache[key] = (entry, time.time())
+            return entry
+    _model_entry_cache[key] = (None, time.time())
+    return None
+
+
+def invalidate_model_entry_cache(server=None, model=None):
+    """Drop cached native model entries.
+
+    With no args clears everything; with ``server`` (and optionally ``model``) drops the
+    matching key(s) so a model (re)load / unload does not serve a stale entry (e.g. the
+    architecture / params of a previously-loaded model)."""
+    if server is None:
+        _model_entry_cache.clear()
+        return
+    srv = _normalize_server(server)
+    if model is None:
+        for k in list(_model_entry_cache):
+            if k[0] == srv:
+                _model_entry_cache.pop(k, None)
+    else:
+        _model_entry_cache.pop((srv, model), None)
+
+
+def model_architecture(server_url, api_key, model_id, timeout=5):
+    """Return the model's architecture tag from the native endpoint, or ``None``.
+
+    Drives the LM-Studio API auto-profile (e.g. Gemma -> sampler overrides in
+    ``model_recommendations.ARCH_SAMPLER_OVERRIDES``). Never raises. Only LM Studio's
+    native ``/api/v1/models`` carries ``architecture``; OpenAI-compatible servers fall
+    back to ``None`` so behavior never regresses."""
+    entry = get_model_entry(server_url, api_key, model_id, timeout=timeout)
+    if not entry:
+        return None
+    arch = entry.get("architecture")
+    return str(arch) if arch else None
+
+
+def model_param_count(server_url, api_key, model_id, timeout=5):
+    """Return the model's *active* parameter count in billions, or ``None``.
+
+    Parses the native ``params_string``: a MoE id ``"26B-A4B"`` yields ``4`` (the active
+    expert count), while ``"7B"`` / ``"671B"`` / ``"1.5B"`` yield that single number.
+    Used to pick the strict / baseline profile from the model's real strength. Never
+    raises; non-LM-Studio / OpenAI-compatible servers return ``None`` (name heuristic)."""
+    entry = get_model_entry(server_url, api_key, model_id, timeout=timeout)
+    if not entry:
+        return None
+    s = entry.get("params_string") or ""
+    if isinstance(s, (list, tuple)):
+        s = " ".join(str(x) for x in s)
+    s = str(s)
+    # MoE: active (expert) count follows "-A<n>B", e.g. "26B-A4B" -> 4.
+    m = re.search(r"-A\s*(\d+(?:\.\d+)?)\s*B", s, re.IGNORECASE)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    # Single-number case: "7B", "671B", "1.5B".
+    m = re.search(r"(\d+(?:\.\d+)?)\s*B", s, re.IGNORECASE)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def model_supports_vision(server_url: str, api_key: str, model_id: str,
+                           timeout: int = 5) -> Optional[bool]:
+    """Best-effort authoritative vision capability from LM Studio's native endpoint.
+
+    Reads ``entry["capabilities"]["vision"]`` (bool) for ``model_id`` via
+    :func:`get_model_entry`. Never raises: any error / missing entry / 404 returns
+    ``None`` so callers fall back to the name heuristic without regressing on servers
+    that lack the native endpoint."""
+    entry = get_model_entry(server_url, api_key, model_id, timeout=timeout)
+    if not entry:
+        return None
+    caps = entry.get("capabilities") or {}
+    vision = caps.get("vision")
+    if isinstance(vision, bool):
+        return vision
     return None
 
 
@@ -442,77 +543,35 @@ def resolve_vision(server_url: str, api_key: str, model_id: str) -> bool:
     return looks_like_vision(model_id)
 
 
-# Cache of reasoning capability probes: {(server, model): allowed_options_or_None}.
-# allowed_options is the list of reasoning levels a model accepts (e.g. ["off","on"]),
-# or None when the model exposes no reasoning configuration at all (template thinking).
-_reasoning_cap_cache = {}
-
-
 def model_supports_reasoning(server_url: str, api_key: str, model_id: str,
-                             timeout: int = 5):
+                              timeout: int = 5):
     """Best-effort reasoning capability probe from LM Studio's native endpoint.
 
-    Queries ``GET {server}/api/v1/models`` and reads
-    ``entry["capabilities"]["reasoning"]`` for ``model_id``. Returns one of:
+    Reads ``entry["capabilities"]["reasoning"]`` for ``model_id`` via
+    :func:`get_model_entry`. Returns one of:
 
     * a list of allowed reasoning option strings (e.g. ``["off", "on"]``),
     * ``[]`` when reasoning is exposed but allows no extra levels,
     * ``None`` when the model exposes no reasoning configuration (the server may
       still think via its template — we simply omit the param).
 
-    Never raises: network errors, parse errors, missing ``/api/v1/models`` and 404
-    all return ``None`` so callers fall back to sending nothing rather than guessing."""
-    key = (server_url, model_id)
-    if key in _reasoning_cap_cache:
-        return _reasoning_cap_cache[key]
-    result = None
-    try:
-        base = _server_root(validate_server_url(server_url))
-        resp = requests.get(f"{base}/api/v1/models",
-                            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
-                            timeout=timeout)
-    except requests.RequestException:
-        _reasoning_cap_cache[key] = None
+    Never raises: any error / missing entry / 404 returns ``None`` so callers fall back
+    to sending nothing rather than guessing."""
+    entry = get_model_entry(server_url, api_key, model_id, timeout=timeout)
+    if not entry:
         return None
-    if resp.status_code != 200:
-        _reasoning_cap_cache[key] = None
+    caps = entry.get("capabilities") or {}
+    reasoning = caps.get("reasoning")
+    if reasoning is None:
         return None
-    try:
-        data = resp.json()
-    except ValueError:
-        _reasoning_cap_cache[key] = None
-        return None
-    models = data.get("data") if isinstance(data, dict) else None
-    if models is None:
-        models = data.get("models") if isinstance(data, dict) else None
-    if not isinstance(models, list):
-        _reasoning_cap_cache[key] = None
-        return None
-    for entry in models:
-        if not isinstance(entry, dict):
-            continue
-        if not _model_matches(entry, model_id):
-            continue
-        caps = entry.get("capabilities") or {}
-        reasoning = caps.get("reasoning")
-        if reasoning is None:
-            # capabilities present but no reasoning key -> unknown for this model.
-            result = None
-            break
-        if isinstance(reasoning, dict):
-            allowed = reasoning.get("allowed_options")
-            if isinstance(allowed, list):
-                result = [str(a) for a in allowed]
-            else:
-                # exposed but no explicit list -> treat as configurable, default off/on.
-                result = ["off", "on"]
-        elif reasoning is True:
-            result = ["off", "on"]
-        else:
-            result = []
-        break
-    _reasoning_cap_cache[key] = result
-    return result
+    if isinstance(reasoning, dict):
+        allowed = reasoning.get("allowed_options")
+        if isinstance(allowed, list):
+            return [str(a) for a in allowed]
+        return ["off", "on"]
+    if reasoning is True:
+        return ["off", "on"]
+    return []
 
 
 def map_reasoning_level(level, allowed_options):
@@ -893,6 +952,38 @@ def _record_load_config(server_url: str, model: str, resp):
             {"instance_id": instance_id, "load_config": load_config})
 
 
+def _warn_if_loaded_config_mismatch(server_url, api_key, model, context_length,
+                                    flash_attention):
+    """Diagnostic: compare the requested load config with the server's reported one.
+
+    Reads the native entry's ``loaded_instances[0].config`` (if present) and warns when
+    the actual ``context_length`` / ``flash_attention`` differ from what we requested.
+    Purely informational — never raises, never changes behavior."""
+    entry = get_model_entry(server_url, api_key, model)
+    if not entry:
+        return
+    instances = entry.get("loaded_instances") or []
+    if not instances:
+        return
+    inst = instances[0] if isinstance(instances[0], dict) else None
+    if not inst:
+        return
+    cfg = inst.get("config") or {}
+    if not isinstance(cfg, dict):
+        return
+    actual_ctx = cfg.get("context_length")
+    if actual_ctx is not None and int(actual_ctx) != int(context_length):
+        logger.warning(
+            "Model '%s' loaded with context_length=%s but %s was requested "
+            "(LM Studio may have clamped it).", model, actual_ctx, context_length)
+    actual_fa = cfg.get("flash_attention")
+    if actual_fa is not None and flash_attention is not None \
+            and bool(actual_fa) != bool(flash_attention):
+        logger.warning(
+            "Model '%s' loaded with flash_attention=%s but %s was requested.",
+            model, actual_fa, flash_attention)
+
+
 def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
                         context_length: int = 8192, gpu_offload: float = 1.0,
                         flash_attention: Optional[bool] = None,
@@ -926,6 +1017,9 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     # Remember this model so a saved workflow that uses it stays valid (and selectable)
     # even when the server is offline later and the combo would otherwise be the placeholder.
     remember_model(model, server_url)
+    # Invalidate any cached native-model entry for this (server, model) so a model
+    # (re)loaded without a ComfyUI restart does not surface stale architecture/params.
+    invalidate_model_entry_cache(server_url, model)
     # Fingerprint the requested load config so a changed context_length / gpu_offload /
     # flash-attention / KV-offload / batch-size / experts forces a reload even when the same
     # model is currently loaded.
@@ -953,6 +1047,13 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
         return False
     _server_loaded[server_url] = fingerprint  # record the exact loaded config
     _last_loaded[slot] = fingerprint
+    # B4.6 (diagnostic): compare the actually-loaded config with what we requested and
+    # warn on a mismatch (e.g. LM Studio clamped context_length). Never changes behavior.
+    try:
+        _warn_if_loaded_config_mismatch(server_url, api_key, model, context_length,
+                                         flash_attention)
+    except Exception:  # noqa: BLE001 — diagnostic only
+        pass
     return True
 
 
@@ -1024,6 +1125,9 @@ def release_model(server_url: str, api_key: str = "", slot=None) -> bool:
     and normalized URL spellings) so a subsequent ``ensure_model_loaded`` does NOT
     skip the reload believing the model is still resident. Never raises."""
     norm = _normalize_server(server_url)
+    # Drop any cached native-model entry for this server so a subsequent load of the
+    # same (or a different) model reports fresh architecture/params, not the unloaded one.
+    invalidate_model_entry_cache(server_url)
     has_state = (
         server_url in _server_loaded or norm in _server_loaded
         or any(k for k in _last_loaded if k.startswith(norm + "::") or k == norm)
@@ -1508,7 +1612,6 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
         "input": input_parts,
         "temperature": temperature,
         "max_output_tokens": max_tokens,
-        "repeat_penalty": repeat_penalty,
         "store": False,
     }
     if system_prompt is not None:
@@ -1527,6 +1630,11 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
         payload["presence_penalty"] = presence_penalty
     if frequency_penalty is not None:
         payload["frequency_penalty"] = frequency_penalty
+    # repeat_penalty is only sent when explicitly set; the OpenAI-compatible fallback
+    # already guards this, but the native path must too so custom-mode (which passes
+    # None for the default 1.0) does not emit "repeat_penalty": null on strict schemas.
+    if repeat_penalty is not None:
+        payload["repeat_penalty"] = repeat_penalty
 
     log_http_request("POST", url, headers, payload)
     started = time.time()

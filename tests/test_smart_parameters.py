@@ -225,11 +225,21 @@ def test_architecture_unknown_falls_back_to_base():
 
 
 def test_distilled_family_still_wins_over_architecture():
-    # Even with architecture="flux", a distilled family (e.g. lightning) keeps its own params.
+    # Even with architecture="flux", a distilled family (e.g. lightning) keeps its own
+    # params - and A6 keeps the family's own scheduler (sgm_uniform) for flux/sd3 rather
+    # than forcing "AYS SDXL", since AYS is an SDXL/SD1 scheduler.
     rec = dp.recommend("lightning", "balanced", "", architecture="flux")
     assert rec["family"] == "lightning"
     assert rec["cfg"] == 1.0
     assert rec["sampler"] == "euler"
+    assert rec["scheduler"] == "sgm_uniform"
+
+
+def test_distilled_family_uses_ays_sdxl_for_sdxl_arch():
+    # For an SDXL-family architecture (or empty/unknown) a distilled family uses AYS SDXL.
+    rec = dp.recommend("lightning", "balanced", "", architecture="sdxl")
+    assert rec["scheduler"] == "AYS SDXL"
+    rec = dp.recommend("lightning", "balanced", "", architecture="")
     assert rec["scheduler"] == "AYS SDXL"
 
 

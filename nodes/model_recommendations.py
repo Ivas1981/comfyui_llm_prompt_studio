@@ -16,8 +16,10 @@ Hugging Face Transformers, see references in CHANGELOG):
   It sets a floor relative to the most-likely token, so it scales with the model's own
   confidence and tolerates a higher temperature without admitting garbage tokens.
 - ``top_k`` is left disabled (0) for general use — it is a static count cutoff that the
-  research shows is largely superseded by ``min_p`` (model cards such as Gemma that
-  explicitly require a ``top_k`` are handled via the per-model path, not here).
+  research shows is largely superseded by ``min_p``. A few architectures whose model card
+  explicitly requires a ``top_k`` (e.g. Gemma 3/4) get it back via
+  :data:`ARCH_SAMPLER_OVERRIDES`, applied on top of the chosen profile inside
+  :func:`resolve_profile` so the custom/auto modes stay consistent.
 - ``top_p`` is kept only as a generous fallback cap (0.9-0.95) for servers that do not
   expose ``min_p``; if the server rejects ``min_p`` the transport layer strips it and
   ``top_p`` still bounds the candidate pool.
@@ -63,6 +65,16 @@ PROFILES = {
         "repeat_penalty": 1.05, "presence_penalty": 0.0, "min_p": 0.02,
         "reasoning": "off", "structured": False,
     },
+}
+
+# Per-architecture sampler overrides, applied on top of the resolved profile in
+# :func:`resolve_profile`. Keys are architecture *prefixes* (so "gemma3" / "gemma4"
+# both match "gemma"); the first matching prefix wins. These encode the few model-card
+# recommendations that the generic consensus profiles omit (e.g. Gemma explicitly wants
+# a non-zero ``top_k``). The override is applied to a *copy* of the profile params, so
+# :data:`PROFILES` is never mutated.
+ARCH_SAMPLER_OVERRIDES = {
+    "gemma": {"top_k": 64},
 }
 
 # Strict JSON-schema response contracts (only for writer/critic text output).
@@ -133,17 +145,26 @@ def schema_for_kind(kind):
     return None
 
 
-def recommend_for(model_id, kind):
+def recommend_for(model_id, kind, param_count=None):
     """Universal recommendation: no hard-coded model list, only a size heuristic.
 
     - kind == "describe"  -> baseline, structured never (prose output, has image)
     - size is None        -> baseline, structured False (safe default)
     - size < 7.0          -> strict, structured False (small models break JSON at t=0.7)
     - size >= 7.0         -> baseline, structured True (>=7B hit ~100% JSON with structured)
+
+    ``param_count``, when given and > 0, is the model's active parameter count in billions
+    (taken from the LM Studio API ``params_string`` via ``lm_http.model_param_count``). It
+    overrides the name-parsed size so the strict/baseline split uses the real model strength
+    even when the id is uninformative. When absent (non-LM-Studio / OpenAI-compatible servers
+    with no ``params_string``), the id heuristic is used as the permanent fallback.
     """
     if kind == "describe":
         return {"profile": "baseline", "structured": False}
-    size = _parse_size(model_id)
+    if param_count is not None and param_count > 0:
+        size = param_count
+    else:
+        size = _parse_size(model_id)
     if size is None:
         return {"profile": "baseline", "structured": False}
     if size < 7.0:
@@ -151,21 +172,50 @@ def recommend_for(model_id, kind):
     return {"profile": "baseline", "structured": True}
 
 
-def resolve_profile(choice, model_id, kind, has_image=False):
+def _normalize_neutral(params):
+    """Map profile "neutral" sampling values to ``None`` so they are omitted on the wire.
+
+    The custom (node-widget) path already converts its defaults to ``None`` (top_k 0 ->
+    None, top_p 1.0 -> None, min_p 0.0 -> None, presence_penalty 0.0 -> None,
+    repeat_penalty 1.0 -> None). Profile mode must do the same so strict servers never
+    receive an explicit ``0`` / ``0.0`` / ``1.0`` that some schemas reject. ``0.95`` /
+    ``0.9`` top_p and ``1.05`` repeat_penalty are genuine values and are kept.
+    """
+    if params.get("top_k") == 0:
+        params["top_k"] = None
+    if params.get("top_p") == 1.0:
+        params["top_p"] = None
+    if params.get("min_p") == 0.0:
+        params["min_p"] = None
+    if params.get("presence_penalty") == 0.0:
+        params["presence_penalty"] = None
+    if params.get("repeat_penalty") == 1.0:
+        params["repeat_penalty"] = None
+
+
+def resolve_profile(choice, model_id, kind, has_image=False, architecture="",
+                    param_count=None):
     """Resolve a node's ``load_model_profile`` choice into concrete params.
 
     Returns a dict:
       - ``profile``: the effective profile name ("auto" resolves to the recommended one),
         or ``"custom"`` when choice == "custom".
       - ``structured``: whether structured (response_format) is active.
-      - ``params``: sampling params dict from PROFILES, or None for ``custom`` (the node
+      - ``params``: sampling params dict from PROFILES (neutral values normalized to
+        ``None``, per-architecture overrides applied), or None for ``custom`` (the node
         then uses its widget values).
       - ``response_format``: the strict JSON-schema to pass to chat_completion, or None.
+
+    ``architecture`` / ``param_count`` come from the LM Studio API (via
+    ``lm_http.model_architecture`` / ``model_param_count``) when available: ``architecture``
+    drives :data:`ARCH_SAMPLER_OVERRIDES` and ``param_count`` refines the strict/baseline
+    size split used by ``auto``. Both default to ``""`` / ``None`` so headless and
+    non-LM-Studio callers keep working unchanged.
 
     Structured output is NEVER combined with an image (vision) input or with ``describe``.
     """
     if choice == "auto":
-        rec = recommend_for(model_id, kind)
+        rec = recommend_for(model_id, kind, param_count=param_count)
     elif choice in PROFILES:
         rec = {"profile": choice, "structured": choice == "structured"}
     else:  # custom
@@ -173,7 +223,17 @@ def resolve_profile(choice, model_id, kind, has_image=False):
 
     profile_name = rec["profile"]
     structured = rec["structured"]
+    # Copy so the shared PROFILES dict is never mutated by normalization / overrides.
     params = dict(PROFILES[profile_name])
+    _normalize_neutral(params)
+    # Per-architecture sampler overrides (e.g. Gemma -> top_k=64). Applied to the copy so
+    # they never touch PROFILES; prefix-matched so "gemma3"/"gemma4" match "gemma".
+    if architecture:
+        arch = str(architecture).strip().lower()
+        for prefix, override in ARCH_SAMPLER_OVERRIDES.items():
+            if arch.startswith(prefix):
+                params.update(override)
+                break
     if structured and not has_image and kind != "describe":
         response_format = schema_for_kind(kind)
     else:

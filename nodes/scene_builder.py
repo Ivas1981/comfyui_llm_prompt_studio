@@ -4,7 +4,8 @@ import traceback
 
 from ..combos import combo_models
 from ..imaging import image_to_base64
-from ..lm_http import chat_completion, ensure_model_loaded, resolve_vision
+from ..lm_http import (chat_completion, ensure_model_loaded, resolve_vision,
+                       model_architecture, model_param_count)
 from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ..presets import get_architecture_guidance, append_negative_tags
@@ -15,6 +16,10 @@ from ._defaults import DEFAULT_COMPOSER, DEFAULT_COMPOSER_NO_NEGATIVE, DEFAULT_D
 from .model_recommendations import resolve_profile
 
 logger = logging.getLogger("llm_prompt_studio")
+
+# Hard ceiling for max_tokens so the field-retry growth below can never exceed the
+# node widget's max (8192) and blow up the request.
+_MAX_TOKENS_CAP = 8192
 
 # Local helper to append or merge user messages (keeps role sequence valid for strict servers)
 def _append_or_merge_user(messages, text):
@@ -185,7 +190,21 @@ class LLMPromptStudioSceneBuilder:
             _stage_is_describe = stage.startswith("1")
             _kind = "describe" if _stage_is_describe else "compose"
             _has_image = _stage_is_describe
-            _resolved = resolve_profile(load_model_profile, model, _kind, has_image=_has_image)
+            # B4: pull the loaded LLM model's architecture / param count from LM Studio's
+            # native API to drive the auto-profile (e.g. Gemma -> top_k=64). Skipped for
+            # custom mode and never raises.
+            llm_architecture = ""
+            llm_param_count = None
+            if load_model_profile != "custom":
+                try:
+                    llm_architecture = model_architecture(
+                        server_url, api_key, model) or ""
+                    llm_param_count = model_param_count(server_url, api_key, model)
+                except Exception as e:  # noqa: BLE001 — API auto-profile is best-effort
+                    logger.debug("Scene Builder LLM auto-profile probe failed: %s", e)
+            _resolved = resolve_profile(load_model_profile, model, _kind,
+                                       has_image=_has_image, architecture=llm_architecture,
+                                       param_count=llm_param_count)
             if _resolved["params"] is not None:
                 logger.info("Scene Builder node %s: profile '%s' overrides widget sampling params",
                             unique_id, _resolved["profile"])
@@ -288,23 +307,28 @@ class LLMPromptStudioSceneBuilder:
             # max_field_retries times) for a complete answer before falling back. In no-negative
             # mode the negative is intentionally empty, so it is not treated as missing.
             attempt = 0
+            cur_max_tokens = max_tokens
             while attempt < max_field_retries:
                 missing = find_missing_fields(
                     parsed, require_face=False, require_negative=not no_negative)
                 if not missing:
                     break
                 attempt += 1
-                logger.info("Scene Builder field retry %d/%d: missing %s",
-                            attempt, max_field_retries, ", ".join(missing))
+                # Grow the token budget on each retry so a prompt that was truncated
+                # (and therefore missing fields) gets room to complete. Capped at the
+                # widget maximum so it can never exceed what the UI allows.
+                cur_max_tokens = min(int(cur_max_tokens * 1.25), _MAX_TOKENS_CAP)
+                logger.info("Scene Builder field retry %d/%d: missing %s (max_tokens=%d)",
+                            attempt, max_field_retries, ", ".join(missing), cur_max_tokens)
                 _append_or_merge_user(messages,
                     f"You omitted the required JSON field(s): {', '.join(missing)}. "
                     f"Respond again with a COMPLETE JSON object containing ALL required fields.")
                 raw_new = chat_completion(server_url, api_key, model, messages,
-                                              temperature, max_tokens,
-                                              reasoning=reasoning, repeat_penalty=repeat_penalty_v,
-                                              top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
-                                              presence_penalty=presence_penalty_v,
-                                              response_format=response_format)
+                                               temperature, cur_max_tokens,
+                                               reasoning=reasoning, repeat_penalty=repeat_penalty_v,
+                                               top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
+                                               presence_penalty=presence_penalty_v,
+                                               response_format=response_format)
                 raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                         f"missing {', '.join(missing)}]\n{raw_new}")
                 parsed = parse_prompt_json(raw_new, allow_plain_text_fallback=False)

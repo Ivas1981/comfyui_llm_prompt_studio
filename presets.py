@@ -41,15 +41,23 @@ def load_presets_raw() -> Dict:
 
     Prefers the user-editable copy in the ComfyUI output directory, falling back to the
     shipped ``presets_default.json``. Does NOT create or overwrite the user file.
+
+    The returned data is normalized in memory via :func:`_migrate` (missing top-level
+    and per-preset fields backfilled, schema version bumped) so callers never have to
+    handle a stale shape. The migration is NOT written to disk — :func:`load_presets`
+    is what persists it on first run.
     """
     user_path = get_user_presets_path()
+    data = None
     if os.path.exists(user_path):
         try:
             with open(user_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
         except (OSError, json.JSONDecodeError):
-            pass
-    return _load_defaults()
+            data = None
+    if not isinstance(data, dict):
+        data = _load_defaults()
+    return _migrate(data)
 
 
 def get_defaults() -> Dict:

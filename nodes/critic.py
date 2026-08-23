@@ -4,7 +4,8 @@ import traceback
 
 from ..combos import combo_models
 from ..imaging import image_to_base64
-from ..lm_http import chat_completion, ensure_model_loaded, resolve_vision
+from ..lm_http import (chat_completion, ensure_model_loaded, resolve_vision,
+                       model_architecture, model_param_count)
 from ..parsing import parse_critic_json
 from ..debug import log_node_enter, log_node_exit, log_error
 from ..vram import (release_after_llm, release_enabled,
@@ -119,6 +120,19 @@ class LLMPromptStudioCritic:
                 raise RuntimeError(
                     f"Model '{model}' could not be loaded into LM Studio. Start the "
                     "server, load the model, and press Refresh on the node.")
+            # B4: pull the loaded LLM model's architecture / param count from LM Studio's
+            # native /api/v1/models so resolve_profile can apply per-architecture sampler
+            # overrides (e.g. Gemma -> top_k=64) and refine the strict/baseline split.
+            # Never raises: any failure falls back to the name heuristic in resolve_profile.
+            llm_architecture = ""
+            llm_param_count = None
+            try:
+                llm_architecture = model_architecture(
+                    server_url, api_key, model) or ""
+                llm_param_count = model_param_count(server_url, api_key, model)
+            except Exception:
+                llm_architecture = ""
+                llm_param_count = None
             b64 = image_to_base64(image, image_max_size)
     
             messages = [
@@ -135,7 +149,9 @@ class LLMPromptStudioCritic:
             # `has_image=True` here and `response_format` is never produced. "custom" keeps the
             # old behavior (only temperature/max_tokens are sent); any other choice expands the
             # call with the recommended profile's sampling params.
-            _resolved = resolve_profile(load_model_profile, model, "critic", has_image=True)
+            _resolved = resolve_profile(load_model_profile, model, "critic",
+                                       has_image=True, architecture=llm_architecture,
+                                       param_count=llm_param_count)
             if _resolved["params"] is not None:
                 logger.info("Critic node %s: profile '%s' overrides widget sampling params",
                             unique_id, _resolved["profile"])
@@ -150,6 +166,14 @@ class LLMPromptStudioCritic:
                 raw = chat_completion(server_url, api_key, model, messages,
                                        temperature, max_tokens)
             score, verdict, notes = parse_critic_json(raw)
+            # parse_critic_json uses -1 as a sentinel when the model returned no usable
+            # JSON score; surface it so a silent "always rejected" loop is distinguishable
+            # from a genuine low score.
+            if score < 0:
+                logger.warning(
+                    "Critic node %s: model returned no usable score (sentinel %s); "
+                    "treating the critique as a failure. raw=%r",
+                    unique_id, score, raw[:200])
             approved = score >= threshold
     
             log_node_exit("Critic", unique_id, {"score": score, "approved": approved,

@@ -1,6 +1,7 @@
 import os
 import sys
 import types
+import pytest
 from unittest.mock import MagicMock
 
 # Make the `.Testing` directory importable as the package `comfyui_llm_prompt_studio`
@@ -102,3 +103,13 @@ if "nodes" not in sys.modules:
 import comfyui_llm_prompt_studio.lm_http as _lm_http
 
 _lm_http._persist_models = lambda *a, **k: None  # type: ignore[assignment]
+
+
+@pytest.fixture(autouse=True)
+def _clear_model_entry_cache():
+    """Clear the native-model entry cache before each test so the vision/reasoning
+    probes (which are cached per (server, model)) don't leak mocked results across
+    tests that use the same model id with different capabilities."""
+    _lm_http._model_entry_cache.clear()
+    yield
+    _lm_http._model_entry_cache.clear()

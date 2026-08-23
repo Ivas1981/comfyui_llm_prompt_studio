@@ -25,7 +25,10 @@ class _FakeKSampler:
 
 class _FakeLatentUpscale:
     def upscale(self, samples, method, w, h, crop):
-        return [{"samples": torch.zeros((samples["samples"].shape[0], 4, h, w))}]
+        # Real ComfyUI LatentUpscale takes width/height in PIXELS and produces
+        # latent dims of w/8, h/8. The node passes pixel dims (w*8, h*8), so the
+        # fake must divide back to latent space to match real behaviour.
+        return [{"samples": torch.zeros((samples["samples"].shape[0], 4, h // 8, w // 8))}]
 
 
 class _FakeVAEDecode:

@@ -157,3 +157,22 @@ def test_resolve_architecture_empty_falls_back_to_filename():
         ("flux", "filename")
     assert model_meta.resolve_architecture("", "", "totally_unknown.safetensors") == \
         ("unknown", "unknown")
+
+
+def test_boundary_ok_rejects_head_of_longer_word():
+    # "Flash" / "Hyper" at the head of a longer lowercase word must be rejected so
+    # "Flashback" / "Hyperion" do not falsely match the Flash / Hyper families.
+    assert model_meta._boundary_ok("Flashback", 0, 5) is False
+    assert model_meta._boundary_ok("Hyperion", 0, 5) is False
+
+
+def test_boundary_ok_accepts_camelcase_continuation():
+    # "Lightning" inside "SDXLLightning" is a CamelCase continuation -> accepted.
+    assert model_meta._boundary_ok("SDXLLightning", 4, 13) is True
+    # "Flash" followed by an uppercase letter -> accepted (CamelCase head).
+    assert model_meta._boundary_ok("FlashSDXL", 0, 5) is True
+
+
+def test_boundary_ok_rejects_lowercase_glue():
+    # "hyper" glued to a following lowercase letter (inside "hypernetwork") -> rejected.
+    assert model_meta._boundary_ok("hypernetwork", 0, 5) is False

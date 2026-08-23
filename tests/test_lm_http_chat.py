@@ -131,7 +131,7 @@ def test_v1_chat_maps_reasoning_level_to_allowed_value():
 def test_v1_chat_retries_without_reasoning_on_empty_message():
     # A thinking model with reasoning=on can return an empty `message` (all text in the
     # `reasoning` blob). The client must retry once without reasoning and surface the answer.
-    lm_http._reasoning_cap_cache.clear()  # avoid cross-test pollution of the probe cache
+    lm_http._model_entry_cache.clear()  # avoid cross-test pollution of the entry cache
     empty = {"output": [{"type": "reasoning", "content": "hmm thinking..."},
                         {"type": "message", "content": ""}]}
     ok = {"output": [{"type": "message", "content": "THE ANSWER"}]}
@@ -205,4 +205,35 @@ def test_structured_output_unsupported_helper():
         assert lm_http._is_structured_output_unsupported(bad) is True
     unrelated = _ok_response(status=400, text=json.dumps({"error": {"message": "bad request"}}))
     assert lm_http._is_structured_output_unsupported(unrelated) is False
+
+
+def test_v1_chat_omits_repeat_penalty_when_none():
+    # Custom mode sends repeat_penalty=None (default 1.0 -> None). The native path must
+    # omit the key entirely rather than emit "repeat_penalty": null (which 400s on
+    # strict schemas).
+    captured = {}
+
+    def fake_post(url, headers, payload, timeout, protected_keys=None):
+        captured["payload"] = payload
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.text = json.dumps({"output": [{"type": "message", "content": "ok"}]})
+        resp.json.return_value = {"output": [{"type": "message", "content": "ok"}]}
+        return resp
+
+    with patch.object(lm_http, "model_supports_reasoning", return_value=None), \
+         patch.object(lm_http, "_post_v1_chat", fake_post):
+        out = lm_http._chat_v1(LOCAL_V1, "", "m",
+                                [{"role": "user", "content": "hi"}], 0.7, 100,
+                                repeat_penalty=None)
+    assert out == "ok"
+    assert "repeat_penalty" not in captured["payload"]
+    # A real (non-default) value is still forwarded.
+    captured.clear()
+    with patch.object(lm_http, "model_supports_reasoning", return_value=None), \
+         patch.object(lm_http, "_post_v1_chat", fake_post):
+        lm_http._chat_v1(LOCAL_V1, "", "m",
+                         [{"role": "user", "content": "hi"}], 0.7, 100,
+                         repeat_penalty=1.1)
+    assert captured["payload"]["repeat_penalty"] == 1.1
 

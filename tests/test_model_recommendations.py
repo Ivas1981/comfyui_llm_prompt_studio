@@ -132,3 +132,51 @@ def test_profiles_follow_modern_min_p_consensus():
     assert mr.PROFILES["strict"]["temperature"] == 0.3
     assert mr.PROFILES["strict"]["min_p"] == 0.02
     assert mr.PROFILES["strict"]["top_k"] == 0
+
+
+def test_resolve_profile_neutral_values_normalized_to_none():
+    # B2: profile "neutral" sampling values (top_k 0, top_p 1.0, min_p 0.0,
+    # presence_penalty 0.0, repeat_penalty 1.0) must normalize to None so they are
+    # omitted on the wire. The "structured" profile carries all of them.
+    res = mr.resolve_profile("structured", "whatever", "writer", has_image=False)
+    p = res["params"]
+    assert p["top_k"] is None
+    assert p["top_p"] is None
+    assert p["presence_penalty"] is None
+    assert p["repeat_penalty"] is None
+    # Genuine values are kept.
+    assert p["min_p"] == 0.05
+    assert p["temperature"] == 0.1
+
+
+def test_resolve_profile_gemma_architecture_override():
+    # B3/B4: a Gemma architecture (gemma3/gemma4) gets top_k=64 on top of the profile,
+    # and PROFILES is never mutated.
+    res = mr.resolve_profile("auto", "qwen2.5-14b-instruct", "writer",
+                             has_image=False, architecture="gemma3")
+    assert res["params"]["top_k"] == 64
+    # Unrelated architecture is unaffected.
+    res2 = mr.resolve_profile("auto", "qwen2.5-14b-instruct", "writer",
+                              has_image=False, architecture="llama")
+    assert res2["params"]["top_k"] is None
+    # PROFILES must remain pristine.
+    assert mr.PROFILES["baseline"]["top_k"] == 0
+
+
+def test_resolve_profile_accepts_optional_params_gracefully():
+    # Headless / server_routes callers that omit architecture/param_count must work.
+    res = mr.resolve_profile("auto", "qwen2.5-14b-instruct", "writer", has_image=False)
+    assert res["profile"] == "baseline"
+
+
+def test_recommend_for_uses_param_count_over_name():
+    # B4.4: when the API reports an active param count, it overrides the name heuristic.
+    # A 4B model by name would be "strict", but a 70B MoE reported via param_count is
+    # "baseline" (the real strength is what matters).
+    assert mr.recommend_for("tiny-model", "writer", param_count=70.0) == \
+        {"profile": "baseline", "structured": True}
+    assert mr.recommend_for("huge-model", "writer", param_count=4.0) == \
+        {"profile": "strict", "structured": False}
+    # Without param_count the name heuristic is used as the fallback.
+    assert mr.recommend_for("qwen2.5-14b-instruct", "writer", param_count=None) == \
+        {"profile": "baseline", "structured": True}

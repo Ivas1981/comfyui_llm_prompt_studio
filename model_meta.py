@@ -82,6 +82,11 @@ def _boundary_ok(text: str, start: int, end: int) -> bool:
         # A capitalized marker (CamelCase) is itself a word start. It must be accepted
         # even when the preceding word is all-lowercase (e.g. "photoLightning",
         # "myLcmModel", "v21Turbo") or adjacent to a digit — those are valid boundaries.
+        # BUT if a lowercase letter immediately follows, the marker is the head of a
+        # longer word (e.g. "Flash" in "Flashback", "Hyper" in "Hyperion") and must be
+        # rejected so "flashback"/"hyperion" do not falsely match Flash/Hyper families.
+        if after and after.islower():
+            return False
         return True
     if before and (before.islower() or before.isdigit()):
         return False

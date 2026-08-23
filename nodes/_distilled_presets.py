@@ -82,12 +82,9 @@ RECOMMENDATIONS = {
         "quality":  (8, 2.0, "lcm", "sgm_uniform", ""),
     },
     "tcd": {
-        "balanced": (8, 1.0, "euler_ancestral", "sgm_uniform",
-                      "For best results use the custom TCDScheduler (ComfyUI-TCD)."),
-        "speed":    (4, 0.7, "euler_ancestral", "sgm_uniform",
-                      "For best results use the custom TCDScheduler (ComfyUI-TCD)."),
-        "quality":  (12, 1.5, "dpmpp_sde", "sgm_uniform",
-                      "For best results use the custom TCDScheduler (ComfyUI-TCD)."),
+        "balanced": (8, 1.0, "euler_ancestral", "sgm_uniform", ""),
+        "speed":    (4, 0.7, "euler_ancestral", "sgm_uniform", ""),
+        "quality":  (12, 1.5, "dpmpp_sde", "sgm_uniform", ""),
     },
     "pcm": {
         "balanced": (4, 1.5, "euler", "sgm_uniform", "Do NOT use the lcm sampler."),
@@ -242,11 +239,20 @@ def recommend(family="", preset="balanced", ckpt_name="", architecture="") -> di
     name_steps = _steps_from_ckpt(ckpt_name, distilled)
     steps = name_steps if name_steps else steps_t
 
-    # The studio KSampler supports AYS, so distilled families use AYS SDXL at the
+    # The studio KSampler supports AYS, so distilled families use AYS at the
     # low-step presets (balancing speed). quality keeps karras/sgm_uniform, which
-    # exist in the standard scheduler list.
+    # exist in the standard scheduler list. The AYS *variant* is gated by the
+    # checkpoint architecture: SDXL-family checkpoints use "AYS SDXL", SD1.5 uses
+    # "AYS SD1", and Flux/SD3 keep their own scheduler (e.g. "simple") since AYS
+    # is an SDXL/SD1 scheduler that does not apply to them.
     if distilled and preset in ("balanced", "speed"):
-        scheduler = "AYS SDXL"
+        if arch == "sd15":
+            scheduler = "AYS SD1"
+        elif arch in ("flux", "sd3"):
+            pass  # leave the distilled family's own scheduler (e.g. "simple")
+        else:
+            # sdxl / pony / illustrious / unknown / empty -> the SDXL-family AYS scheduler
+            scheduler = "AYS SDXL"
 
     return {
         "family": fam,
