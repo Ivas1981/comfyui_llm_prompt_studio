@@ -61,7 +61,7 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
   `● Server down`), polled from the pack's status route every few seconds.
  - **Smart Multi-Clip** — architecture-aware encoding of up to four prompt pairs with one CLIP
    and shared size settings; wire the Smart Loader's `detected_architecture` for non-SDXL models.
-- **Style presets** — pick from ~50 built-in styles grouped into categories (Photography,
+- **Style presets** — pick from 51 built-in styles grouped into categories (Photography,
   Art Movements, Asian Art, Traditional Media, Digital & Contemporary, Fantasy & Horror,
   Period & Style, Basic Styles); the combobox shows `Category > Name` labels. A preset appends
   its style tags to the prompt and can override the system prompt. The Writer / Scene Builder
@@ -283,7 +283,7 @@ A vision model scores how well the image matches the prompt.
     `context_length`, `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`,
     `temperature`, `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`,
     `vision_check`, `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`,
-    `release_vram_after_run`.
+    `server_status`, `release_vram_after_run`.
   - **`load_model_profile`** works exactly as on the Writer (default `auto`, universal
     size-based recommendation, `custom` keeps the widget values). Because the Critic is
     always a vision model, its profile expands the `chat_completion` call with the
@@ -511,23 +511,32 @@ node straight into **FaceDetailer**, so no extra VAE decode is needed between th
 
 A port of Impact-Pack's `enhance_detail`: it finds faces in the frame, upscales each face's
 crop to `guide_size`, re-renders the improved face (inpaint/refine) and composites it back with
-a feathered mask. It accepts either a `pixels` image (legacy path) or a `latent` (optimized
-path — one shared VAE decode for detection, crops straight from the latent). The `latent` input
-is the intended input when chained after the Hires Fix node.
+a feathered mask. It accepts either a pixel `image` or a `latent` (optimized path — one shared
+VAE decode for detection, crops straight from the latent). The `latent` input is the intended
+input when chained after the Hires Fix node.
 
-- **Inputs:** `policy_method`, `detection_method` (`bbox` / `yolo_seg`), `yolo_seg_model_name`,
-  `yolo_seg_class`, `detection_threshold`, `guide_size`, `max_size`, `mask_shape` (`square` /
-  `oval`), `bbox_scale`, `drop_size`, `feathering`, `denoise`, `noise_seed`, `forced_noise`,
-  `sampler_name`, `scheduler`, `model_management`, `steps`, `cfg`, `positive`, `negative`,
-  `face_positive`, `face_negative`, `vae`, `pixels`, `mask` (optional), `face_model` (optional),
-  `batch_size`, `iteration`, `vae_tile_size`.
-- **Outputs:** `image`, `mask` (the preserved mask after processing), `face_image` (the combined
-  faces image before compositing), `detail_info`.
+- **Inputs (required):** `model`, `vae`, `positive`, `negative`, `seed` (INT,
+  randomize/increment/decrement/fixed), `steps` (INT, 20), `cfg` (FLOAT, 7.0), `sampler_name`,
+  `scheduler`, `denoise` (FLOAT, 0.5), `guide_size` (INT, 512), `max_size` (INT, 1024),
+  `crop_factor` (FLOAT, 1.5 — context margin kept around the face), `detection_method`
+  (`haar` / `yolo` / `yolo_seg`, default `haar`), `yolo_model_name` (YOLO bbox detector,
+  default `face_yolov8s.pt`), `yolo_seg_model_name` (seg model for `yolo_seg`, default `(none)`),
+  `yolo_seg_class` (INT, 0), `gender_filter` (`any` / `female` / `male`, default `any`),
+  `gender_model_name` (gender classifier, default `(none)`), `gender_model_female_class`
+  (INT, 0), `gender_threshold` (FLOAT, 0.5), `detection_threshold` (FLOAT, 0.5),
+  `drop_size` (INT, 0), `feather` (INT, 5 — mask feather radius in px), `mask_shape`
+  (`square` / `oval`, default `square`), `bbox_scale` (FLOAT, 1.0), `iterations` (INT, 1),
+  `inpaint_model` (BOOLEAN, false).
+- **Inputs (optional):** `image` (IMAGE, force input), `latent` (LATENT, force input),
+  `face_positive` / `face_negative` (CONDITIONING), `vae_tile_size` (INT, 0 = whole frame).
+- **Outputs:** `IMAGE` (the composited frame with the refined faces). All diagnostic info is
+  written to the ComfyUI console (the node is an output node).
 - **`yolo_seg_class`** (default `0`): which YOLO seg-model class to treat as a face. Detections
   of other classes (person, car, …) are ignored — this removes the false positives that forced
   `detection_threshold` down to 0.1–0.2, so you can keep it at a normal ~0.5.
 - **`detection_threshold`** (default 0.5): detector confidence cutoff; keep around 0.5 after
-  enabling the class filter.
+  enabling the class filter. It is forwarded to the YOLO model as its `conf`, so the node's
+  slider is authoritative even for weak faces below ultralytics' built-in 0.25 default.
 - **`gender_filter`** (default `any`): restrict refinement to one gender. `female` / `male`
   keep only faces of the chosen gender and skip the rest; `any` processes every detected face.
   It runs a lightweight ultralytics **gender classification model** (set in `gender_model_name`)
@@ -535,6 +544,9 @@ is the intended input when chained after the Hires Fix node.
   class index is set in `gender_model_female_class` (default `0`). If no gender model is selected,
   the filter logs a warning and is disabled (all faces processed). Drop a `.pt` classifier into
   `models/ultralytics/gender/`.
+- **`gender_threshold`** (default 0.5): minimum confidence of the gender classifier. Faces whose
+  predicted gender confidence is below this are treated as `unknown` and are **kept** (not dropped
+  by the gender filter) regardless of `gender_filter`. Only applies when `gender_filter != any`.
 - **`drop_size`** (default 0): faces whose shorter side (px) is below this are skipped; `0` =
   process every face.
 - **`guide_size`** / **`max_size`**: target size of the face's shorter side after upscaling the
@@ -545,16 +557,19 @@ is the intended input when chained after the Hires Fix node.
 - **Logging:** the node writes to the ComfyUI console (prefix `[FaceDetailer]`) the start params
   (method, guide_size, max_size, drop_size, yolo_seg_class), each detected face (size in px), the
   upscale ratio, the max_size crop clamp, any skip (already ≥ guide_size / smaller than drop_size)
-  and a final count of processed faces.
-- **Detection:** `bbox` uses the YOLO bounding-box detector (`yolo_seg_class` selects the seg
-  class); `yolo_seg` uses `yolo_seg_model_name` to produce a per-face segmentation mask of the
-  real shape instead of a rectangle. The detection model is loaded once and cached for the
-  session, so repeated runs don't reload it on every pass. `mask_shape` (`square` / `oval`) sets the inpaint mask shape;
-  `bbox_scale` (0.1–3.0, default 1.0) expands/contracts the crop around the face center (e.g. to
-  include jaw/neck); `iteration` (1–10, default 1) repeats the refinement pass over the upscaled
-  crop for stronger cleanup; `feathering` (px) softens the mask edge when compositing back;
-  `vae_tile_size` (px, default 0 = whole frame) tiles the VAE decode of the refined crop to cap
-  VRAM on large faces.
+  and a final count of processed faces; the gender step logs the per-image count of detected
+  genders (`N female, M male, K unknown`).
+- **Detection:** `haar` uses the built-in cv2 cascade; `yolo` uses the YOLO bounding-box detector
+  selected in `yolo_model_name`; `yolo_seg` uses `yolo_seg_model_name` to produce a per-face
+  segmentation mask of the real shape instead of a rectangle (`yolo_seg_class` selects the face
+  class). The detection model is loaded once and cached for the session, so repeated runs don't
+  reload it on every pass. `mask_shape` (`square` / `oval`) sets the inpaint mask shape for
+  `haar` / `yolo` (ignored for `yolo_seg`); `bbox_scale` (0.1–3.0, default 1.0) expands/contracts
+  the crop around the face center (e.g. to include jaw/neck); `iterations` (1–10, default 1)
+  repeats the refinement pass over the upscaled crop for stronger cleanup; `feather` (px) softens
+  the mask edge when compositing back; `vae_tile_size` (px, default 0 = whole frame) tiles the VAE
+  decode of the refined crop to cap VRAM on large faces; `inpaint_model` switches to
+  `InpaintModelConditioning` so the model sees the original face structure while regenerating.
 - **Per-face prompts:** when `face_positive` / `face_negative` are wired (e.g. from the Writer's
   `face_positive` / `face_negative` outputs via Smart Multi-Clip), they override `positive` /
   `negative` for each cropped face; otherwise the main conditioning is used. Each face crop is
@@ -609,7 +624,7 @@ back with **Library Loader**.
 
 ## Style presets
 
-The Writer's `style_preset` combobox lists ~50 built-in styles grouped by category
+The Writer's `style_preset` combobox lists 51 built-in styles grouped by category
 (Photography, Art Movements, Asian Art, Traditional Media, Digital & Contemporary,
 Fantasy & Horror, Period & Style, Basic Styles); each entry is shown as `Category > Name`.
 The original 14 styles keep their names, so workflows saved with a bare preset name still
