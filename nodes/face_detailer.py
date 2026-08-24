@@ -17,6 +17,7 @@ import torch
 
 logger = logging.getLogger("llm_prompt_studio")
 
+
 from ._ksample import sample_latent, node_span
 from ._imgutils import (
     tensor_resize, mask_resize, to_latent_image,
@@ -25,12 +26,28 @@ from ._imgutils import (
 from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
 from ._latent_upscaler import (
     project_local_ultralytics_bbox, project_local_ultralytics_seg,
+    project_local_ultralytics_gender,
 )
 from ..vram import release_before_sample
 
 
 def _clamp(v, lo, hi):
     return max(lo, min(hi, v))
+
+
+# Module-level cache so a YOLO model is loaded once and reused across every image
+# in a batch (and across runs), instead of being re-initialised per detection call.
+_YOLO_CACHE = {}
+
+
+def _get_yolo_model(path):
+    """Return a cached ``ultralytics.YOLO`` instance for ``path`` (loaded on first use)."""
+    model = _YOLO_CACHE.get(path)
+    if model is None:
+        from ultralytics import YOLO
+        model = YOLO(path)
+        _YOLO_CACHE[path] = model
+    return model
 
 
 def _decode_latent(vae, samples, tile_size):
@@ -117,14 +134,33 @@ class LLMPromptStudioFaceDetailer:
                                 "detection_method = yolo_seg. The per-detection mask "
                                 "(real shape) replaces the rectangular face mask."}),
                 "yolo_seg_class": ("INT", {"default": 0, "min": 0, "max": 20, "step": 1,
-                                 "tooltip": "Номер класса, который сег-модель должна считать "
-                                            "лицом. Для стандартной face_yolov8s_seg это 0 "
-                                            "(класс 'face'). Детекции других классов (person, "
-                                            "автомобиль и т.п.) игнорируются — это убирает "
-                                            "ложные срабатывания, поэтому порог уверенности "
-                                            "можно держать нормальным (~0.5). Если ваша модель "
-                                            "выдаёт лицо под другим номером класса, укажите "
-                                            "его здесь."}),
+                                  "tooltip": "Номер класса, который сег-модель должна считать "
+                                             "лицом. Для стандартной face_yolov8s_seg это 0 "
+                                             "(класс 'face'). Детекции других классов (person, "
+                                             "автомобиль и т.п.) игнорируются — это убирает "
+                                             "ложные срабатывания, поэтому порог уверенности "
+                                             "можно держать нормальным (~0.5). Если ваша модель "
+                                             "выдаёт лицо под другим номером класса, укажите "
+                                             "его здесь."}),
+                "gender_filter": (["any", "female", "male"], {"default": "any",
+                                  "tooltip": "Пол лиц для обработки. `any` — все найденные "
+                                             "лица; `female` / `male` — обрабатывать только "
+                                             "лица выбранного пола (остальные пропускаются). "
+                                             "Требует выбранной gender-модели в "
+                                             "gender_model_name, иначе фильтр отключается с "
+                                             "предупреждением."}),
+                "gender_model_name": (
+                    ["(none)"] + project_local_ultralytics_gender(),
+                    {"default": "(none)",
+                     "tooltip": "Ultralytics-модель классификации пола (кроп лица -> класс). "
+                                "Поместите .pt в models/ultralytics/gender/. Используется "
+                                "только когда gender_filter != any. Класс, соответствующий "
+                                "женщине, задаётся в gender_model_female_class."}),
+                "gender_model_female_class": ("INT", {"default": 0, "min": 0, "max": 20, "step": 1,
+                                  "tooltip": "Номер класса, который gender-модель выдаёт для "
+                                             "женского лица (обычно 0 для female/male). "
+                                             "Лица с другим номером класса считаются "
+                                             "мужскими. Используется при gender_filter != any."}),
                 "detection_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
                                   "tooltip": "Порог уверенности детекции. После включения "
                                              "фильтра по классу (yolo_seg_class) держите "
@@ -196,14 +232,14 @@ class LLMPromptStudioFaceDetailer:
 
     def _detect_yolo(self, img, yolo_name, threshold):
         try:
-            from ultralytics import YOLO
+            from ultralytics import YOLO  # noqa: F401  (ensures import error surfaces early)
         except Exception as e:
             raise RuntimeError(
                 "YOLO detection requires the optional `ultralytics` package") from e
         path = self._resolve_yolo(yolo_name)
         if not path:
             raise FileNotFoundError("YOLO model not found: %s" % yolo_name)
-        model = YOLO(path)
+        model = _get_yolo_model(path)
         arr = (img[0].clamp(0.0, 1.0).cpu().numpy() * 255.0).astype("uint8")
         res = model(arr, verbose=False)[0]
         boxes = []
@@ -216,14 +252,14 @@ class LLMPromptStudioFaceDetailer:
 
     def _detect_yolo_seg(self, img, yolo_name, threshold, seg_class=0):
         try:
-            from ultralytics import YOLO
+            from ultralytics import YOLO  # noqa: F401
         except Exception as e:
             raise RuntimeError(
                 "YOLO segmentation requires the optional `ultralytics` package") from e
         path = self._resolve_yolo_seg(yolo_name)
         if not path:
             raise FileNotFoundError("YOLO seg model not found: %s" % yolo_name)
-        model = YOLO(path)
+        model = _get_yolo_model(path)
         arr = (img[0].clamp(0.0, 1.0).cpu().numpy() * 255.0).astype("uint8")
         res = model(arr, verbose=False, retina_masks=True)[0]
         H, W = arr.shape[0], arr.shape[1]
@@ -277,6 +313,82 @@ class LLMPromptStudioFaceDetailer:
         except Exception:
             pass
         return None
+
+    def _resolve_yolo_gender(self, name):
+        from ._latent_upscaler import PROJECT_ROOT
+        if not name or name == "(none)":
+            return None
+        local = os.path.join(PROJECT_ROOT, "models", "ultralytics", "gender", name)
+        if os.path.isfile(local):
+            return local
+        try:
+            import folder_paths
+            for cat in ("ultralytics_gender", "ultralytics"):
+                p = folder_paths.get_full_path(cat, name)
+                if p and os.path.isfile(p):
+                    return p
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _classify_gender(crop, gender_model, female_class):
+        """Return the predicted gender class index for a cropped face, or None.
+
+        Supports ultralytics classification models (``res.probs.top1``) and, as a
+        fallback, detection models (highest-confidence box class). ``female_class`` is
+        the index the model uses for the female class.
+        """
+        try:
+            res = gender_model(crop, verbose=False)[0]
+        except Exception as e:  # transient inference error -> keep the face
+            logger.warning("[FaceDetailer] Ошибка gender-классификации: %s — лицо "
+                           "сохранено", e)
+            return None
+        probs = getattr(res, "probs", None)
+        if probs is not None:
+            return int(probs.top1)
+        boxes = getattr(res, "boxes", None)
+        if boxes is not None and len(boxes) > 0:
+            return int(boxes.cls[0])
+        return None
+
+    def _apply_gender_filter(self, boxes, arr, gender_filter,
+                             gender_model_name, gender_female_class):
+        """Drop faces whose predicted gender does not match ``gender_filter``."""
+        if gender_filter in (None, "any"):
+            return boxes
+        if not gender_model_name or gender_model_name == "(none)":
+            logger.warning("[FaceDetailer] gender_filter=%s, но gender-модель не выбрана "
+                           "— фильтр отключён (обрабатываются все лица)", gender_filter)
+            return boxes
+        path = self._resolve_yolo_gender(gender_model_name)
+        if not path:
+            logger.warning("[FaceDetailer] gender-модель не найдена: %s — фильтр отключён",
+                           gender_model_name)
+            return boxes
+        model = _get_yolo_model(path)
+        H, W = arr.shape[0], arr.shape[1]
+        want_female = (gender_filter == "female")
+        kept = []
+        skipped = 0
+        for (x1, y1, x2, y2, seg) in boxes:
+            cx1, cy1, cx2, cy2 = max(0, x1), max(0, y1), min(W, x2), min(H, y2)
+            if cx2 <= cx1 or cy2 <= cy1:
+                continue
+            cls = self._classify_gender(arr[cy1:cy2, cx1:cx2], model, gender_female_class)
+            if cls is None:
+                kept.append((x1, y1, x2, y2, seg))  # unknown -> keep
+                continue
+            is_female = (int(cls) == int(gender_female_class))
+            if is_female == want_female:
+                kept.append((x1, y1, x2, y2, seg))
+            else:
+                skipped += 1
+        if skipped:
+            logger.info("[FaceDetailer] gender-фильтр (%s): пропущено %d лиц(о)",
+                        gender_filter, skipped)
+        return kept
 
     # -- refinement --------------------------------------------------------
     @staticmethod
@@ -442,7 +554,8 @@ class LLMPromptStudioFaceDetailer:
                            yolo_seg_model_name, detection_threshold, feather,
                            mask_shape, bbox_scale, iterations,
                            inpaint_model, vae_tile_size=0, yolo_seg_class=0,
-                           drop_size=0,
+                           drop_size=0, gender_filter="any",
+                           gender_model_name="(none)", gender_model_female_class=0,
                            image=None, latent=None,
                            face_positive=None, face_negative=None, unique_id=None):
         with node_span("LLMPromptStudioFaceDetailer", unique_id):
@@ -466,9 +579,15 @@ class LLMPromptStudioFaceDetailer:
                 # run on the individual crop `img[i:i+1]` to keep mask coordinates
                 # aligned to that frame (previously detection ran once on the whole
                 # batch and reused the same boxes for every image).
+                arr = (img[i].clamp(0.0, 1.0).cpu().numpy() * 255.0).astype("uint8")
                 boxes = self._detect(img[i:i + 1], detection_method, yolo_model_name,
                                      yolo_seg_model_name, detection_threshold,
                                      seg_class=yolo_seg_class)
+                if not boxes:
+                    continue
+                boxes = self._apply_gender_filter(
+                    boxes, arr, gender_filter, gender_model_name,
+                    gender_female_class=gender_model_female_class)
                 if not boxes:
                     continue
                 for (x1f, y1f, x2f, y2f, seg_mask) in boxes:

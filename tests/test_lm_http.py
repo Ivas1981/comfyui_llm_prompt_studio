@@ -69,6 +69,29 @@ def test_validate_server_url_rejects_public():
         lm_http.validate_server_url("http://1.2.3.4/v1")
 
 
+def test_validate_server_url_resolves_local_hostname(monkeypatch):
+    # A bare LAN hostname (e.g. "nas.home") should be accepted only when DNS resolves it
+    # exclusively to private/loopback addresses - without disabling SSRF protection.
+    import socket
+
+    def fake_getaddrinfo(host, port, *a, **k):
+        return [(socket.AF_INET, 0, 0, "", ("192.168.1.50", 0))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    assert lm_http.validate_server_url("http://nas.home:1234/v1") == "http://nas.home:1234/v1"
+
+
+def test_validate_server_url_rejects_public_hostname(monkeypatch):
+    import socket
+
+    def fake_getaddrinfo(host, port, *a, **k):
+        return [(socket.AF_INET, 0, 0, "", ("8.8.8.8", 0))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(ValueError):
+        lm_http.validate_server_url("http://my.server:1234/v1")
+
+
 def test_fetch_models_returns_ids():
     # Native /api/v1/models envelope: prefer `key`, fall back to `id`.
     resp = _ok_response(text=json.dumps(

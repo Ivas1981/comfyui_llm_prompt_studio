@@ -174,6 +174,26 @@ def get_architecture_guidance() -> Dict:
     return data.get("architecture_guidance", {})
 
 
+def append_positive_tags(positive: str, additions: str) -> str:
+    """Append style tokens to a positive prompt, deduplicated against what is already there.
+
+    Mirrors :func:`append_negative_tags`: tokens are split on commas, trimmed, deduplicated
+    against the existing positive (and within the additions), and joined back. Empty input is
+    returned unchanged."""
+    if not additions:
+        return positive
+    existing = {t.strip().lower() for t in positive.split(",") if t.strip()}
+    new = []
+    for tok in additions.split(","):
+        tok = tok.strip()
+        if tok and tok.lower() not in existing:
+            existing.add(tok.lower())
+            new.append(tok)
+    if not new:
+        return positive
+    return (positive + ", " + ", ".join(new)) if positive.strip() else ", ".join(new)
+
+
 def append_negative_tags(negative: str, additions: str) -> str:
     """Append architecture ``default_negative`` tokens to an existing negative prompt.
 
@@ -225,18 +245,18 @@ def apply_preset_style(preset: Dict, positive: str, negative: str,
         pos_tags = [pos_tags] if pos_tags else []
     if pos_tags:
         joined = ", ".join(pos_tags)
-        positive = f"{positive}, {joined}" if positive else joined
+        positive = append_positive_tags(positive, joined)
         if face_positive:
-            face_positive = f"{face_positive}, {joined}"
+            face_positive = append_positive_tags(face_positive, joined)
     if not no_negative:
         neg_tags = preset.get("style_tags_negative") or []
         if not isinstance(neg_tags, list):
             neg_tags = [neg_tags] if neg_tags else []
         if neg_tags:
             joined = ", ".join(neg_tags)
-            negative = f"{negative}, {joined}" if negative else joined
+            negative = append_negative_tags(negative, joined)
             if face_negative:
-                face_negative = f"{face_negative}, {joined}"
+                face_negative = append_negative_tags(face_negative, joined)
     return positive, negative, face_positive, face_negative
 
 
