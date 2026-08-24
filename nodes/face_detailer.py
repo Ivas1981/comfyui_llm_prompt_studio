@@ -20,7 +20,7 @@ logger = logging.getLogger("llm_prompt_studio")
 from ._ksample import sample_latent, node_span
 from ._imgutils import (
     tensor_resize, mask_resize, to_latent_image,
-    tensor_gaussian_blur_mask, tensor_paste,
+    tensor_gaussian_blur_mask, tensor_paste, match_luminance,
 )
 from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
 from ._latent_upscaler import (
@@ -116,7 +116,27 @@ class LLMPromptStudioFaceDetailer:
                      "tooltip": "Segmentation model for `yolo_seg`. Only used when "
                                 "detection_method = yolo_seg. The per-detection mask "
                                 "(real shape) replaces the rectangular face mask."}),
-                "detection_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "yolo_seg_class": ("INT", {"default": 0, "min": 0, "max": 20, "step": 1,
+                                 "tooltip": "Номер класса, который сег-модель должна считать "
+                                            "лицом. Для стандартной face_yolov8s_seg это 0 "
+                                            "(класс 'face'). Детекции других классов (person, "
+                                            "автомобиль и т.п.) игнорируются — это убирает "
+                                            "ложные срабатывания, поэтому порог уверенности "
+                                            "можно держать нормальным (~0.5). Если ваша модель "
+                                            "выдаёт лицо под другим номером класса, укажите "
+                                            "его здесь."}),
+                "detection_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
+                                  "tooltip": "Порог уверенности детекции. После включения "
+                                             "фильтра по классу (yolo_seg_class) держите "
+                                             "его около 0.5: лишние классы всё равно "
+                                             "отсеются, а лицо сег-модель выдаёт с высокой "
+                                             "уверенностью."}),
+                "drop_size": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1,
+                             "tooltip": "Минимальный размер лица (px) по короткой стороне. "
+                                        "Лица меньше этого размера пропускаются и не "
+                                        "обрабатываются (полезно, чтобы не тратить время на "
+                                        "крошечные/фоновые лица). 0 = не отсекать никакие "
+                                        "лица (обрабатывать все найденные)."}),
                 "feather": ("INT", {"default": 5, "min": 0, "max": 100, "step": 1,
                           "tooltip": "Feather (blur) radius, in px, of the face mask used when "
                                      "compositing the refined face back into the image."}),
@@ -155,11 +175,11 @@ class LLMPromptStudioFaceDetailer:
         }
 
     # -- detection ---------------------------------------------------------
-    def _detect(self, img, method, yolo_name, yolo_seg_name, threshold):
+    def _detect(self, img, method, yolo_name, yolo_seg_name, threshold, seg_class=0):
         if method == "haar":
             return self._detect_haar(img)
         if method == "yolo_seg":
-            return self._detect_yolo_seg(img, yolo_seg_name, threshold)
+            return self._detect_yolo_seg(img, yolo_seg_name, threshold, seg_class)
         return self._detect_yolo(img, yolo_name, threshold)
 
     def _detect_haar(self, img):
@@ -194,7 +214,7 @@ class LLMPromptStudioFaceDetailer:
             boxes.append((int(x1), int(y1), int(x2), int(y2), None))
         return boxes
 
-    def _detect_yolo_seg(self, img, yolo_name, threshold):
+    def _detect_yolo_seg(self, img, yolo_name, threshold, seg_class=0):
         try:
             from ultralytics import YOLO
         except Exception as e:
@@ -210,6 +230,11 @@ class LLMPromptStudioFaceDetailer:
         masks = getattr(res, "masks", None)
         boxes = []
         for idx, box in enumerate(res.boxes):
+            # Only accept the class the user declared as "face". Without this filter a
+            # generic seg model emits person/car/... masks too, which previously forced
+            # the threshold down to 0.1-0.2 and produced false positives.
+            if seg_class is not None and int(box.cls[0]) != int(seg_class):
+                continue
             if float(box.conf[0]) < threshold:
                 continue
             x1, y1, x2, y2 = box.xyxy[0].tolist()
@@ -301,11 +326,14 @@ class LLMPromptStudioFaceDetailer:
             y2f = int(round(cy + hh))
         fh = y2f - y1f
         fw = x2f - x1f
-        upscale = guide_size / float(min(fw, fh))
+        short = min(fw, fh)
+        upscale = guide_size / float(short)
         if upscale <= 1.0:
-            logger.info("Face skipped: shorter side (%d) already >= guide_size (%d)",
-                        min(fw, fh), guide_size)
+            logger.info("[FaceDetailer] Лицо пропущено: короткая сторона %d px уже >= "
+                        "guide_size (%d) — увеличение не требуется", short, guide_size)
             return None
+        logger.info("[FaceDetailer] Лицо обрабатывается: короткая сторона %d px -> "
+                    "увеличение x%.2f до guide_size %dpx", short, upscale, guide_size)
 
         pos = face_positive if face_positive is not None else positive
         neg = face_negative if face_negative is not None else negative
@@ -337,6 +365,8 @@ class LLMPromptStudioFaceDetailer:
             s = max_size / float(max(new_w, new_h))
             new_w = int(round(new_w * s))
             new_h = int(round(new_h * s))
+            logger.info("[FaceDetailer] Кроп ограничен max_size (%d px): коэффициент "
+                        "увеличения снижен до x%.2f", max_size, upscale * s)
         new_w = _clamp(new_w, 1, max_size)
         new_h = _clamp(new_h, 1, max_size)
 
@@ -411,7 +441,8 @@ class LLMPromptStudioFaceDetailer:
                            crop_factor, detection_method, yolo_model_name,
                            yolo_seg_model_name, detection_threshold, feather,
                            mask_shape, bbox_scale, iterations,
-                           inpaint_model, vae_tile_size=0,
+                           inpaint_model, vae_tile_size=0, yolo_seg_class=0,
+                           drop_size=0,
                            image=None, latent=None,
                            face_positive=None, face_negative=None, unique_id=None):
         with node_span("LLMPromptStudioFaceDetailer", unique_id):
@@ -425,6 +456,10 @@ class LLMPromptStudioFaceDetailer:
 
             result = img.clone()
             face_idx = 0
+            total = img.shape[0]
+            logger.info("[FaceDetailer] Старт: кадров=%d, метод=%s, guide_size=%d, "
+                        "max_size=%d, drop_size=%d, yolo_seg_class=%d",
+                        total, detection_method, guide_size, max_size, drop_size, yolo_seg_class)
             for i in range(img.shape[0]):
                 # Detect faces per image in the batch: the seg masks returned by
                 # _detect_yolo_seg are sized to the image passed in, so detection must
@@ -432,10 +467,21 @@ class LLMPromptStudioFaceDetailer:
                 # aligned to that frame (previously detection ran once on the whole
                 # batch and reused the same boxes for every image).
                 boxes = self._detect(img[i:i + 1], detection_method, yolo_model_name,
-                                     yolo_seg_model_name, detection_threshold)
+                                     yolo_seg_model_name, detection_threshold,
+                                     seg_class=yolo_seg_class)
                 if not boxes:
                     continue
                 for (x1f, y1f, x2f, y2f, seg_mask) in boxes:
+                    fw = x2f - x1f
+                    fh = y2f - y1f
+                    short = min(fw, fh)
+                    logger.info("[FaceDetailer] Лицо обнаружено: размер %dx%d px "
+                                "(короткая сторона %d px)%s", fw, fh, short,
+                                ", сег-маска" if seg_mask is not None else "")
+                    if drop_size and short < int(drop_size):
+                        logger.info("[FaceDetailer] Лицо пропущено: короткая сторона %d px "
+                                    "< drop_size (%d) — слишком мелкое", short, drop_size)
+                        continue
                     out = self._refine_face(
                         model, vae, img, i, x1f, y1f, x2f, y2f,
                         positive, negative, face_positive, face_negative,
@@ -449,5 +495,12 @@ class LLMPromptStudioFaceDetailer:
                         continue
                     y1, y2, x1, x2, ref_crop, face_mask = out
                     region = result[i:i + 1, y1:y2, x1:x2, :]
+                    # Match the refined face's brightness/contrast to the surrounding
+                    # original (within the feathered mask) so the inpaint does not leave
+                    # a brighter seam. The margin is masked out at composite time, so
+                    # adjusting the whole crop by masked-region stats is safe.
+                    ref_crop = match_luminance(ref_crop, region, face_mask)
                     result[i:i + 1, y1:y2, x1:x2, :] = tensor_paste(region, ref_crop, face_mask)
+            logger.info("[FaceDetailer] Готово: обработано лиц=%d из %d кадров",
+                        face_idx, total)
             return (result,)
