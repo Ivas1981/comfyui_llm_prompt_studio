@@ -7,8 +7,8 @@ from ..lm_http import (chat_completion, ensure_model_loaded,
                        model_architecture, model_param_count)
 from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
-from ..presets import (apply_preset_to_prompts, get_preset_by_name,
-                       get_architecture_guidance, append_negative_tags)
+from ..presets import (apply_preset_to_prompts, apply_preset_style, get_preset_by_name,
+                        get_architecture_guidance, append_negative_tags)
 from .model_recommendations import resolve_profile
 from ..debug import log_node_enter, log_node_exit, log_error
 from ..vram import (release_after_llm, release_enabled,
@@ -404,13 +404,20 @@ class LLMPromptStudioWriter:
                 parsed = parse_prompt_json(raw_new, allow_plain_text_fallback=False)
     
             positive, negative, scene_name, face_positive, face_negative = parsed
-    
+
             # In no-negative mode the negative fields are forced empty regardless of what the
             # model returned (the negative is inert at CFG~1 and must stay consistent).
             if no_negative:
                 negative = ""
                 face_negative = ""
-    
+
+            # Q5: when face prompts are disabled, never emit them — the model still returns
+            # face_positive/face_negative (the schema asks for them), so blank them out here so
+            # FaceDetailer falls back to the main prompts instead of an unwanted face prompt.
+            if not generate_face_prompts:
+                face_positive = ""
+                face_negative = ""
+
             if not positive.strip():
                 raise RuntimeError(
                     f"Model failed to produce a required positive prompt after "
@@ -421,25 +428,30 @@ class LLMPromptStudioWriter:
                     f"Model failed to produce a required negative prompt after "
                     f"{max_field_retries} field-retry attempt(s). Try a model with better "
                     "instruction following, or lower max_field_retries and edit manually.")
-            if not scene_name.strip():
-                scene_name = slugify(positive)
-    
+
+            # Q6: standardize the scene name. Models phrase it inconsistently (quotes, "Scene:",
+            # mixed case, markdown); slugify normalizes every non-empty value into a clean
+            # lowercase underscore slug, and still falls back to slugify(positive) when empty.
+            scene_name = slugify(scene_name) if scene_name.strip() else slugify(positive)
+
             # Fallback: if face prompts were not generated, the regular prompts go to their outputs
-            if not face_positive:
+            if generate_face_prompts and not face_positive:
                 face_positive = positive
-            if not no_negative and not face_negative.strip():
+            if generate_face_prompts and not no_negative and not face_negative.strip():
                 face_negative = negative
-    
+
             # Architecture default negatives (standard mode only; inert when no_negative already
             # forced the negative empty above). Deduped against the generated negative.
             if arch and not no_negative and arch_guidance:
                 negative = append_negative_tags(negative, arch_guidance.get("default_negative", ""))
-    
-            # Append the preset's style tags to the prompts (negative tags only when not in
+
+            # Append the preset's style tags to the prompts — and, per Q4, to the face prompts
+            # too so an inpainted face matches the chosen style (negative tags only when not in
             # no-negative mode, where the negative is intentionally empty).
             if preset:
-                positive, negative = apply_preset_to_prompts(preset, positive, negative, no_negative)
-    
+                positive, negative, face_positive, face_negative = apply_preset_style(
+                    preset, positive, negative, face_positive, face_negative, no_negative)
+
             result = (positive, negative, raw, scene_name, face_positive, face_negative)
             _prompt_cache[cache_key] = result
             if len(_prompt_cache) > _PROMPT_CACHE_MAX:

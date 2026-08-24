@@ -360,8 +360,9 @@ class LLMPromptStudioSceneBuilder:
                     f"Model failed to produce a required negative prompt after "
                     f"{max_field_retries} field-retry attempt(s). Try a model with better "
                     "instruction following, or lower max_field_retries and edit manually.")
-            if not scene_name.strip():
-                scene_name = slugify(positive)
+            # Standardize the scene name (Q6): normalize any non-empty model value into a
+            # clean lowercase slug, falling back to slugify(positive) only when empty.
+            scene_name = slugify(scene_name) if scene_name.strip() else slugify(positive)
     
             log_node_exit("Scene Builder", unique_id,
                           {"stage": 2, "positive": positive[:200], "negative": negative[:200],

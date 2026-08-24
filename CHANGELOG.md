@@ -6,6 +6,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Face Detailer: class filter for `yolo_seg`.** New `yolo_seg_class` widget
+  (default `0`) selects which seg-model class to treat as a face. Detections of
+  other classes (person, car, etc.) are now ignored, removing false positives so
+  `detection_threshold` can stay at a normal value (~0.5) instead of being lowered
+  to 0.1–0.2.
+- **Face Detailer: post-inpaint brightness match.** The refined face is now
+  matched in brightness/contrast to its surroundings within the feathered mask
+  (`match_luminance`), removing the "face brighter than the rest of the frame" seam.
+
+### Changed
+- **Face Detailer: `detection_threshold`** now ships with an explanatory tooltip
+  and is recommended around 0.5 once the class filter is enabled.
+- **Face Detailer: console logging.** On start and per frame/face it logs (prefixed
+  `[FaceDetailer]`): start params (method, guide_size, max_size, drop_size,
+  yolo_seg_class), each detected face's size in px, the upscale ratio to guide_size,
+  the max_size crop clamp, skips (already >= guide_size, smaller than drop_size) and
+  a final count of processed faces.
+- **Face Detailer: `drop_size` widget.** Faces whose shorter side is below the
+  given px size are skipped and not processed (default `0` = process all faces).
+- **Writer: styles no longer inject photographic tags where inappropriate (Q4).**
+  The shared `camera/lens` layer was removed from every preset's "Engineering rules"
+  (it forced "85 mm lens"-style tags into anime/illustration/painting). Photographic
+  presets still describe camera/lens in their own text, so their behavior is unchanged.
+- **Writer: the chosen style now also shapes `face_positive`/`face_negative` (Q4).**
+  A preset's style tags are appended to the face prompts too, so a FaceDetailer-refined
+  face matches the selected style.
+- **Writer: `generate_face_prompts = off` no longer emits face prompts (Q5).**
+  `face_positive`/`face_negative` are forcibly cleared even if the model returns them,
+  so FaceDetailer correctly falls back to the main prompts.
+- **Writer / Scene Builder: standardized `scene_name` (Q6).** Any non-empty model
+  value (quotes, "Scene: …", mixed case, markdown) is normalized to a consistent
+  lowercase slug via `slugify`; an empty value still falls back to `slugify(positive)`.
+
 ## [1.2.3] — 2026-08-24
 
 ### Added

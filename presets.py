@@ -211,6 +211,35 @@ def apply_preset_to_prompts(preset: Dict, positive: str, negative: str,
     return positive, negative
 
 
+def apply_preset_style(preset: Dict, positive: str, negative: str,
+                       face_positive: str = "", face_negative: str = "",
+                       no_negative: bool = False):
+    """Apply a style preset's tags to the main prompts AND the face prompts.
+
+    The selected style should influence ``face_positive``/``face_negative`` too (Q4): the
+    same style tokens that shape the scene are appended to the per-face prompts so a face
+    inpainted by FaceDetailer matches the chosen style. Empty face strings are left empty
+    (e.g. when face prompts are disabled), so no tags are injected into a blank prompt."""
+    pos_tags = preset.get("style_tags_positive") or []
+    if not isinstance(pos_tags, list):
+        pos_tags = [pos_tags] if pos_tags else []
+    if pos_tags:
+        joined = ", ".join(pos_tags)
+        positive = f"{positive}, {joined}" if positive else joined
+        if face_positive:
+            face_positive = f"{face_positive}, {joined}"
+    if not no_negative:
+        neg_tags = preset.get("style_tags_negative") or []
+        if not isinstance(neg_tags, list):
+            neg_tags = [neg_tags] if neg_tags else []
+        if neg_tags:
+            joined = ", ".join(neg_tags)
+            negative = f"{negative}, {joined}" if negative else joined
+            if face_negative:
+                face_negative = f"{face_negative}, {joined}"
+    return positive, negative, face_positive, face_negative
+
+
 def reset_to_defaults():
     """Delete the user file and restore the shipped defaults."""
     user_path = get_user_presets_path()

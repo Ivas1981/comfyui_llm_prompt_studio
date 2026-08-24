@@ -86,3 +86,31 @@ def tensor_paste(dst, src, mask):
 def crop_region_from_xywh(x1, y1, x2, y2):
     """Return slice objects selecting the ``[y1:y2, x1:x2]`` region of an image."""
     return (slice(int(y1), int(y2)), slice(int(x1), int(x2)))
+
+
+def match_luminance(src, ref, weight, eps=1e-6):
+    """Match ``src`` brightness/contrast to ``ref`` inside the ``weight`` region.
+
+    Per-channel affine transfer ``src_adj = (src - mu_src) * (std_ref/std_src) + mu_ref``
+    is computed only over the weighted mask (``weight`` is ``(B, H, W, 1)`` in 0..1,
+    ``src``/``ref`` are ``(B, H, W, C)``). This lets a regenerated face blend into the
+    original image without a brightness seam after an inpaint/detail pass. The scale is
+    clamped to [0.5, 2.0] so a degenerate (flat) source region cannot blow up.
+    """
+    if weight is None:
+        return src
+    w = weight[..., 0]                                   # (B, H, W)
+    w_sum = w.sum(dim=(1, 2), keepdim=True).clamp_min(eps)  # (B, 1)
+    out = src.clone()
+    for c in range(src.shape[-1]):
+        s = src[..., c]                                  # (B, H, W)
+        r = ref[..., c]
+        mu_s = (w * s).sum(dim=(1, 2), keepdim=True) / w_sum
+        mu_r = (w * r).sum(dim=(1, 2), keepdim=True) / w_sum
+        var_s = (w * (s - mu_s) ** 2).sum(dim=(1, 2), keepdim=True) / w_sum
+        var_r = (w * (r - mu_r) ** 2).sum(dim=(1, 2), keepdim=True) / w_sum
+        std_s = (var_s + eps).sqrt()
+        std_r = (var_r + eps).sqrt()
+        scale = (std_r / std_s).clamp(0.5, 2.0)
+        out[..., c] = (s - mu_s) * scale + mu_r
+    return out
