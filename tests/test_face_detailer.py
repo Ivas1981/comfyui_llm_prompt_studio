@@ -238,6 +238,7 @@ class _Box:
     def __init__(self, xyxy):
         self.xyxy = torch.tensor([xyxy])     # [1, 4] like ultralytics
         self.conf = torch.tensor([0.9])       # [1]
+        self.cls = torch.tensor([0])          # [1] face class 0
 
 
 class _FakeMasks:
@@ -255,7 +256,7 @@ class _FakeYOLO:
     def __init__(self, path):
         self.path = path
 
-    def __call__(self, arr, verbose=False, retina_masks=False):
+    def __call__(self, arr, verbose=False, retina_masks=False, conf=0.25):
         H, W = arr.shape[0], arr.shape[1]
         boxes = [_Box([8.0, 8.0, 56.0, 56.0])]
         # circular/elliptical mask, not a rectangle -> proves shape is used
@@ -311,6 +312,86 @@ def test_detect_yolo_seg_falls_back_to_rectangle_when_no_masks(monkeypatch):
         assert boxes[0][4] is None                     # no seg mask -> rectangle path
     finally:
         _FakeYOLO.__call__ = orig
+
+
+# -- conf forwarding (ultralytics default 0.25 pre-filter) -------------------
+class _WeakBox:
+    def __init__(self, xyxy, conf, cls=0):
+        self.xyxy = torch.tensor([xyxy])
+        self.conf = torch.tensor([conf])
+        self.cls = torch.tensor([cls])
+
+
+class _BoxesOnly:
+    def __init__(self, boxes):
+        self.boxes = boxes
+
+
+def _install_ultralytics_weak(monkeypatch, face_conf):
+    """Stub ultralytics like the real one: it drops boxes below the `conf` it is
+    called with (default 0.25). This reproduces the pre-filter that previously
+    made weak faces (<0.25) undetectable regardless of the node's threshold."""
+    import sys, types
+    import comfyui_llm_prompt_studio.tests.test_face_detailer as selfmod
+
+    class _WeakSegYOLO:
+        def __init__(self, path):
+            self.path = path
+
+        def __call__(self, arr, verbose=False, retina_masks=False, conf=0.25):
+            H, W = arr.shape[0], arr.shape[1]
+            boxes = [selfmod._WeakBox([8.0, 8.0, 56.0, 56.0], face_conf)]
+            boxes = [b for b in boxes if float(b.conf[0]) >= conf]
+            ys, xs = torch.meshgrid(torch.arange(H, dtype=torch.float32),
+                                    torch.arange(W, dtype=torch.float32), indexing="ij")
+            m = ((xs - W / 2.0) ** 2 / (20.0 ** 2) + (ys - H / 2.0) ** 2 / (20.0 ** 2)) <= 1.0
+            return [selfmod._FakeResult(boxes, selfmod._FakeMasks(m.unsqueeze(0).to(torch.float32)))]
+
+    class _WeakBboxYOLO:
+        def __init__(self, path):
+            self.path = path
+
+        def __call__(self, arr, verbose=False, conf=0.25):
+            boxes = [selfmod._WeakBox([8.0, 8.0, 56.0, 56.0], face_conf)]
+            boxes = [b for b in boxes if float(b.conf[0]) >= conf]
+            return [selfmod._BoxesOnly(boxes)]
+
+    fake = types.ModuleType("ultralytics")
+    fake.YOLO = lambda p: _WeakSegYOLO(p)
+    monkeypatch.setitem(sys.modules, "ultralytics", fake)
+    return _WeakBboxYOLO
+
+
+def test_detect_yolo_seg_forwards_conf_to_recover_weak_faces(monkeypatch):
+    # face detected at conf 0.10; without forwarding the threshold the model's
+    # default 0.25 filter would drop it -> 0 boxes. Forwarding 0.1 recovers it.
+    _install_ultralytics_weak(monkeypatch, face_conf=0.10)
+    node = fd.LLMPromptStudioFaceDetailer()
+    monkeypatch.setattr(node, "_resolve_yolo_seg", lambda name: "/fake/seg.pt")
+    boxes = node._detect_yolo_seg(torch.zeros((1, 64, 64, 3)), "seg.pt", 0.1)
+    assert len(boxes) == 1, "detection_threshold must be forwarded to ultralytics"
+
+
+def test_detect_yolo_forwards_conf_to_recover_weak_faces(monkeypatch):
+    import sys, types
+    import comfyui_llm_prompt_studio.tests.test_face_detailer as selfmod
+
+    class _WeakBboxYOLO:
+        def __init__(self, path):
+            self.path = path
+
+        def __call__(self, arr, verbose=False, conf=0.25):
+            boxes = [selfmod._WeakBox([8.0, 8.0, 56.0, 56.0], 0.10)]
+            boxes = [b for b in boxes if float(b.conf[0]) >= conf]
+            return [selfmod._BoxesOnly(boxes)]
+
+    fake = types.ModuleType("ultralytics")
+    fake.YOLO = lambda p: _WeakBboxYOLO(p)
+    monkeypatch.setitem(sys.modules, "ultralytics", fake)
+    node = fd.LLMPromptStudioFaceDetailer()
+    monkeypatch.setattr(node, "_resolve_yolo", lambda name: "/fake/bbox.pt")
+    boxes = node._detect_yolo(torch.zeros((1, 64, 64, 3)), "bbox.pt", 0.1)
+    assert len(boxes) == 1, "detection_threshold must be forwarded to ultralytics"
 
 
 # -- seg-mask refinement -----------------------------------------------------
@@ -455,4 +536,83 @@ def test_multiple_faces_get_distinct_seeds(monkeypatch):
         mask_shape="square", bbox_scale=1.0, iterations=1, inpaint_model=False,
         image=image)
     assert seen == [0, 1]
+
+
+# -- gender threshold --------------------------------------------------------
+class _GenderProbs:
+    def __init__(self, data, top1):
+        self.data = torch.tensor(data, dtype=torch.float32)
+        self.top1 = top1
+
+
+class _GenderResult:
+    def __init__(self, probs):
+        self.probs = probs
+        self.boxes = None
+
+
+class _GenderYOLO:
+    probs = None
+
+    def __init__(self, path):
+        self.path = path
+
+    def __call__(self, crop, verbose=False):
+        return [_GenderResult(_GenderYOLO.probs)]
+
+
+def _install_ultralytics_gender(monkeypatch, probs_data, top1):
+    import sys, types
+    _GenderYOLO.probs = _GenderProbs(probs_data, top1)
+    fake = types.ModuleType("ultralytics")
+    fake.YOLO = lambda p: _GenderYOLO(p)
+    monkeypatch.setitem(sys.modules, "ultralytics", fake)
+
+
+def _gender_boxes(monkeypatch, arr, gender_filter, female_class=0, threshold=0.5):
+    node = fd.LLMPromptStudioFaceDetailer()
+    monkeypatch.setattr(node, "_resolve_yolo_gender", lambda n: "/fake/gender.pt")
+    return node._apply_gender_filter(
+        [(0, 0, 50, 50, None)], arr, gender_filter, "(model)",
+        gender_female_class=female_class, gender_threshold=threshold)
+
+
+def test_gender_low_conf_kept_as_unknown_when_filtering(monkeypatch):
+    # predicts male (class 1) with conf 0.55; below threshold 0.7 -> kept (unknown)
+    _install_ultralytics_gender(monkeypatch, [0.45, 0.55], top1=1)
+    arr = torch.zeros((100, 100, 3), dtype=torch.uint8)
+    out = _gender_boxes(monkeypatch, arr, "female", female_class=0, threshold=0.7)
+    assert len(out) == 1
+
+
+def test_gender_high_conf_dropped_when_wrong_gender(monkeypatch):
+    # predicts male (class 1) with conf 0.95; filtering female -> dropped
+    _install_ultralytics_gender(monkeypatch, [0.05, 0.95], top1=1)
+    arr = torch.zeros((100, 100, 3), dtype=torch.uint8)
+    out = _gender_boxes(monkeypatch, arr, "female", female_class=0, threshold=0.5)
+    assert len(out) == 0
+
+
+def test_gender_high_conf_kept_when_matching_gender(monkeypatch):
+    # predicts male (class 1) with conf 0.95; filtering male -> kept
+    _install_ultralytics_gender(monkeypatch, [0.05, 0.95], top1=1)
+    arr = torch.zeros((100, 100, 3), dtype=torch.uint8)
+    out = _gender_boxes(monkeypatch, arr, "male", female_class=0, threshold=0.5)
+    assert len(out) == 1
+
+
+def test_gender_any_ignores_threshold(monkeypatch):
+    # gender_filter=any keeps all faces regardless of confidence
+    _install_ultralytics_gender(monkeypatch, [0.45, 0.55], top1=1)
+    arr = torch.zeros((100, 100, 3), dtype=torch.uint8)
+    out = _gender_boxes(monkeypatch, arr, "any", female_class=0, threshold=0.9)
+    assert len(out) == 1
+
+
+def test_gender_no_model_returns_all(monkeypatch):
+    node = fd.LLMPromptStudioFaceDetailer()
+    arr = torch.zeros((100, 100, 3), dtype=torch.uint8)
+    out = node._apply_gender_filter(
+        [(0, 0, 50, 50, None)], arr, "female", "(none)", gender_female_class=0)
+    assert len(out) == 1
 

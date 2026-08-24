@@ -161,6 +161,12 @@ class LLMPromptStudioFaceDetailer:
                                              "женского лица (обычно 0 для female/male). "
                                              "Лица с другим номером класса считаются "
                                              "мужскими. Используется при gender_filter != any."}),
+                "gender_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
+                                  "tooltip": "Минимальная уверенность классификатора пола. "
+                                             "Лица, для которых gender-модель выдаёт "
+                                             "уверенность ниже порога, считаются 'unknown' и "
+                                             "НЕ отбрасываются гендер-фильтром (сохраняются). "
+                                             "Работает только при gender_filter != any."}),
                 "detection_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
                                   "tooltip": "Порог уверенности детекции. После включения "
                                              "фильтра по классу (yolo_seg_class) держите "
@@ -241,7 +247,11 @@ class LLMPromptStudioFaceDetailer:
             raise FileNotFoundError("YOLO model not found: %s" % yolo_name)
         model = _get_yolo_model(path)
         arr = (img[0].clamp(0.0, 1.0).cpu().numpy() * 255.0).astype("uint8")
-        res = model(arr, verbose=False)[0]
+        # Forward `conf=threshold`: ultralytics applies its own default conf=0.25
+        # otherwise, which would silently drop every detection below 0.25 before our
+        # `detection_threshold` is ever evaluated (making the slider ineffective for
+        # weak faces). Passing it makes the node's threshold authoritative.
+        res = model(arr, verbose=False, conf=threshold)[0]
         boxes = []
         dropped_low = 0
         for box in res.boxes:
@@ -268,7 +278,8 @@ class LLMPromptStudioFaceDetailer:
             raise FileNotFoundError("YOLO seg model not found: %s" % yolo_name)
         model = _get_yolo_model(path)
         arr = (img[0].clamp(0.0, 1.0).cpu().numpy() * 255.0).astype("uint8")
-        res = model(arr, verbose=False, retina_masks=True)[0]
+        # Forward `conf=threshold` (see _detect_yolo for why this matters).
+        res = model(arr, verbose=False, retina_masks=True, conf=threshold)[0]
         H, W = arr.shape[0], arr.shape[1]
         masks = getattr(res, "masks", None)
         boxes = []
@@ -350,29 +361,35 @@ class LLMPromptStudioFaceDetailer:
 
     @staticmethod
     def _classify_gender(crop, gender_model, female_class):
-        """Return the predicted gender class index for a cropped face, or None.
+        """Return ``(cls, conf)`` for a cropped face, or ``(None, 0.0)``.
 
-        Supports ultralytics classification models (``res.probs.top1``) and, as a
+        Supports ultralytics classification models (``res.probs``) and, as a
         fallback, detection models (highest-confidence box class). ``female_class`` is
-        the index the model uses for the female class.
+        the index the model uses for the female class. ``conf`` is the classifier's
+        confidence in its top prediction (used by the gender threshold).
         """
         try:
             res = gender_model(crop, verbose=False)[0]
         except Exception as e:  # transient inference error -> keep the face
             logger.warning("[FaceDetailer] gender classification error: %s — face kept", e)
-            return None
+            return (None, 0.0)
         probs = getattr(res, "probs", None)
         if probs is not None:
-            return int(probs.top1)
+            top1 = int(probs.top1)
+            return (top1, float(probs.data[top1]))
         boxes = getattr(res, "boxes", None)
         if boxes is not None and len(boxes) > 0:
-            return int(boxes.cls[0])
-        return None
+            return (int(boxes.cls[0]), float(boxes.conf[0]))
+        return (None, 0.0)
 
     def _apply_gender_filter(self, boxes, arr, gender_filter,
-                             gender_model_name, gender_female_class):
+                             gender_model_name, gender_female_class,
+                             gender_threshold=0.5):
         """Classify each face's gender and drop faces whose gender does not match
-        ``gender_filter``. Gender counts are logged whenever a gender model is selected."""
+        ``gender_filter``. A prediction whose confidence is below ``gender_threshold``
+        is treated as "unknown" and kept (never dropped) so an uncertain classifier
+        cannot wrongly discard faces. Gender counts are logged whenever a gender model
+        is selected."""
         if not gender_model_name or gender_model_name == "(none)":
             return boxes
         path = self._resolve_yolo_gender(gender_model_name)
@@ -393,26 +410,41 @@ class LLMPromptStudioFaceDetailer:
             cx1, cy1, cx2, cy2 = max(0, x1), max(0, y1), min(W, x2), min(H, y2)
             if cx2 <= cx1 or cy2 <= cy1:
                 continue
-            cls = self._classify_gender(arr[cy1:cy2, cx1:cx2], model, gender_female_class)
+            cls, conf = self._classify_gender(arr[cy1:cy2, cx1:cx2], model, gender_female_class)
             if cls is None:
                 n_unknown += 1
                 kept.append((x1, y1, x2, y2, seg))  # unknown -> keep
                 continue
             is_female = (int(cls) == int(gender_female_class))
+            if not active:
+                # No filtering requested: keep everything, just tally the stats.
+                if is_female:
+                    n_female += 1
+                else:
+                    n_male += 1
+                kept.append((x1, y1, x2, y2, seg))
+                continue
+            # Active filter: a low-confidence prediction is kept as "unknown" rather
+            # than risk a wrong drop.
+            if conf < float(gender_threshold):
+                n_unknown += 1
+                kept.append((x1, y1, x2, y2, seg))
+                logger.info("[FaceDetailer] gender filter '%s': keeping face as unknown — "
+                            "predicted %s (class %s) conf %.2f < gender_threshold %.2f",
+                            gender_filter, "female" if is_female else "male", cls,
+                            conf, float(gender_threshold))
+                continue
             if is_female:
                 n_female += 1
             else:
                 n_male += 1
-            if not active:
-                kept.append((x1, y1, x2, y2, seg))
-                continue
             if is_female == want_female:
                 kept.append((x1, y1, x2, y2, seg))
             else:
                 n_dropped += 1
                 logger.info("[FaceDetailer] gender filter '%s': dropping face — predicted "
-                            "class %s (%s), wanted %s", gender_filter, cls,
-                            "female" if is_female else "male", gender_filter)
+                            "class %s (%s, conf %.2f), wanted %s", gender_filter, cls,
+                            "female" if is_female else "male", conf, gender_filter)
         total = n_female + n_male + n_unknown
         if active:
             logger.info("[FaceDetailer] gender detection: %d female, %d male, %d unknown "
@@ -589,6 +621,7 @@ class LLMPromptStudioFaceDetailer:
                            inpaint_model, vae_tile_size=0, yolo_seg_class=0,
                            drop_size=0, gender_filter="any",
                            gender_model_name="(none)", gender_model_female_class=0,
+                           gender_threshold=0.5,
                            image=None, latent=None,
                            face_positive=None, face_negative=None, unique_id=None):
         with node_span("LLMPromptStudioFaceDetailer", unique_id):
@@ -620,7 +653,8 @@ class LLMPromptStudioFaceDetailer:
                     continue
                 boxes = self._apply_gender_filter(
                     boxes, arr, gender_filter, gender_model_name,
-                    gender_female_class=gender_model_female_class)
+                    gender_female_class=gender_model_female_class,
+                    gender_threshold=gender_threshold)
                 if not boxes:
                     continue
                 for (x1f, y1f, x2f, y2f, seg_mask) in boxes:
