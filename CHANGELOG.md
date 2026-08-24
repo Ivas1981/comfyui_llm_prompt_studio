@@ -23,16 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `models/ultralytics/gender/`) is run on each detected face crop; faces whose predicted
   class does not match `gender_filter` are skipped. The female class index is set via
   `gender_model_female_class` (default `0`); with no model selected the filter logs a
-  warning and processes all faces. Both bbox and seg detection paths are supported.
+  warning and processes all faces. Gender detection runs for **all** detection methods
+  (haar, yolo bbox, yolo seg), and the refined-face brightness match
+  (`match_luminance`) is likewise applied on every method's mask.
 
 ### Changed
 - **Face Detailer: `detection_threshold`** now ships with an explanatory tooltip
   and is recommended around 0.5 once the class filter is enabled.
-- **Face Detailer: console logging.** On start and per frame/face it logs (prefixed
-  `[FaceDetailer]`): start params (method, guide_size, max_size, drop_size,
-  yolo_seg_class), each detected face's size in px, the upscale ratio to guide_size,
-  the max_size crop clamp, skips (already >= guide_size, smaller than drop_size) and
-  a final count of processed faces.
+- **Face Detailer: console logging (English + diagnostics).** All `[FaceDetailer]`
+  log messages are now in English. Detection logs the reason faces are dropped:
+  bbox logs `dropped N below confidence threshold`; seg additionally splits into
+  `wrong class != <yolo_seg_class>` vs `below confidence threshold`. The gender step
+  logs a per-image summary of **detected genders and their counts** (`N female,
+  M male, K unknown`), and when `gender_filter` is active also logs each dropped face
+  (`predicted class X (female/male), wanted <gender>`) plus the dropped count. On
+  start and per frame/face it still logs: start params (method, guide_size, max_size,
+  drop_size, yolo_seg_class), each detected face's size in px, the upscale ratio to
+  guide_size, the max_size crop clamp, skips (already >= guide_size, smaller than
+  drop_size) and a final count of processed faces.
 - **Face Detailer: `drop_size` widget.** Faces whose shorter side is below the
   given px size are skipped and not processed (default `0` = process all faces).
 - **Writer: styles no longer inject photographic tags where inappropriate (Q4).**
