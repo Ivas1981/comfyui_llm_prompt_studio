@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import socket
 import time
 from collections import OrderedDict
 from typing import Any, Dict, Optional
@@ -216,8 +217,50 @@ VISION_NAME_HINTS = (
 )
 
 
+def _host_is_local(host: str) -> bool:
+    """Return True only if ``host`` resolves exclusively to loopback/private/link-local IPs.
+
+    Handles bare hostnames, mDNS (``.local``), and any other name by resolving it with
+    :func:`socket.getaddrinfo`. A host is considered local only when *every* resolved
+    address is loopback, private (RFC1918/ULA), or link-local - if any resolved address
+    is public the host is rejected (SSRF guard)."""
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip.is_private or ip.is_link_local
+    except ValueError:
+        pass
+    # Not a literal IP: resolve the hostname and accept only if all results are local.
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError as e:
+        raise ValueError(
+            f"server_url host '{host}' could not be resolved: {e}. "
+            "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow remote hosts."
+        ) from e
+    if not infos:
+        raise ValueError(f"server_url host '{host}' resolved to no addresses.")
+    for info in infos:
+        addr = info[4][0]
+        # Strip IPv6 scope id if present (e.g. "fe80::1%eth0").
+        addr = addr.split("%", 1)[0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            return False
+        if not (ip.is_loopback or ip.is_private or ip.is_link_local):
+            return False
+    return True
+
+
 def validate_server_url(url: str) -> str:
-    """Basic SSRF guard: allow http(s) and, by default, only local/private hosts."""
+    """Basic SSRF guard: allow http(s) and, by default, only local/private hosts.
+
+    Local hostnames (``localhost``, ``.local``, ``.localhost``, bare LAN names like
+    ``nas.home``) are resolved via DNS and accepted only if every resolved address is
+    loopback/private/link-local - so SSRF protection stays on without forcing users to
+    disable it (``ALLOW_PUBLIC_SERVER_URLS``) just to use a local machine by name."""
     parsed = urlparse(str(url).strip())
     if parsed.scheme not in ("http", "https"):
         raise ValueError(
@@ -227,19 +270,11 @@ def validate_server_url(url: str) -> str:
         raise ValueError("server_url has no host")
     if ALLOW_PUBLIC_SERVER_URLS:
         return url
-    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
-        return url
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        raise ValueError(
-            f"server_url host '{host}' is not a local address. "
-            "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow remote hosts.")
-    if ip.is_loopback or ip.is_private or ip.is_link_local:
+    if _host_is_local(host):
         return url
     raise ValueError(
-        f"server_url host '{host}' is public. "
-        "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow it."
+        f"server_url host '{host}' is not a local address. "
+        "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow remote hosts."
     )
 
 

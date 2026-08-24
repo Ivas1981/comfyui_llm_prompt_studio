@@ -468,6 +468,14 @@ def project_local_ultralytics_seg():
     return sorted(f for f in os.listdir(d) if f.lower().endswith(exts))
 
 
+def project_local_ultralytics_gender():
+    d = os.path.join(PROJECT_ROOT, "models", "ultralytics", "gender")
+    if not os.path.isdir(d):
+        return []
+    exts = (".pt", ".pth")
+    return sorted(f for f in os.listdir(d) if f.lower().endswith(exts))
+
+
 def _resolve_path(model_name):
     local = os.path.join(PROJECT_ROOT, "models", "upscale_models", model_name)
     if os.path.isfile(local):

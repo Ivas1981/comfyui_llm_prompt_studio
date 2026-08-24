@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Face Detailer: post-inpaint brightness match.** The refined face is now
   matched in brightness/contrast to its surroundings within the feathered mask
   (`match_luminance`), removing the "face brighter than the rest of the frame" seam.
+- **Face Detailer: gender filter.** New `gender_filter` widget (`any` / `female` /
+  `male`, default `any`) restricts refinement to one gender. A lightweight ultralytics
+  gender-classification model (selected in `gender_model_name`, dropped into
+  `models/ultralytics/gender/`) is run on each detected face crop; faces whose predicted
+  class does not match `gender_filter` are skipped. The female class index is set via
+  `gender_model_female_class` (default `0`); with no model selected the filter logs a
+  warning and processes all faces. Both bbox and seg detection paths are supported.
 
 ### Changed
 - **Face Detailer: `detection_threshold`** now ships with an explanatory tooltip
@@ -41,6 +48,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Writer / Scene Builder: standardized `scene_name` (Q6).** Any non-empty model
   value (quotes, "Scene: …", mixed case, markdown) is normalized to a consistent
   lowercase slug via `slugify`; an empty value still falls back to `slugify(positive)`.
+
+### Fixed
+- **Style tag duplication (Audit7/1.2).** `apply_preset_style` now deduplicates positive
+  (and face-positive) style tags against what is already in the prompt, matching the
+  long-standing negative-tag behavior (previously repeated style tags could be appended
+  more than once).
+- **Field-retry crash on network error (Audit7/1.3).** The writer's missing-field retry
+  loop now wraps each `chat_completion` call in `try/except`; a transient transport error
+  counts as a retry attempt and is retried up to `max_field_retries` instead of aborting
+  the whole node.
+- **YOLO model re-initialized per image (Audit7/2.1).** The ultralytics `YOLO` instance is
+  now cached per model path (`_get_yolo_model`) and reused across every image in a batch
+  (and across runs), instead of being reconstructed on each detection call.
+- **SSRF guard rejected local hostnames (Audit7/3).** `validate_server_url` now resolves a
+  non-literal host via `socket.getaddrinfo` and accepts it only when *every* resolved
+  address is loopback/private/link-local. Bare LAN names (e.g. `nas.home`) now work
+  without disabling SSRF protection (`ALLOW_PUBLIC_SERVER_URLS`).
+- **Internal error details leaked via API (Audit7/4.1).** `server_routes.py` no longer
+  returns raw exception strings to the client; routes log the real error and return a
+  generic message instead.
 
 ## [1.2.3] — 2026-08-24
 

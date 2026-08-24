@@ -1,6 +1,10 @@
 """aiohttp routes exposed to the web JS bridge (/llm_prompt_studio/*)."""
+import logging
+
 from aiohttp import web
 from server import PromptServer
+
+logger = logging.getLogger("llm_prompt_studio")
 
 from .library import load_library, resolve_library_path, save_prompt_to_library
 from .lm_http import cache_models, fetch_models, server_status
@@ -20,7 +24,8 @@ async def llm_prompt_studio_models(request):
         cache_models(server_url, api_key, models)
         return web.json_response({"models": models})
     except Exception as e:
-        return web.json_response({"models": [], "error": str(e)})
+        logger.error("models fetch failed: %s", e)
+        return web.json_response({"models": [], "error": "Failed to fetch models"})
 
 
 @PromptServer.instance.routes.get("/llm_prompt_studio/status")
@@ -64,7 +69,8 @@ async def llm_prompt_studio_library_save(request):
                                              face_positive, face_negative)
         return web.json_response({"name": name, "added": added})
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+        logger.error("library save failed: %s", e)
+        return web.json_response({"error": "Failed to save to library"}, status=500)
 
 
 @PromptServer.instance.routes.get("/llm_prompt_studio/presets")
@@ -126,6 +132,7 @@ async def llm_prompt_studio_sampler_params(request):
         rec = recommend(family, preset, ckpt or "", architecture=arch or "")
         return web.json_response(rec)
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+        logger.error("sampler params failed: %s", e)
+        return web.json_response({"error": "Failed to recommend sampler params"}, status=500)
 
 

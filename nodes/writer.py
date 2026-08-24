@@ -393,12 +393,20 @@ class LLMPromptStudioWriter:
                 _append_or_merge_user(messages,
                     f"You omitted the required JSON field(s): {', '.join(missing)}. "
                     f"Respond again with a COMPLETE JSON object containing ALL required fields.")
-                raw_new = chat_completion(server_url, api_key, model, messages,
-                                               temperature, cur_max_tokens, seed=seed,
-                                               reasoning=reasoning, repeat_penalty=repeat_penalty_v,
-                                               top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
-                                               presence_penalty=presence_penalty_v,
-                                               response_format=response_format)
+                # A network/transport error here must count as a retry attempt and not
+                # crash the whole node: wrap the call so transient failures are retried up
+                # to max_field_retries before the outer caller's own error handling kicks in.
+                try:
+                    raw_new = chat_completion(server_url, api_key, model, messages,
+                                                temperature, cur_max_tokens, seed=seed,
+                                                reasoning=reasoning, repeat_penalty=repeat_penalty_v,
+                                                top_k=top_k_v, top_p=top_p_v, min_p=min_p_v,
+                                                presence_penalty=presence_penalty_v,
+                                                response_format=response_format)
+                except Exception as exc:
+                    logger.warning("Field retry %d/%d for node %s failed: %s",
+                                   attempt, max_field_retries, unique_id, exc)
+                    continue
                 raw = (f"[FIELD RETRY {attempt}/{max_field_retries}: "
                        f"missing {', '.join(missing)}]\n{raw_new}")
                 parsed = parse_prompt_json(raw_new, allow_plain_text_fallback=False)

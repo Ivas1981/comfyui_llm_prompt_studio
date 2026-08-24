@@ -257,6 +257,9 @@ Generates an SDXL prompt from an idea.
   (including a non-empty one, with quotes or "Scene: …") is normalized to a consistent lowercase
   slug via `slugify`; an empty value falls back to a slug of `positive`; empty
   `positive`/`negative` raise an error.
+- Transient `chat_completion` failures (network/timeout) are caught and retried within the
+  generation / auto-revision loop instead of aborting the node; each failure is logged as a
+  warning so the run keeps going when the LM Studio server briefly hiccups.
 - Button **🔄 Refresh models** re-reads the model list from the server.
 - **Style presets** (`style_preset` + `use_preset_system_prompt`): pick a built-in style to append its style tags to the
   prompt. `use_preset_system_prompt` (default on) additionally overrides the system prompt with the
@@ -525,6 +528,13 @@ is the intended input when chained after the Hires Fix node.
   `detection_threshold` down to 0.1–0.2, so you can keep it at a normal ~0.5.
 - **`detection_threshold`** (default 0.5): detector confidence cutoff; keep around 0.5 after
   enabling the class filter.
+- **`gender_filter`** (default `any`): restrict refinement to one gender. `female` / `male`
+  keep only faces of the chosen gender and skip the rest; `any` processes every detected face.
+  It runs a lightweight ultralytics **gender classification model** (set in `gender_model_name`)
+  on each detected face crop and drops faces whose predicted class does not match. The female
+  class index is set in `gender_model_female_class` (default `0`). If no gender model is selected,
+  the filter logs a warning and is disabled (all faces processed). Drop a `.pt` classifier into
+  `models/ultralytics/gender/`.
 - **`drop_size`** (default 0): faces whose shorter side (px) is below this are skipped; `0` =
   process every face.
 - **`guide_size`** / **`max_size`**: target size of the face's shorter side after upscaling the
@@ -538,7 +548,8 @@ is the intended input when chained after the Hires Fix node.
   and a final count of processed faces.
 - **Detection:** `bbox` uses the YOLO bounding-box detector (`yolo_seg_class` selects the seg
   class); `yolo_seg` uses `yolo_seg_model_name` to produce a per-face segmentation mask of the
-  real shape instead of a rectangle. `mask_shape` (`square` / `oval`) sets the inpaint mask shape;
+  real shape instead of a rectangle. The detection model is loaded once and cached for the
+  session, so repeated runs don't reload it on every pass. `mask_shape` (`square` / `oval`) sets the inpaint mask shape;
   `bbox_scale` (0.1–3.0, default 1.0) expands/contracts the crop around the face center (e.g. to
   include jaw/neck); `iteration` (1–10, default 1) repeats the refinement pass over the upscaled
   crop for stronger cleanup; `feathering` (px) softens the mask edge when compositing back;
@@ -606,7 +617,9 @@ resolve. Selecting one:
 
 - appends the preset's `style_tags_positive` / `style_tags_negative` to the generated
   `positive` / `negative` (and to `face_positive` / `face_negative`, so a refined face matches
-  the style); the preset's negative tags are skipped in no-negative mode;
+  the style); a style tag already present in the prompt (or in `face_positive`) is not appended
+  again — duplicates are skipped (this already applied to the negative tags); the preset's
+  negative tags are skipped in no-negative mode;
 - overrides the system prompt with the preset's `system_prompt` **only when** the system-prompt
   widget is left at its default. In no-negative mode the preset's dedicated
   `system_prompt_no_negative` variant is used instead (it requires an empty `negative` /
@@ -650,9 +663,15 @@ strict by default and can be relaxed with a flag if you need remote servers or p
 outside the output folder.
 
 - **`server_url` (SSRF guard)** — only `http`/`https` and local/private hosts
-  (`localhost`, loopback, RFC-1918, link-local) are allowed. To use a remote/public
-  LM Studio server, set the environment variable `LLM_PROMPT_STUDIO_ALLOW_PUBLIC=true`
-  (or assign `ALLOW_PUBLIC_SERVER_URLS = True` directly in `lm_http.py`).
+  (`localhost`, loopback, RFC-1918, link-local) are allowed. Other local hostnames
+  (e.g. `nas.local`, `my-pc`) are resolved via `socket.getaddrinfo` and accepted only
+  when *every* resolved IP is loopback / private / link-local; otherwise the URL is
+  rejected. To use a remote/public LM Studio server, set the environment variable
+  `LLM_PROMPT_STUDIO_ALLOW_PUBLIC=true` (or assign `ALLOW_PUBLIC_SERVER_URLS = True`
+  directly in `lm_http.py`).
+- **No internal error leakage** — the server routes (`/models`, `/library/save`,
+  `/sampler_params`) return generic error messages to the client and log the real
+  exception server-side, so internal paths/causes are never exposed to the caller.
 - **`library_path` / `save_dir` (path-traversal guard)** — confined to the ComfyUI
   output directory. To allow paths outside it, set `RESTRICT_PATHS_TO_OUTPUT = False`
   in `library.py`.

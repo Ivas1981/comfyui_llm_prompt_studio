@@ -80,6 +80,23 @@ def test_presets_apply_style_tags():
     assert neg2 == "blurry"
 
 
+def test_apply_preset_style_dedupes_positive_tags():
+    # Audit7/1.2: a style tag already present in the prompt (or face prompt) must not be
+    # appended again; new tags are still added. Mirrors the negative-tag dedupe behavior.
+    preset = {"style_tags_positive": ["sharp focus", "cinematic"],
+              "style_tags_negative": ["blurry"]}
+    pos, neg, fpos, fneg = presets.apply_preset_style(
+        preset, "masterpiece, sharp focus", "text, blurry",
+        face_positive="face, sharp focus", face_negative="")
+    assert pos.count("sharp focus") == 1
+    assert "cinematic" in pos
+    assert fpos.count("sharp focus") == 1
+    assert "cinematic" in fpos
+    # negative already had "blurry" and must not be doubled
+    assert neg.count("blurry") == 1
+
+
+
 def test_presets_get_by_name_and_label(tmp_path, monkeypatch):
     _user_path(tmp_path)
     # Bare name (old saved workflows) still resolves.
