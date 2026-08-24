@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   warning and processes all faces. Gender detection runs for **all** detection methods
   (haar, yolo bbox, yolo seg), and the refined-face brightness match
   (`match_luminance`) is likewise applied on every method's mask.
+- **Face Detailer: gender-confidence threshold (`gender_threshold`).** New FLOAT widget
+  (default `0.5`) sets the minimum confidence of the gender classifier. Faces whose predicted
+  gender confidence is below the threshold are treated as `unknown` and are **kept** (not dropped
+  by the gender filter) regardless of `gender_filter`. Applies only when `gender_filter != any`.
 
 ### Changed
 - **Face Detailer: `detection_threshold`** now ships with an explanatory tooltip
@@ -76,6 +80,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Internal error details leaked via API (Audit7/4.1).** `server_routes.py` no longer
   returns raw exception strings to the client; routes log the real error and return a
   generic message instead.
+
+### Fixed (Audit4)
+- **Checkpoint-family detection ignored the parent folder (`#1.1`).** `detect_checkpoint_family_info`
+  only scanned the filename + safetensors metadata, so a generically-named file inside a
+  `Lightning/` (etc.) folder was mis-detected as `base`. Both `detect_checkpoint_family` and
+  `detect_checkpoint_family_info` now scan the parent folder name as well (via the shared
+  `_scan_checkpoint_text` helper); `detect_checkpoint_family_info` reports
+  `source: <filename | metadata | base | override>`.
+- **Scene Builder `vision_check` blocked stage 2 (`#1.2`).** The vision capability check ran
+  before the stage was parsed, so a non-vision model could not run the compose (stage 2) pass.
+  The check is now gated to stage 1 only (`_has_image` / `_stage_is_describe`), so stage 2
+  composes from the saved description without requiring a vision model.
+- **Writer face-prompt instruction wiped by preset override (`#2.1`).** The face instruction was
+  added to the system prompt and then overwritten by the preset's `system_prompt`. It is now
+  appended **after** the preset override, so face prompts are emitted even with a style preset.
+- **Smart Loader dropped the CLIP side of the LoRA (`#2.2`).** `load_lora_for_models` was called
+  with `strength_model, 0`, leaving the CLIP weights unchanged. It now uses `strength_model` for
+  both the model and the CLIP, so a CLIP-aware LoRA (e.g. a style LoRA) actually conditions the
+  text encoder.
+- **`auto` profile for ≥7B models returned the wrong sampling profile (`#2.3`).** `recommend_for`
+  returned `baseline` for ≥7B, contradicting its docstring (near-greedy `structured`). It now
+  returns `{"profile": "structured", "structured": True}` (≈0.1 temperature + JSON schema) so
+  large models get the highest schema-parse rate. Updated the golden tests accordingly.
+- **Smart Save EXIF crash outside the try/except (`#2.4`).** `img.save(..., exif=exif.tobytes())`
+  ran outside the guarded block, so a malformed EXIF aborted the whole save. The EXIF
+  serialization and save are now wrapped in try/except with a fallback to saving without metadata;
+  failures are logged instead of raised.
+- **KSampler Hires Fix `_pixel_stage` crashed without a VAE (`#2.5`).** The pixel-model hires path
+  dereferenced `optional_vae` with no guard; when no VAE was wired it raised a raw `AttributeError`.
+  It now raises a clear `RuntimeError` instructing the user to connect `optional_vae`.
+- **Tests:** added `test_detect_family_info_from_parent_folder` (folder detection), removed the
+  duplicate `test_detect_family_from_parent_folder`, and dropped a no-op `assert True` from
+  `tests/test_vram.py`.
 
 ## [1.2.3] — 2026-08-24
 

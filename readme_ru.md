@@ -286,7 +286,7 @@ comfyui_llm_prompt_studio/
     `context_length`, `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`,
     `temperature`, `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`,
     `vision_check`, `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`,
-    `release_vram_after_run`.
+    `server_status`, `release_vram_after_run`.
   - **`load_model_profile`** работает точно так же, как у Писателя (по умолчанию `auto`,
     универсальная рекомендация по размеру, `custom` сохраняет значения виджетов). Поскольку Критик
     всегда является зрительной моделью, его профиль расширяет вызов `chat_completion`
@@ -372,18 +372,33 @@ comfyui_llm_prompt_studio/
 
 Порт `enhance_detail` из Impact-Pack: находит лица на кадре, увеличивает их кроп до `guide_size`,
 отрисовывает улучшенное лицо (inpaint/refine) и композитно вшивает обратно с растушёвкой.
-  - **Входы:** `policy_method`, `detection_method` (`bbox` / `yolo_seg`), `yolo_seg_model_name`,
-    `yolo_seg_class`, `detection_threshold`, `guide_size`, `mask_shape` (`square` / `oval`),
-    `bbox_scale`, `drop_size`, `feathering`, `denoise`, `noise_seed`, `forced_noise`, `sampler_name`,
-    `scheduler`, `model_management`, `steps`, `cfg`, `positive`, `negative`, `face_positive`,
-    `face_negative`, `vae`, `pixels`, `mask` (опционально), `face_model` (опционально), `batch_size`,
-    `iteration`, `vae_tile_size`.
+Принимает либо пиксельное `image`, либо `latent` (оптимизированный путь — один общий VAE-декод
+для детекции, кропы берутся прямо из латента). Вход `latent` — основной при подключении после
+узла Hires Fix.
+
+  - **Входы (обязательные):** `model`, `vae`, `positive`, `negative`, `seed` (INT,
+    randomize/increment/decrement/fixed), `steps` (INT, 20), `cfg` (FLOAT, 7.0), `sampler_name`,
+    `scheduler`, `denoise` (FLOAT, 0.5), `guide_size` (INT, 512), `max_size` (INT, 1024),
+    `crop_factor` (FLOAT, 1.5 — запас контекста вокруг лица), `detection_method`
+    (`haar` / `yolo` / `yolo_seg`, по умолчанию `haar`), `yolo_model_name` (YOLO-детектор bbox,
+    по умолчанию `face_yolov8s.pt`), `yolo_seg_model_name` (seg-модель для `yolo_seg`,
+    по умолчанию `(none)`), `yolo_seg_class` (INT, 0), `gender_filter` (`any` / `female` / `male`,
+    по умолчанию `any`), `gender_model_name` (классификатор пола, по умолчанию `(none)`),
+    `gender_model_female_class` (INT, 0), `gender_threshold` (FLOAT, 0.5),
+    `detection_threshold` (FLOAT, 0.5), `drop_size` (INT, 0), `feather` (INT, 5 — радиус
+    растушёвки маски в px), `mask_shape` (`square` / `oval`, по умолчанию `square`),
+    `bbox_scale` (FLOAT, 1.0), `iterations` (INT, 1), `inpaint_model` (BOOLEAN, false).
+  - **Входы (опциональные):** `image` (IMAGE, force input), `latent` (LATENT, force input),
+    `face_positive` / `face_negative` (CONDITIONING), `vae_tile_size` (INT, 0 = весь кадр).
+  - **Выходы:** `IMAGE` (композитный кадр с уточнёнными лицами). Вся диагностика пишется в
+    консоль ComfyUI (узел — выходной).
   - **`yolo_seg_class`** (по умолчанию `0`): какой класс сег-модели YOLO считать лицом. Детекции
     других классов (person, автомобиль и т.п.) игнорируются — это убирает ложные срабатывания
     `yolo_seg`, поэтому `detection_threshold` можно держать нормальным (~0.5) вместо опускания
     до 0.1–0.2.
   - **`detection_threshold`** (по умолчанию `0.5`): порог уверенности детектора. Рекомендуется
-    держать около 0.5 после включения фильтра по классу.
+    держать около 0.5 после включения фильтра по классу. Он также передаётся в YOLO как `conf`,
+    поэтому ползунок узла — авторитетен даже для слабых лиц ниже встроенного порога ultralytics 0.25.
   - **`gender_filter`** (по умолчанию `any`): ограничить рефайн одним полом. `female` / `male`
     оставляют только лица выбранного пола и пропускают остальные; `any` обрабатывает все
     найденные лица. Для работы запускается лёгкая ultralytics-**модель классификации пола**
@@ -391,22 +406,35 @@ comfyui_llm_prompt_studio/
     отсекаются. Номер «женского» класса задаётся в `gender_model_female_class` (по умолчанию `0`).
     Если gender-модель не выбрана, фильтр логирует предупреждение и отключается (обрабатываются
     все лица). Поместите `.pt`-классификатор в `models/ultralytics/gender/`.
+  - **`gender_threshold`** (по умолчанию `0.5`): минимальная уверенность классификатора пола. Лица,
+    чья предсказанная уверенность пола ниже порога, считаются `unknown` и **сохраняются** (не
+    отбрасываются гендер-фильтром) независимо от `gender_filter`. Работает только при
+    `gender_filter != any`.
   - **`drop_size`** (по умолчанию `0`): лица, короткая сторона которых (px) меньше этого значения,
     пропускаются и не обрабатываются. `0` — не отсекать никакие лица.
-  - **`guide_size`**: целевой размер короткой стороны лица (px) после увеличения кропа. Лица, уже
-    достигшие `guide_size`, пропускаются (не масштабируются вверх). `max_size` ограничивает кроп
-    сверху, снижая коэффициент увеличения.
-  - **`face_positive` / `face_negative`**: промпты только для лица. Если пусты, узел падает на
-    основные `positive`/`negative` (поэтому при `generate_face_prompts = off` у Писателя лица
-    рефайнятся по основным промптам).
+  - **`guide_size`** / **`max_size`**: целевой размер короткой стороны лица (px) после увеличения
+    кропа. Лица, уже достигшие `guide_size`, пропускаются; `max_size` ограничивает кроп сверху,
+    снижая коэффициент увеличения.
   - **Выравнивание яркости:** отрефайненное лицо согласуется по яркости/контрасту с окружением в
     пределах растушёванной маски (`match_luminance`), устраняя шов «лицо ярче кадра».
   - **Логирование:** узел пишет в консоль ComfyUI (префикс `[FaceDetailer]`) старт (метод,
     guide_size, max_size, drop_size, yolo_seg_class), каждое обнаруженное лицо (размер px),
     коэффициент увеличения, ограничение кропа по max_size, пропуск лица (уже ≥ guide_size / мельче
-    drop_size) и итог — сколько лиц обработано.
-  - **Выходы:** `image`, `mask` (сохранённая маска после обработки), `face_image` (объединённое
-    изображение лиц до композита), `detail_info`.
+    drop_size) и итог — сколько лиц обработано; шаг пола логирует количество определённых полов
+    (`N female, M male, K unknown`).
+  - **Детекция:** `haar` — встроенный cv2-каскад; `yolo` — YOLO-детектор bbox из `yolo_model_name`;
+    `yolo_seg` — seg-маска реальной формы из `yolo_seg_model_name` вместо прямоугольника
+    (`yolo_seg_class` выбирает класс лица). Детектор загружается один раз и кэшируется на сессию.
+    `mask_shape` (`square` / `oval`) задаёт форму маски для `haar` / `yolo` (игнорируется для
+    `yolo_seg`); `bbox_scale` (0.1–3.0, по умолчанию 1.0) расширяет/сужает кроп вокруг центра лица;
+    `iterations` (1–10, по умолчанию 1) повторяет проход рефайна; `feather` (px) смягчает край
+    маски при композите; `vae_tile_size` (px, 0 = весь кадр) тайлово декодирует кроп для экономии
+    VRAM; `inpaint_model` переключает на `InpaintModelConditioning` (модель видит исходную
+    структуру лица).
+  - **Промпты для лица:** при подключении `face_positive` / `face_negative` (например, из выходов
+    Писателя через Smart Multi-Clip) они переопределяют `positive` / `negative` для каждого кропа
+    лица; иначе используются основные промпты. Каждый кроп увеличивается до `guide_size` и
+    уточняется собственным KSampler узла, затем вшивается обратно с растушёвкой.
 
 ### LLM Prompt Studio Smart Loader (Умная загрузка)
 
