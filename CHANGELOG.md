@@ -6,10 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.2.3] — 2026-08-24
 
 ### Added
-- **Face Detailer segmentation & refinement options** (`ca232bc`). `detection_method` now
+- **Face Detailer segmentation & refinement options.** `detection_method` now
   offers `yolo_seg` (YOLO segmentation mask instead of a bounding box) with a
   `yolo_seg_model_name` selector; `mask_shape` (`square` / `oval`) sets the inpaint mask
   shape, `bbox_scale` (0.1–3.0) expands/contracts the crop, and `iterations` (1–10) re-refines
