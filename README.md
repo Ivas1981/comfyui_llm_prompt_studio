@@ -243,23 +243,29 @@ Generates an SDXL prompt from an idea.
  - **`release_vram_after_run`** (default on) unloads the LM Studio model after the node
    finishes so the diffusion pipeline reclaims the VRAM. Turn it off only when the LLM and the
    checkpoint fit in VRAM simultaneously.
-- Toggle **`generate_face_prompts`** to also get short face-only prompts for
-  FaceDetailer/inpainting. Empty face fields automatically fall back to the main
-  `positive`/`negative`.
+- **`generate_face_prompts`** (default on): turn it on to also get short face-only prompts
+  (`face_positive` / `face_negative`) for FaceDetailer/inpainting. When **turned off**, both
+  face fields are forcibly cleared (even if the model returned them in the JSON), so FaceDetailer
+  correctly falls back to the main `positive`/`negative`. When on, empty face fields automatically
+  fall back to the main `positive`/`negative`.
 - **`reuse_last_prompt`** returns the cached result without calling the LLM (useful to
   re-render without re-generating the prompt). Note: turn it OFF for the auto-revision
   loop to work.
 - **`seed`** is forwarded to the LLM request (for servers that honor it).
 - **`max_field_retries`** (default 2): if the model returns a JSON answer missing required
-  fields, the node re-asks it for a complete answer up to this many times. An empty
-  `scene_name` then falls back to a slug of `positive`; empty `positive`/`negative` raise
-  an error.
+  fields, the node re-asks it for a complete answer up to this many times. Any `scene_name`
+  (including a non-empty one, with quotes or "Scene: …") is normalized to a consistent lowercase
+  slug via `slugify`; an empty value falls back to a slug of `positive`; empty
+  `positive`/`negative` raise an error.
 - Button **🔄 Refresh models** re-reads the model list from the server.
 - **Style presets** (`style_preset` + `use_preset_system_prompt`): pick a built-in style to append its style tags to the
   prompt. `use_preset_system_prompt` (default on) additionally overrides the system prompt with the
   preset's; turn it off to keep your own system prompt while still applying the preset's style tags.
-  generated prompt (and override the system prompt when the system-prompt widget is left at
-  default). Presets that opt out of no-negative mode are skipped automatically in that mode.
+  The selected style now also shapes `face_positive` / `face_negative`, so a FaceDetailer-refined
+  face matches the chosen style. Photographic camera/lens tags (`camera/lens`) are no longer forced
+  onto non-photographic styles (anime, illustration, painting): the shared "camera/lens" layer was
+  removed from every preset's engineering rules; photographic presets still describe the camera in
+  their own text. Presets that opt out of no-negative mode are skipped automatically in that mode.
   Use "Reload presets" / "Reset to defaults" in the node menu to manage them.
 - **Advanced options** (`reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
   `repeat_penalty`, `top_k`, `top_p`, `min_p`): forwarded to LM Studio's native v1 API when the
@@ -351,7 +357,8 @@ Two-stage scene construction from an image.
    checkpoint fit in VRAM simultaneously.
   Stage 1 puts the vision description into `description`; stage 2 composes the prompt.
 - **`max_field_retries`** (default 2): in stage 2, if the model's JSON omits required
-  fields, the node re-asks for a complete answer; an empty `scene_name` falls back to a
+  fields, the node re-asks for a complete answer; any `scene_name` (including a non-empty one)
+  is normalized to a lowercase slug via `slugify`, and an empty value falls back to a
   slug of `positive`.
 - Button **→ Send to Writer** copies the description/prompt into a Writer's `idea`.
 - Button **🔄 Refresh models** (same as on the Writer/Critic) re-reads the model list from the server.
@@ -499,37 +506,49 @@ node straight into **FaceDetailer**, so no extra VAE decode is needed between th
 
 ### LLM Prompt Studio Face Detailer
 
-Refines detected faces and returns a corrected `IMAGE`. It accepts either a `latent` (optimized
-path — one shared VAE decode for detection, crops straight from the latent) or an `image` (legacy
-pixel path). The `latent` input is the intended input when chained after the Hires Fix node.
+A port of Impact-Pack's `enhance_detail`: it finds faces in the frame, upscales each face's
+crop to `guide_size`, re-renders the improved face (inpaint/refine) and composites it back with
+a feathered mask. It accepts either a `pixels` image (legacy path) or a `latent` (optimized
+path — one shared VAE decode for detection, crops straight from the latent). The `latent` input
+is the intended input when chained after the Hires Fix node.
 
-- **Inputs:** `model`, `vae`, `positive`, `negative`, `seed`, `steps`, `cfg`, `sampler_name`,
-  `scheduler`, `denoise`, `guide_size`, `max_size`, `crop_factor`, `detection_method`,
-  `yolo_model_name`, `yolo_seg_model_name`, `detection_threshold`, `feather`, `mask_shape`,
-  `bbox_scale`, `iterations`, `inpaint_model`; optional `image`, `latent`,
-  `face_positive`, `face_negative`, `vae_tile_size`.
-- **Outputs:** `IMAGE` (the input image with each detected face refined; returned unchanged when no
-   face is found).
-- **Seed control:** `seed` carries ComfyUI's `control_after_generate` toggle (randomize / increment /
-   decrement / fixed). Per detected face the seed is incremented (`seed + i`) so each refined face is
-   deterministic but distinct.
-   - **Detection:** `haar` (OpenCV — `opencv-python`/`opencv-python-headless` is auto-installed
-     from `requirements.txt`), `yolo` (bounding-box; `ultralytics`
-    must be installed and a model such as `face_yolov8s.pt` present), or `yolo_seg`
-    (segmentation — uses `yolo_seg_model_name` instead of a rectangle, giving a per-face mask
-    of the real shape). `detection_threshold` (default 0.5) filters weak detections.
-  - **Mask & crop refinement:** `mask_shape` (`square` / `oval`) sets the inpaint mask for
-    `haar`/`yolo`; `bbox_scale` (0.1–3.0, default 1.0) expands/contracts the crop around the
-    face center (e.g. to include jaw/neck); `iterations` (1–10, default 1) repeats the
-   refinement pass over the upscaled crop for stronger cleanup. `feather` (px) softens the
-   mask edge when compositing back. `vae_tile_size` (px, default 0 = whole frame) enables
-   tiled VAE decoding of the refined crop to bound VRAM on large faces.
+- **Inputs:** `policy_method`, `detection_method` (`bbox` / `yolo_seg`), `yolo_seg_model_name`,
+  `yolo_seg_class`, `detection_threshold`, `guide_size`, `max_size`, `mask_shape` (`square` /
+  `oval`), `bbox_scale`, `drop_size`, `feathering`, `denoise`, `noise_seed`, `forced_noise`,
+  `sampler_name`, `scheduler`, `model_management`, `steps`, `cfg`, `positive`, `negative`,
+  `face_positive`, `face_negative`, `vae`, `pixels`, `mask` (optional), `face_model` (optional),
+  `batch_size`, `iteration`, `vae_tile_size`.
+- **Outputs:** `image`, `mask` (the preserved mask after processing), `face_image` (the combined
+  faces image before compositing), `detail_info`.
+- **`yolo_seg_class`** (default `0`): which YOLO seg-model class to treat as a face. Detections
+  of other classes (person, car, …) are ignored — this removes the false positives that forced
+  `detection_threshold` down to 0.1–0.2, so you can keep it at a normal ~0.5.
+- **`detection_threshold`** (default 0.5): detector confidence cutoff; keep around 0.5 after
+  enabling the class filter.
+- **`drop_size`** (default 0): faces whose shorter side (px) is below this are skipped; `0` =
+  process every face.
+- **`guide_size`** / **`max_size`**: target size of the face's shorter side after upscaling the
+  crop. Faces already at/above `guide_size` are skipped; `max_size` caps the crop from above,
+  lowering the upscale ratio when needed.
+- **Brightness match:** the refined face is matched to the surroundings' brightness/contrast
+  within the feathered mask (`match_luminance`), removing the "face brighter than the frame" seam.
+- **Logging:** the node writes to the ComfyUI console (prefix `[FaceDetailer]`) the start params
+  (method, guide_size, max_size, drop_size, yolo_seg_class), each detected face (size in px), the
+  upscale ratio, the max_size crop clamp, any skip (already ≥ guide_size / smaller than drop_size)
+  and a final count of processed faces.
+- **Detection:** `bbox` uses the YOLO bounding-box detector (`yolo_seg_class` selects the seg
+  class); `yolo_seg` uses `yolo_seg_model_name` to produce a per-face segmentation mask of the
+  real shape instead of a rectangle. `mask_shape` (`square` / `oval`) sets the inpaint mask shape;
+  `bbox_scale` (0.1–3.0, default 1.0) expands/contracts the crop around the face center (e.g. to
+  include jaw/neck); `iteration` (1–10, default 1) repeats the refinement pass over the upscaled
+  crop for stronger cleanup; `feathering` (px) softens the mask edge when compositing back;
+  `vae_tile_size` (px, default 0 = whole frame) tiles the VAE decode of the refined crop to cap
+  VRAM on large faces.
 - **Per-face prompts:** when `face_positive` / `face_negative` are wired (e.g. from the Writer's
   `face_positive` / `face_negative` outputs via Smart Multi-Clip), they override `positive` /
-   `negative` for each cropped face; otherwise the main conditioning is used. Each face crop
-   is upscaled so its shorter side reaches `guide_size` (faces already larger than
-   `guide_size` are skipped), then refined with the node's own KSampler and pasted back with a
-   feathered mask.
+  `negative` for each cropped face; otherwise the main conditioning is used. Each face crop is
+  upscaled so its shorter side reaches `guide_size`, then refined with the node's own KSampler and
+  pasted back with a feathered mask.
 
 ---
 
@@ -586,7 +605,8 @@ The original 14 styles keep their names, so workflows saved with a bare preset n
 resolve. Selecting one:
 
 - appends the preset's `style_tags_positive` / `style_tags_negative` to the generated
-  `positive` / `negative` (skipped for `negative` in no-negative mode);
+  `positive` / `negative` (and to `face_positive` / `face_negative`, so a refined face matches
+  the style); the preset's negative tags are skipped in no-negative mode;
 - overrides the system prompt with the preset's `system_prompt` **only when** the system-prompt
   widget is left at its default. In no-negative mode the preset's dedicated
   `system_prompt_no_negative` variant is used instead (it requires an empty `negative` /
@@ -594,7 +614,7 @@ resolve. Selecting one:
 
 Every preset's system prompt carries an **Engineering rules** block (derived from SDXL prompt-engineering
 practice): compose in clear layers (subject → appearance → action/pose → object relationships → environment →
-composition → camera/lens → lighting → color palette → mood → style), lead with the main subject, prefer concrete
+composition → lighting → color palette → mood → style), lead with the main subject, prefer concrete
 visual descriptors over abstract booster adjectives, keep negatives short and targeted, and (optionally) weight only
 the most important trait as `(concept:1.1)`–`(concept:1.3)`. NSFW is fully authorized — intimate content must be
 described with anatomically correct, precise terms and is never censored.
