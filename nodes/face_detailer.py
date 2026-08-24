@@ -371,42 +371,56 @@ class LLMPromptStudioFaceDetailer:
 
     def _apply_gender_filter(self, boxes, arr, gender_filter,
                              gender_model_name, gender_female_class):
-        """Drop faces whose predicted gender does not match ``gender_filter``."""
-        if gender_filter in (None, "any"):
-            return boxes
+        """Classify each face's gender and drop faces whose gender does not match
+        ``gender_filter``. Gender counts are logged whenever a gender model is selected."""
         if not gender_model_name or gender_model_name == "(none)":
-            logger.warning("[FaceDetailer] gender_filter='%s' but no gender model selected "
-                           "— filter disabled (all faces kept)", gender_filter)
             return boxes
         path = self._resolve_yolo_gender(gender_model_name)
         if not path:
-            logger.warning("[FaceDetailer] gender model not found: %s — filter disabled "
-                           "(all faces kept)", gender_model_name)
+            logger.warning("[FaceDetailer] gender model not found: %s — gender detection "
+                           "skipped (all faces kept)", gender_model_name)
             return boxes
         model = _get_yolo_model(path)
         H, W = arr.shape[0], arr.shape[1]
         want_female = (gender_filter == "female")
+        active = gender_filter not in (None, "any")
         kept = []
-        skipped = 0
+        n_female = 0
+        n_male = 0
+        n_unknown = 0
+        n_dropped = 0
         for (x1, y1, x2, y2, seg) in boxes:
             cx1, cy1, cx2, cy2 = max(0, x1), max(0, y1), min(W, x2), min(H, y2)
             if cx2 <= cx1 or cy2 <= cy1:
                 continue
             cls = self._classify_gender(arr[cy1:cy2, cx1:cx2], model, gender_female_class)
             if cls is None:
+                n_unknown += 1
                 kept.append((x1, y1, x2, y2, seg))  # unknown -> keep
                 continue
             is_female = (int(cls) == int(gender_female_class))
+            if is_female:
+                n_female += 1
+            else:
+                n_male += 1
+            if not active:
+                kept.append((x1, y1, x2, y2, seg))
+                continue
             if is_female == want_female:
                 kept.append((x1, y1, x2, y2, seg))
             else:
-                skipped += 1
+                n_dropped += 1
                 logger.info("[FaceDetailer] gender filter '%s': dropping face — predicted "
                             "class %s (%s), wanted %s", gender_filter, cls,
                             "female" if is_female else "male", gender_filter)
-        if skipped:
-            logger.info("[FaceDetailer] gender filter '%s': dropped %d face(s) whose gender "
-                        "did not match", gender_filter, skipped)
+        total = n_female + n_male + n_unknown
+        if active:
+            logger.info("[FaceDetailer] gender detection: %d female, %d male, %d unknown "
+                        "of %d face(s); filter '%s' dropped %d",
+                        n_female, n_male, n_unknown, total, gender_filter, n_dropped)
+        else:
+            logger.info("[FaceDetailer] gender detection: %d female, %d male, %d unknown "
+                        "of %d face(s)", n_female, n_male, n_unknown, total)
         return kept
 
     # -- refinement --------------------------------------------------------
