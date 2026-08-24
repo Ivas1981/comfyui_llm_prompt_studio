@@ -243,11 +243,18 @@ class LLMPromptStudioFaceDetailer:
         arr = (img[0].clamp(0.0, 1.0).cpu().numpy() * 255.0).astype("uint8")
         res = model(arr, verbose=False)[0]
         boxes = []
+        dropped_low = 0
         for box in res.boxes:
-            if float(box.conf[0]) < threshold:
+            conf = float(box.conf[0])
+            if conf < threshold:
+                dropped_low += 1
                 continue
             x1, y1, x2, y2 = box.xyxy[0].tolist()
             boxes.append((int(x1), int(y1), int(x2), int(y2), None))
+        if dropped_low:
+            logger.info("[FaceDetailer] yolo detection: kept %d face(s), dropped %d "
+                        "below confidence threshold (threshold=%.2f)", len(boxes),
+                        dropped_low, threshold)
         return boxes
 
     def _detect_yolo_seg(self, img, yolo_name, threshold, seg_class=0):
@@ -265,13 +272,18 @@ class LLMPromptStudioFaceDetailer:
         H, W = arr.shape[0], arr.shape[1]
         masks = getattr(res, "masks", None)
         boxes = []
+        dropped_class = 0
+        dropped_low = 0
         for idx, box in enumerate(res.boxes):
             # Only accept the class the user declared as "face". Without this filter a
             # generic seg model emits person/car/... masks too, which previously forced
             # the threshold down to 0.1-0.2 and produced false positives.
             if seg_class is not None and int(box.cls[0]) != int(seg_class):
+                dropped_class += 1
                 continue
-            if float(box.conf[0]) < threshold:
+            conf = float(box.conf[0])
+            if conf < threshold:
+                dropped_low += 1
                 continue
             x1, y1, x2, y2 = box.xyxy[0].tolist()
             seg = None
@@ -280,6 +292,11 @@ class LLMPromptStudioFaceDetailer:
                 seg = (masks.data[idx] > 0.5).to(torch.float32)  # [H, W], 0/1
                 seg = seg.to(torch.device("cpu"))
             boxes.append((int(x1), int(y1), int(x2), int(y2), seg))
+        if dropped_class or dropped_low:
+            logger.info("[FaceDetailer] yolo_seg detection: kept %d face(s); dropped %d "
+                        "(%d wrong class != %s, %d below confidence threshold %.2f)",
+                        len(boxes), dropped_class + dropped_low, dropped_class,
+                        seg_class, dropped_low, threshold)
         return boxes
 
     def _resolve_yolo(self, name):
@@ -342,8 +359,7 @@ class LLMPromptStudioFaceDetailer:
         try:
             res = gender_model(crop, verbose=False)[0]
         except Exception as e:  # transient inference error -> keep the face
-            logger.warning("[FaceDetailer] Ошибка gender-классификации: %s — лицо "
-                           "сохранено", e)
+            logger.warning("[FaceDetailer] gender classification error: %s — face kept", e)
             return None
         probs = getattr(res, "probs", None)
         if probs is not None:
@@ -359,13 +375,13 @@ class LLMPromptStudioFaceDetailer:
         if gender_filter in (None, "any"):
             return boxes
         if not gender_model_name or gender_model_name == "(none)":
-            logger.warning("[FaceDetailer] gender_filter=%s, но gender-модель не выбрана "
-                           "— фильтр отключён (обрабатываются все лица)", gender_filter)
+            logger.warning("[FaceDetailer] gender_filter='%s' but no gender model selected "
+                           "— filter disabled (all faces kept)", gender_filter)
             return boxes
         path = self._resolve_yolo_gender(gender_model_name)
         if not path:
-            logger.warning("[FaceDetailer] gender-модель не найдена: %s — фильтр отключён",
-                           gender_model_name)
+            logger.warning("[FaceDetailer] gender model not found: %s — filter disabled "
+                           "(all faces kept)", gender_model_name)
             return boxes
         model = _get_yolo_model(path)
         H, W = arr.shape[0], arr.shape[1]
@@ -385,9 +401,12 @@ class LLMPromptStudioFaceDetailer:
                 kept.append((x1, y1, x2, y2, seg))
             else:
                 skipped += 1
+                logger.info("[FaceDetailer] gender filter '%s': dropping face — predicted "
+                            "class %s (%s), wanted %s", gender_filter, cls,
+                            "female" if is_female else "male", gender_filter)
         if skipped:
-            logger.info("[FaceDetailer] gender-фильтр (%s): пропущено %d лиц(о)",
-                        gender_filter, skipped)
+            logger.info("[FaceDetailer] gender filter '%s': dropped %d face(s) whose gender "
+                        "did not match", gender_filter, skipped)
         return kept
 
     # -- refinement --------------------------------------------------------
@@ -441,11 +460,11 @@ class LLMPromptStudioFaceDetailer:
         short = min(fw, fh)
         upscale = guide_size / float(short)
         if upscale <= 1.0:
-            logger.info("[FaceDetailer] Лицо пропущено: короткая сторона %d px уже >= "
-                        "guide_size (%d) — увеличение не требуется", short, guide_size)
+            logger.info("[FaceDetailer] face skipped: short side %d px already >= "
+                        "guide_size (%d) — upscaling not needed", short, guide_size)
             return None
-        logger.info("[FaceDetailer] Лицо обрабатывается: короткая сторона %d px -> "
-                    "увеличение x%.2f до guide_size %dpx", short, upscale, guide_size)
+        logger.info("[FaceDetailer] processing face: short side %d px -> "
+                    "upscaling x%.2f to guide_size %dpx", short, upscale, guide_size)
 
         pos = face_positive if face_positive is not None else positive
         neg = face_negative if face_negative is not None else negative
@@ -477,8 +496,8 @@ class LLMPromptStudioFaceDetailer:
             s = max_size / float(max(new_w, new_h))
             new_w = int(round(new_w * s))
             new_h = int(round(new_h * s))
-            logger.info("[FaceDetailer] Кроп ограничен max_size (%d px): коэффициент "
-                        "увеличения снижен до x%.2f", max_size, upscale * s)
+            logger.info("[FaceDetailer] crop clamped to max_size (%d px): upscale factor "
+                        "reduced to x%.2f", max_size, upscale * s)
         new_w = _clamp(new_w, 1, max_size)
         new_h = _clamp(new_h, 1, max_size)
 
@@ -570,7 +589,7 @@ class LLMPromptStudioFaceDetailer:
             result = img.clone()
             face_idx = 0
             total = img.shape[0]
-            logger.info("[FaceDetailer] Старт: кадров=%d, метод=%s, guide_size=%d, "
+            logger.info("[FaceDetailer] start: frames=%d, method=%s, guide_size=%d, "
                         "max_size=%d, drop_size=%d, yolo_seg_class=%d",
                         total, detection_method, guide_size, max_size, drop_size, yolo_seg_class)
             for i in range(img.shape[0]):
@@ -594,12 +613,12 @@ class LLMPromptStudioFaceDetailer:
                     fw = x2f - x1f
                     fh = y2f - y1f
                     short = min(fw, fh)
-                    logger.info("[FaceDetailer] Лицо обнаружено: размер %dx%d px "
-                                "(короткая сторона %d px)%s", fw, fh, short,
-                                ", сег-маска" if seg_mask is not None else "")
+                    logger.info("[FaceDetailer] face detected: size %dx%d px "
+                                "(short side %d px)%s", fw, fh, short,
+                                ", seg mask" if seg_mask is not None else "")
                     if drop_size and short < int(drop_size):
-                        logger.info("[FaceDetailer] Лицо пропущено: короткая сторона %d px "
-                                    "< drop_size (%d) — слишком мелкое", short, drop_size)
+                        logger.info("[FaceDetailer] face skipped: short side %d px "
+                                    "< drop_size (%d) — too small", short, drop_size)
                         continue
                     out = self._refine_face(
                         model, vae, img, i, x1f, y1f, x2f, y2f,
@@ -620,6 +639,6 @@ class LLMPromptStudioFaceDetailer:
                     # adjusting the whole crop by masked-region stats is safe.
                     ref_crop = match_luminance(ref_crop, region, face_mask)
                     result[i:i + 1, y1:y2, x1:x2, :] = tensor_paste(region, ref_crop, face_mask)
-            logger.info("[FaceDetailer] Готово: обработано лиц=%d из %d кадров",
+            logger.info("[FaceDetailer] done: processed %d face(s) across %d frame(s)",
                         face_idx, total)
             return (result,)
