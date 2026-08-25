@@ -105,9 +105,11 @@ class LLMPromptStudioKSamplerHiresFix:
                                             "off to skip the VAE decode (saves VRAM)."}),
                 "preview_method": (PREVIEW_METHODS, {
                     "default": "vae",
-                    "tooltip": "How the preview IMAGE is generated: 'vae' = full VAE decode (most "
-                                "accurate), 'latent2rgb' = fast approximate latent->RGB, 'taesd' = "
-                                "TAESD preview if available (else VAE), 'none' = no preview image."}),
+                    "tooltip": "How the on-node PREVIEW image is generated (cosmetic only). "
+                                "The IMAGE output is ALWAYS a genuine VAE decode, independent of "
+                                "this setting. 'vae' = full VAE decode preview, 'latent2rgb' = fast "
+                                "approximate latent->RGB, 'taesd' = TAESD preview if available (else "
+                                "VAE), 'none' = no preview on the node."}),
                 "vae_tile_size": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 16,
                                    "tooltip": "Tile size (px) for the VAE decode of the final "
                                               "latent. 0 = decode the whole frame at once (best "
@@ -240,10 +242,33 @@ class LLMPromptStudioKSamplerHiresFix:
             out = out.permute(0, 2, 3, 1)
         return out
 
-    def _preview_image(self, final, preview_method, vae, vae_tile_size=0):
+    def _preview_image(self, final, vae, vae_tile_size=0):
+        # The IMAGE output is ALWAYS a genuine VAE decode of the final latent,
+        # independent of any `preview_method` setting. `preview_method` used to
+        # select a cheaper approximation (latent2rgb/taesd); that is no longer
+        # used, so the output is always the real generated image.
+        if vae is not None:
+            decoded = self._decode_latent(vae, final, vae_tile_size)
+            if decoded is not None:
+                return decoded
+        # No VAE available: fall back to the cheap approximation rather than crash.
+        return self._latent_to_rgb(final["samples"])
+
+    def _maybe_preview(self, final, vae_decode, vae, vae_tile_size=0):
+        if not vae_decode:
+            samples = final["samples"]
+            return torch.zeros((samples.shape[0], 1, 1, 3), dtype=samples.dtype)
+        return self._preview_image(final, vae, vae_tile_size)
+
+    def _node_preview(self, final, preview_method, vae, vae_tile_size=0, decoded=None):
+        """Image shown as the live preview *on this node*. Driven by `preview_method`.
+        This is purely cosmetic and does NOT affect the `IMAGE` output (which is
+        always a genuine VAE decode). Returns None for `preview_method == "none"`.
+        `decoded` (the already-VAE-decoded output image) is reused for the "vae"
+        case so the latent is not decoded twice."""
         samples = final["samples"]
         if preview_method == "none":
-            return torch.zeros((samples.shape[0], 1, 1, 3), dtype=samples.dtype)
+            return None
         if preview_method == "latent2rgb":
             return self._latent_to_rgb(samples)
         if preview_method == "taesd":
@@ -252,17 +277,13 @@ class LLMPromptStudioKSamplerHiresFix:
             except Exception:
                 pass
         # default "vae"
+        if decoded is not None:
+            return decoded
         if vae is not None:
-            decoded = self._decode_latent(vae, final, vae_tile_size)
-            if decoded is not None:
-                return decoded
+            d = self._decode_latent(vae, final, vae_tile_size)
+            if d is not None:
+                return d
         return self._latent_to_rgb(samples)
-
-    def _maybe_preview(self, final, vae_decode, preview_method, vae, vae_tile_size=0):
-        if not vae_decode:
-            samples = final["samples"]
-            return torch.zeros((samples.shape[0], 1, 1, 3), dtype=samples.dtype)
-        return self._preview_image(final, preview_method, vae, vae_tile_size)
 
     def sample(self, model, positive, negative, latent_image, seed, steps, cfg,
                 sampler_name, scheduler, denoise, hires_enabled, hires_upscale_type,
@@ -323,7 +344,18 @@ class LLMPromptStudioKSamplerHiresFix:
                 final = self._sample(model, seed2, hires_steps, cfg2, sam2, sched2,
                                      pos2, neg2, upscaled, hires_denoise)
 
-            image = self._maybe_preview(final, vae_decode, preview_method, optional_vae,
-                                        vae_tile_size)
-            return (final, image, vae_tile_size)
+            image = self._maybe_preview(final, vae_decode, optional_vae,
+                                         vae_tile_size)
+            # The on-node live preview is the only thing driven by `preview_method`;
+            # the IMAGE output above is always a genuine VAE decode. Save the chosen
+            # preview to the temp dir so ComfyUI can display it on the node.
+            ui = {}
+            if preview_method != "none":
+                preview_img = self._node_preview(
+                    final, preview_method, optional_vae, vae_tile_size,
+                    decoded=(image if vae_decode else None))
+                if preview_img is not None:
+                    from nodes import PreviewImage
+                    ui = PreviewImage().save_images(images=preview_img)["ui"]
+            return {"result": (final, image, vae_tile_size), "ui": ui}
 

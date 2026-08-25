@@ -73,7 +73,7 @@ def test_hires_upscales_to_target_size(monkeypatch):
     _install_mocks(monkeypatch)
     node = __import__("comfyui_llm_prompt_studio.nodes.ksampler_hiresfix",
                       fromlist=["LLMPromptStudioKSamplerHiresFix"]).LLMPromptStudioKSamplerHiresFix()
-    final, image, tile = node.sample(**_base_args())
+    final, image, tile = node.sample(**_base_args())["result"]
     # base 256px (32 latent) -> 512px target (64 latent)
     assert final["samples"].shape[2] == 64
     assert final["samples"].shape[3] == 64
@@ -84,7 +84,7 @@ def test_no_hires_when_size_already_matches(monkeypatch):
     node = kh.LLMPromptStudioKSamplerHiresFix()
     # factor 1.0 x 1 iteration => target == base => no hires pass
     final, image, tile = node.sample(**_base_args(hires_latent_upscale_factor=1.0,
-                                            hires_enabled=True))
+                                            hires_enabled=True))["result"]
     assert final["samples"].shape[2] == 32
     assert final["samples"].shape[3] == 32
 
@@ -93,7 +93,7 @@ def test_hires_iterations_scale_output(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
     # base 256px (32 latent); factor 2.0 x 2 iterations => 1024px (128 latent)
-    final, image, tile = node.sample(**_base_args(hires_upscale_iterations=2))
+    final, image, tile = node.sample(**_base_args(hires_upscale_iterations=2))["result"]
     assert final["samples"].shape[2] == 128
     assert final["samples"].shape[3] == 128
 
@@ -101,7 +101,7 @@ def test_hires_iterations_scale_output(monkeypatch):
 def test_hires_disabled_keeps_base(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
-    final, image, tile = node.sample(**_base_args(hires_enabled=False))
+    final, image, tile = node.sample(**_base_args(hires_enabled=False))["result"]
     assert final["samples"].shape[2] == 32
 
 
@@ -129,7 +129,7 @@ def test_vae_decode_emits_image(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
     final, image, tile = node.sample(**_base_args(vae_decode=True, preview_method="vae",
-                                            optional_vae=object()))
+                                            optional_vae=object()))["result"]
     assert image.shape[0] == 1
     assert image.shape[3] == 3
 
@@ -167,7 +167,7 @@ def test_hires_target_follows_model_native_scale(tmp_path, monkeypatch):
         hires_upscale_type="latent (model)",
         hires_latent_upscale_model="fake-x1.5.safetensors",
         hires_latent_upscale_factor=2.0,
-    ))
+    ))["result"]
     assert final["samples"].shape[2] == 48
     assert final["samples"].shape[3] == 48
 
@@ -195,12 +195,46 @@ def test_pixel_model_upscale_requires_connected_model(monkeypatch):
         assert "pixel (model)" in str(e)
 
 
-def test_preview_method_none_emits_placeholder(monkeypatch):
+def test_vae_decode_false_emits_placeholder(monkeypatch):
     _install_mocks(monkeypatch)
     node = kh.LLMPromptStudioKSamplerHiresFix()
-    final, image, tile = node.sample(**_base_args(vae_decode=True, preview_method="none"))
-    # "none" -> 1x1x3 placeholder regardless of size
+    out = node.sample(**_base_args(vae_decode=False, preview_method="vae"))
+    final, image, tile = out["result"]
+    # vae_decode=False -> 1x1x3 placeholder regardless of preview_method
     assert image.shape == (1, 1, 1, 3)
+
+
+def test_preview_method_none_emits_no_node_preview(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    out = node.sample(**_base_args(vae_decode=True, preview_method="none",
+                                   optional_vae=object()))
+    # "none" -> no on-node preview image at all
+    assert out["ui"] == {}
+
+
+def test_preview_method_vae_emits_node_preview(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    out = node.sample(**_base_args(vae_decode=False, preview_method="vae",
+                                   optional_vae=object()))
+    # preview_method drives only the node preview (ui), independent of vae_decode
+    assert "images" in out["ui"]
+
+
+def test_preview_method_does_not_change_image_output(monkeypatch):
+    _install_mocks(monkeypatch)
+    node = kh.LLMPromptStudioKSamplerHiresFix()
+    vae = _FakeVAEDecode()
+    out = node.sample(**_base_args(vae_decode=True, preview_method="latent2rgb",
+                                   optional_vae=vae))
+    final, image, tile = out["result"]
+    # IMAGE output is the genuine VAE decode (full size), not the latent2rgb approx.
+    assert image.shape[0] == 1 and image.shape[3] == 3
+    assert image.shape[1] == final["samples"].shape[2] * 8
+    assert image.shape[2] == final["samples"].shape[3] * 8
+    # and it is NOT the 32x32 latent2rgb approximation
+    assert image.shape[1] != 32
 
 
 def test_latent_to_rgb_uses_samples():
@@ -261,7 +295,7 @@ def test_vae_tile_size_emitted_and_drives_tiled_decode(monkeypatch):
     vae = _FakeVAEDecode()
     final, image, tile = node.sample(
         **_base_args(vae_decode=True, preview_method="vae",
-                     optional_vae=vae, vae_tile_size=512))
+                     optional_vae=vae, vae_tile_size=512))["result"]
     # The third output is the same tile size the user requested.
     assert tile == 512
     # With a positive tile size, the VAE decode is tiled (VRAM-bounded).
@@ -274,7 +308,7 @@ def test_vae_tile_size_zero_emits_zero_and_uses_plain_decode(monkeypatch):
     vae = _FakeVAEDecode()
     final, image, tile = node.sample(
         **_base_args(vae_decode=True, preview_method="vae",
-                     optional_vae=vae, vae_tile_size=0))
+                     optional_vae=vae, vae_tile_size=0))["result"]
     assert tile == 0
     # 0 = whole-frame decode, no tiling.
     assert vae.tiled_calls == []
