@@ -93,6 +93,14 @@ if "nodes" not in sys.modules:
     _nodes.VAEDecode = _Placeholder
     _nodes.VAEEncode = _Placeholder
     _nodes.InpaintModelConditioning = _Placeholder
+
+    class _PreviewImage:
+        def save_images(self, images=None, **kwargs):
+            # Headless tests don't need real preview files on disk; just return the
+            # shape ComfyUI expects so the node's `ui` preview path can be exercised.
+            return {"ui": {"images": []}, "result": []}
+
+    _nodes.PreviewImage = _PreviewImage
     sys.modules["nodes"] = _nodes
 
 # The on-disk model cache lives inside the package directory and is read by ComfyUI at
