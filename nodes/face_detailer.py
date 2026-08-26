@@ -193,11 +193,20 @@ class LLMPromptStudioFaceDetailer:
                                              "НЕ отбрасываются гендер-фильтром (сохраняются). "
                                              "Работает только при gender_filter != any."}),
                 "detection_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                                  "tooltip": "Порог уверенности детекции. После включения "
-                                             "фильтра по классу (yolo_seg_class) держите "
-                                             "его около 0.5: лишние классы всё равно "
-                                             "отсеются, а лицо сег-модель выдаёт с высокой "
-                                             "уверенностью."}),
+                                  "tooltip": "Порог уверенности детекции bbox-моделью (режимы haar / "
+                                             "yolo / yolo_bbox_seg). Для yolo_bbox_seg это порог "
+                                             "нахождения прямоугольника лица; сег-модель его не "
+                                             "использует (см. seg_threshold)."}),
+                "seg_threshold": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01,
+                                  "tooltip": "Порог уверенности сег-модели. Используется, когда "
+                                             "сег-модель применяется: в режиме yolo_seg — для "
+                                             "детекции лица, в режиме yolo_bbox_seg — только для "
+                                             "получения формы маски внутри уже найденного bbox-"
+                                             "моделью прямоугольника. Отделён от detection_threshold, "
+                                             "потому что сег-модели выдают лица с гораздо меньшей "
+                                             "уверенностью (~0.01-0.1), чем bbox-модели (~0.5-0.95). "
+                                             "Низкий порог даёт больше масок, но и больше ложных "
+                                             "срабатываний."}),
                 "drop_size": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1,
                              "tooltip": "Минимальный размер лица (px) по короткой стороне. "
                                         "Лица меньше этого размера пропускаются и не "
@@ -242,13 +251,15 @@ class LLMPromptStudioFaceDetailer:
         }
 
     # -- detection ---------------------------------------------------------
-    def _detect(self, img, method, yolo_name, yolo_seg_name, threshold, seg_class=0):
+    def _detect(self, img, method, yolo_name, yolo_seg_name, threshold, seg_class=0,
+                seg_threshold=0.1):
         if method == "haar":
             return self._detect_haar(img)
         if method == "yolo_seg":
-            return self._detect_yolo_seg(img, yolo_seg_name, threshold, seg_class)
+            return self._detect_yolo_seg(img, yolo_seg_name, seg_threshold, seg_class)
         if method == "yolo_bbox_seg":
-            return self._detect_yolo_bbox_seg(img, yolo_name, yolo_seg_name, threshold, seg_class)
+            return self._detect_yolo_bbox_seg(img, yolo_name, yolo_seg_name, threshold,
+                                              seg_threshold, seg_class)
         return self._detect_yolo(img, yolo_name, threshold)
 
     def _detect_haar(self, img):
@@ -337,14 +348,15 @@ class LLMPromptStudioFaceDetailer:
                         seg_class, dropped_low, threshold)
         return boxes
 
-    def _detect_yolo_bbox_seg(self, img, yolo_name, yolo_seg_name, threshold, seg_class=0):
+    def _detect_yolo_bbox_seg(self, img, yolo_name, yolo_seg_name, threshold, seg_threshold=0.1,
+                              seg_class=0):
         """Locate faces with a strong bbox model, shape the mask with a seg model.
 
         The bbox model (user-chosen ``yolo_model_name``) detects faces at the normal
         ``threshold`` and defines the crop rectangle (margin from ``crop_factor``). For
-        each detected face the seg model (``yolo_seg_model_name``) is queried at a low
-        confidence so its mask is used only as the shape inside that rectangle; if no seg
-        mask overlaps the box, the face falls back to the rectangular/oval mask.
+        each detected face the seg model (``yolo_seg_model_name``) is queried at
+        ``seg_threshold`` so its mask is used only as the shape inside that rectangle; if
+        no seg mask overlaps the box, the face falls back to the rectangular/oval mask.
         """
         bbox_boxes = self._detect_yolo(img, yolo_name, threshold)
         if not bbox_boxes:
@@ -353,7 +365,7 @@ class LLMPromptStudioFaceDetailer:
         if yolo_seg_name and yolo_seg_name != "(none)":
             try:
                 # Low conf: we only want the mask shape; the bbox already located the face.
-                seg_dets = self._detect_yolo_seg(img, yolo_seg_name, 0.01, seg_class)
+                seg_dets = self._detect_yolo_seg(img, yolo_seg_name, seg_threshold, seg_class)
             except Exception as e:
                 logger.warning("[FaceDetailer] yolo_bbox_seg: seg mask unavailable (%s); "
                               "falling back to rectangle mask", e)
@@ -679,7 +691,7 @@ class LLMPromptStudioFaceDetailer:
                            crop_factor, detection_method, yolo_model_name,
                            yolo_seg_model_name, detection_threshold, feather,
                            mask_shape, bbox_scale, iterations,
-                           inpaint_model, vae_tile_size=0, yolo_seg_class=0,
+                           inpaint_model, seg_threshold=0.1, vae_tile_size=0, yolo_seg_class=0,
                            drop_size=0, gender_filter="any",
                            gender_model_name="(none)", gender_model_female_class=0,
                            gender_threshold=0.5,
@@ -709,7 +721,7 @@ class LLMPromptStudioFaceDetailer:
                 arr = (img[i].clamp(0.0, 1.0).cpu().numpy() * 255.0).astype("uint8")
                 boxes = self._detect(img[i:i + 1], detection_method, yolo_model_name,
                                      yolo_seg_model_name, detection_threshold,
-                                     seg_class=yolo_seg_class)
+                                     seg_class=yolo_seg_class, seg_threshold=seg_threshold)
                 if not boxes:
                     continue
                 boxes = self._apply_gender_filter(

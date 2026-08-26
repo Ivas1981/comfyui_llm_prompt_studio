@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Face Detailer: bicubic crop resize.** The face crop is now resized with bicubic
   interpolation (`tensor_resize`) instead of bilinear, preserving detail when the refined
   crop is downscaled back after VAE decode.
+- **Face Detailer: separate `seg_threshold`.** New `seg_threshold` widget (default `0.1`)
+  controls the segmentation model's confidence independently of `detection_threshold`
+  (bbox detection). In `yolo_seg` it drives face detection; in `yolo_bbox_seg` it is used
+  only to fetch the mask shape inside the bbox-located crop. This replaces the previous
+  hard-coded `0.01` and lets you trade mask coverage vs. false positives per model.
 - **Face Detailer: additional YOLO face detectors.** Added YOLOv10/11/12 (n/s/m) and
   YOLO26 face-detection `.pt` weights to `models/ultralytics/bbox/`. They are picked up
   automatically by `project_local_ultralytics_bbox()` and appear in the `yolo_model_name`
