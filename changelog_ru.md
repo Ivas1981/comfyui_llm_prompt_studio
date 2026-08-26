@@ -9,6 +9,20 @@
 ## [Unreleased]
 
 ### Добавлено
+- **Face Detailer: дополнительные YOLO-детекторы лиц.** Добавлены веса
+  YOLOv10/11/12 (n/s/m) и YOLO26 для детекции лиц (`.pt`) в `models/ultralytics/bbox/`.
+  Они автоматически подхватываются `project_local_ultralytics_bbox()` и появляются в
+  выпадающем списке `yolo_model_name` без изменений кода. Все проверены локально
+  (ultralytics 8.4.x): уверенно детектируют лица (класс `0`) с conf 0.78–0.95 на
+  реальных фото, включая мелкие и слабо освещённые лица.
+- **Документация: `Plans/Algorithms.md`.** Подробное описание алгоритмов работы всех 10
+  нод (Writer, Image Critic, Scene Builder, Smart Loader, Smart Parameters, Smart
+  Multi-Clip, KSampler Hires Fix, Face Detailer, Smart Save, Library Loader) и их
+  опорных модулей (`lm_http`, `model_meta`, `parsing`, `model_recommendations`,
+  `_distilled_presets`, `presets`, `vram`, `_ksample`, `_latent_upscaler`, `_imgutils`,
+  `_contracts`): потоки данных, решения по no-negative режиму, загрузке/профилированию
+  LLM, детекции семейства/архитектуры, field-retry, гендерному/классовому фильтрам
+  Face Detailer и координации VRAM.
 - **Face Detailer: фильтр класса для `yolo_seg`.** Новый виджет `yolo_seg_class`
   (по умолчанию `0`) задаёт, какой класс сег-модели считать лицом. Детекции
   других классов (person, автомобиль и т.п.) теперь игнорируются, что убирает
