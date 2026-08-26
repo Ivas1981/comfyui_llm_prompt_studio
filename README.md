@@ -518,12 +518,12 @@ input when chained after the Hires Fix node.
 - **Inputs (required):** `model`, `vae`, `positive`, `negative`, `seed` (INT,
   randomize/increment/decrement/fixed), `steps` (INT, 20), `cfg` (FLOAT, 7.0), `sampler_name`,
   `scheduler`, `denoise` (FLOAT, 0.5), `guide_size` (INT, 512), `max_size` (INT, 1024),
-  `crop_factor` (FLOAT, 1.5 — context margin kept around the face), `detection_method`
-  (`haar` / `yolo` / `yolo_seg`, default `haar`), `yolo_model_name` (YOLO bbox detector,
-  default `face_yolov8s.pt`), `yolo_seg_model_name` (seg model for `yolo_seg`, default `(none)`),
-  `yolo_seg_class` (INT, 0), `gender_filter` (`any` / `female` / `male`, default `any`),
-  `gender_model_name` (gender classifier, default `(none)`), `gender_model_female_class`
-  (INT, 0), `gender_threshold` (FLOAT, 0.5), `detection_threshold` (FLOAT, 0.5),
+   `crop_factor` (FLOAT, 1.5 — context margin kept around the face), `detection_method`
+   (`haar` / `yolo` / `yolo_seg` / `yolo_bbox_seg`, default `haar`), `yolo_model_name` (YOLO bbox detector,
+   default `face_yolov8s.pt`), `yolo_seg_model_name` (seg model for `yolo_seg` / `yolo_bbox_seg`, default `(none)`),
+   `yolo_seg_class` (COMBO, `face`), `gender_filter` (`any` / `female` / `male`, default `any`),
+   `gender_model_name` (gender classifier, default `(none)`), `gender_model_female_class`
+   (COMBO, `female`), `gender_threshold` (FLOAT, 0.5), `detection_threshold` (FLOAT, 0.5),
   `drop_size` (INT, 0), `feather` (INT, 5 — mask feather radius in px), `mask_shape`
   (`square` / `oval`, default `square`), `bbox_scale` (FLOAT, 1.0), `iterations` (INT, 1),
   `inpaint_model` (BOOLEAN, false).
@@ -531,9 +531,11 @@ input when chained after the Hires Fix node.
   `face_positive` / `face_negative` (CONDITIONING), `vae_tile_size` (INT, 0 = whole frame).
 - **Outputs:** `IMAGE` (the composited frame with the refined faces). All diagnostic info is
   written to the ComfyUI console (the node is an output node).
-- **`yolo_seg_class`** (default `0`): which YOLO seg-model class to treat as a face. Detections
-  of other classes (person, car, …) are ignored — this removes the false positives that forced
-  `detection_threshold` down to 0.1–0.2, so you can keep it at a normal ~0.5.
+- **`yolo_seg_class`** (default `face`): which YOLO seg-model class to treat as a face. The
+  widget is a combo that is **populated automatically from the selected `yolo_seg_model_name`** —
+  picking a model lists its real class names (e.g. `face`, `hair`, `skin`), so you no longer type
+  a raw index. Detections of other classes (person, car, …) are ignored — this removes the false
+  positives that forced `detection_threshold` down to 0.1–0.2, so you can keep it at a normal ~0.5.
 - **`detection_threshold`** (default 0.5): detector confidence cutoff; keep around 0.5 after
   enabling the class filter. It is forwarded to the YOLO model as its `conf`, so the node's
   slider is authoritative even for weak faces below ultralytics' built-in 0.25 default.
@@ -541,7 +543,9 @@ input when chained after the Hires Fix node.
   keep only faces of the chosen gender and skip the rest; `any` processes every detected face.
   It runs a lightweight ultralytics **gender classification model** (set in `gender_model_name`)
   on each detected face crop and drops faces whose predicted class does not match. The female
-  class index is set in `gender_model_female_class` (default `0`). If no gender model is selected,
+  class index is set in `gender_model_female_class` (default `female`). The widget is a combo that
+  is **populated automatically from the selected `gender_model_name`** — picking a model lists its
+  real class names (e.g. `female`, `male`). If no gender model is selected,
   the filter logs a warning and is disabled (all faces processed). Drop a `.pt` classifier into
   `models/ultralytics/gender/`.
 - **`gender_threshold`** (default 0.5): minimum confidence of the gender classifier. Faces whose
@@ -562,7 +566,10 @@ input when chained after the Hires Fix node.
 - **Detection:** `haar` uses the built-in cv2 cascade; `yolo` uses the YOLO bounding-box detector
   selected in `yolo_model_name`; `yolo_seg` uses `yolo_seg_model_name` to produce a per-face
   segmentation mask of the real shape instead of a rectangle (`yolo_seg_class` selects the face
-  class). The detection model is loaded once and cached for the session, so repeated runs don't
+  class); `yolo_bbox_seg` locates faces with the strong bbox model (`yolo_model_name`) and only
+  borrows the seg model (`yolo_seg_model_name`) to shape the inpaint mask inside each located crop
+  (matched by IoU, falls back to a rectangle). The detection model is loaded once and cached for the
+  session, so repeated runs don't
   reload it on every pass. `mask_shape` (`square` / `oval`) sets the inpaint mask shape for
   `haar` / `yolo` (ignored for `yolo_seg`); `bbox_scale` (0.1–3.0, default 1.0) expands/contracts
   the crop around the face center (e.g. to include jaw/neck); `iterations` (1–10, default 1)
