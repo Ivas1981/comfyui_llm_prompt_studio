@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Face Detailer: additional YOLO face detectors.** Added YOLOv10/11/12 (n/s/m) and
+  YOLO26 face-detection `.pt` weights to `models/ultralytics/bbox/`. They are picked up
+  automatically by `project_local_ultralytics_bbox()` and appear in the `yolo_model_name`
+  dropdown with no code changes. All were verified locally (ultralytics 8.4.x) to detect
+  faces (class `0`) at confidence 0.78–0.95 on real photos, including small and
+  poorly-lit faces.
 - **Face Detailer: class filter for `yolo_seg`.** New `yolo_seg_class` widget
   (default `0`) selects which seg-model class to treat as a face. Detections of
   other classes (person, car, etc.) are now ignored, removing false positives so
