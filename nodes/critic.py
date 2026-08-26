@@ -7,6 +7,7 @@ from ..imaging import image_to_base64
 from ..lm_http import (chat_completion, ensure_model_loaded, resolve_vision,
                        model_architecture, model_param_count)
 from ..parsing import parse_critic_json
+from ._scene_analysis import analyze_scene, describe_scene
 from ..debug import log_node_enter, log_node_exit, log_error
 from ..vram import (release_after_llm, release_enabled,
                      mark_keep_loaded, coerce_bool_widget)
@@ -43,6 +44,12 @@ class LLMPromptStudioCritic:
                 "max_retries": ("INT", {"default": 3, "min": 1, "max": 10}),
                 "vision_check": ("BOOLEAN", {"default": True}),
                 "revision_view": ("STRING", {"multiline": True, "default": ""}),
+                "cv_scene_hint": ("BOOLEAN", {"default": True,
+                                     "tooltip": "Add a cheap CV pre-analysis (scene type, lighting, "
+                                                "face count) to the critique context so the vision "
+                                                "model evaluates the image in the right frame (anime / "
+                                                "illustration vs photo, keep skin tones natural for "
+                                                "portraits). No extra vision call is used."}),
                 "flash_attention": ("BOOLEAN", {"default": False,
                                     "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage"}),
                 "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
@@ -70,7 +77,7 @@ class LLMPromptStudioCritic:
     def execute(self, image, prompt, server_url, api_key, model, context_length, gpu_offload,
                  critic_prompt, threshold, image_max_size, temperature, max_tokens,
                  clear_notes_on_approve, auto_loop, max_retries,
-                  vision_check=True, revision_view="",
+                  vision_check=True, revision_view="", cv_scene_hint=True,
                    flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None,
                    load_model_profile="auto", server_status="",
                    release_vram_after_run=True):
@@ -79,13 +86,14 @@ class LLMPromptStudioCritic:
             "server_url": server_url, "model": model, "threshold": threshold,
             "image_max_size": image_max_size, "temperature": temperature,
             "max_tokens": max_tokens, "vision_check": vision_check,
+            "cv_scene_hint": cv_scene_hint,
         })
         try:
             return self._run(image, prompt, server_url, api_key, model, context_length,
                              gpu_offload,
                              critic_prompt, threshold, image_max_size, temperature, max_tokens,
                              clear_notes_on_approve, auto_loop, max_retries,
-                              vision_check, revision_view, flash_attention,
+                              vision_check, revision_view, cv_scene_hint, flash_attention,
                               offload_kv_cache_to_gpu, unique_id, _t0, load_model_profile,
                               release_vram_after_run)
         except Exception as e:
@@ -93,11 +101,11 @@ class LLMPromptStudioCritic:
             raise
 
     def _run(self, image, prompt, server_url, api_key, model, context_length, gpu_offload,
-              critic_prompt, threshold, image_max_size, temperature, max_tokens,
-              clear_notes_on_approve, auto_loop, max_retries,
-               vision_check=True, revision_view="",
-               flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None, _t0=None,
-               load_model_profile="auto", release_vram_after_run=True):
+               critic_prompt, threshold, image_max_size, temperature, max_tokens,
+               clear_notes_on_approve, auto_loop, max_retries,
+                vision_check=True, revision_view="", cv_scene_hint=True,
+                flash_attention=None, offload_kv_cache_to_gpu=None, unique_id=None, _t0=None,
+                load_model_profile="auto", release_vram_after_run=True):
         if model.startswith("—"):
             raise RuntimeError(
                 "No model selected. Start the LM Studio server, load a model "
@@ -134,13 +142,26 @@ class LLMPromptStudioCritic:
                 llm_architecture = ""
                 llm_param_count = None
             b64 = image_to_base64(image, image_max_size)
-    
+
+            scene_hint = ""
+            if cv_scene_hint:
+                try:
+                    scene_hint = describe_scene(analyze_scene(image))
+                except Exception as e:  # noqa: BLE001 - hint is best-effort
+                    logger.debug("Critic scene hint failed: %s", e)
+                    scene_hint = ""
+
+            user_text = (
+                f"The prompt this image was generated with: {prompt}\n"
+                f"Evaluate how well the image matches this prompt."
+            )
+            if scene_hint:
+                user_text = f"{scene_hint}\n\n{user_text}"
+
             messages = [
                 {"role": "system", "content": critic_prompt},
                 {"role": "user", "content": [
-                    {"type": "text",
-                     "text": f"The prompt this image was generated with: {prompt}\n"
-                             f"Evaluate how well the image matches this prompt."},
+                    {"type": "text", "text": user_text},
                     {"type": "image_url",
                      "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
                 ]},
@@ -183,6 +204,7 @@ class LLMPromptStudioCritic:
                     "approved": [approved],
                     "score": [score],
                     "revision_notes": [notes],
+                    "scene_hint": [scene_hint],
                     "auto_loop": [auto_loop],
                     "max_retries": [max_retries],
                     "clear_notes_on_approve": [clear_notes_on_approve],

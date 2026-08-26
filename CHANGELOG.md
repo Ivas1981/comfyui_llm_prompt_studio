@@ -55,7 +55,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   index; with no model selected the filter logs a warning and processes all faces. Gender
   detection runs for **all** detection methods (haar, yolo bbox, yolo seg, yolo_bbox_seg),
   and the refined-face brightness match (`match_luminance`) is likewise applied on every
-  method's mask.
+   method's mask.
+- **Face Detailer: `match_color` for inpaint compositing.** New `match_color` widget
+  (`luminance` / `lab` / `histogram` / `none`, default `luminance`) controls how the refined
+  face is blended back into the frame. `luminance` (the former always-on behaviour) matches only
+  brightness/contrast; `lab` runs the same affine transfer in LAB space so hue/chroma seams are
+  removed too; `histogram` does per-channel CDF matching against the surrounding original; `none`
+  disables matching. OpenCV is imported lazily so the node still loads without it, falling back
+  to `luminance`.
+- **Critic & Writer: CV scene pre-analysis hint.** New `cv_scene_hint` toggle (default on)
+  runs a cheap OpenCV pre-analysis (scene type, lighting, face count — no extra vision call) and
+  feeds it to the LLM as context. The Critic injects it into the eval prompt (and shows it in the
+  node's `scene_hint` output); the Writer accepts an optional `image` input and appends the hint
+  to the brief so generated prompts fit the content (anime/illustration vs photo, natural skin for
+  portraits). Classification needs only OpenCV/numpy (no scikit-learn/skimage).
 - **Face Detailer: gender-confidence threshold (`gender_threshold`).** New FLOAT widget
   (default `0.5`) sets the minimum confidence of the gender classifier. Faces whose predicted
   gender confidence is below the threshold are treated as `unknown` and are **kept** (not dropped
