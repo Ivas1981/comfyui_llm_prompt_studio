@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Face Detailer: `yolo_bbox_seg` detection mode.** New `detection_method` option locates
+  faces with a strong bbox model (`yolo_model_name`) at the normal `detection_threshold`,
+  then uses a segmentation model (`yolo_seg_model_name`) only to derive the mask shape
+  inside that crop (matched by IoU). This gives reliable detection (no need to drop
+  `detection_threshold` to ~0.1) while still refining along the real face contour — useful
+  for 3/4-turn faces where pure `yolo_seg` misses or false-positives. Falls back to the
+  rectangular/oval mask when no seg mask overlaps the detected box or no seg model is chosen.
+- **Face Detailer: bicubic crop resize.** The face crop is now resized with bicubic
+  interpolation (`tensor_resize`) instead of bilinear, preserving detail when the refined
+  crop is downscaled back after VAE decode.
 - **Face Detailer: additional YOLO face detectors.** Added YOLOv10/11/12 (n/s/m) and
   YOLO26 face-detection `.pt` weights to `models/ultralytics/bbox/`. They are picked up
   automatically by `project_local_ultralytics_bbox()` and appear in the `yolo_model_name`

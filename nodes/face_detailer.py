@@ -35,6 +35,23 @@ def _clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
+def _bbox_iou(a, b):
+    """IoU of two ``(x1, y1, x2, y2)`` boxes."""
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw = max(0.0, ix2 - ix1)
+    ih = max(0.0, iy2 - iy1)
+    inter = iw * ih
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    if union <= 0.0:
+        return 0.0
+    return inter / union
+
+
 # Module-level cache so a YOLO model is loaded once and reused across every image
 # in a batch (and across runs), instead of being re-initialised per detection call.
 _YOLO_CACHE = {}
@@ -123,7 +140,15 @@ class LLMPromptStudioFaceDetailer:
                                  "tooltip": "How much margin to include around the detected face for "
                                             "context. >1.0 keeps surrounding pixels so the refined "
                                             "face blends seamlessly with the rest of the image."}),
-                "detection_method": (["haar", "yolo", "yolo_seg"], {"default": "haar"}),
+                "detection_method": (["haar", "yolo", "yolo_seg", "yolo_bbox_seg"],
+                                     {"default": "haar",
+                                      "tooltip": "How faces are found and masked. "
+                                      "haar/yolo: bbox detection, rectangular/oval mask. "
+                                      "yolo_seg: one seg model does detection AND mask "
+                                      "(needs a low threshold, weak on 3/4 turns). "
+                                      "yolo_bbox_seg: a strong bbox model (yolo_model_name) "
+                                      "locates the face; the seg model (yolo_seg_model_name) "
+                                      "only provides the mask shape inside that crop."}),
                 "yolo_model_name": (
                     ["face_yolov8s.pt"] + project_local_ultralytics_bbox() + list(yolo_list),
                     {"default": "face_yolov8s.pt"}),
@@ -222,6 +247,8 @@ class LLMPromptStudioFaceDetailer:
             return self._detect_haar(img)
         if method == "yolo_seg":
             return self._detect_yolo_seg(img, yolo_seg_name, threshold, seg_class)
+        if method == "yolo_bbox_seg":
+            return self._detect_yolo_bbox_seg(img, yolo_name, yolo_seg_name, threshold, seg_class)
         return self._detect_yolo(img, yolo_name, threshold)
 
     def _detect_haar(self, img):
@@ -309,6 +336,40 @@ class LLMPromptStudioFaceDetailer:
                         len(boxes), dropped_class + dropped_low, dropped_class,
                         seg_class, dropped_low, threshold)
         return boxes
+
+    def _detect_yolo_bbox_seg(self, img, yolo_name, yolo_seg_name, threshold, seg_class=0):
+        """Locate faces with a strong bbox model, shape the mask with a seg model.
+
+        The bbox model (user-chosen ``yolo_model_name``) detects faces at the normal
+        ``threshold`` and defines the crop rectangle (margin from ``crop_factor``). For
+        each detected face the seg model (``yolo_seg_model_name``) is queried at a low
+        confidence so its mask is used only as the shape inside that rectangle; if no seg
+        mask overlaps the box, the face falls back to the rectangular/oval mask.
+        """
+        bbox_boxes = self._detect_yolo(img, yolo_name, threshold)
+        if not bbox_boxes:
+            return []
+        seg_dets = []
+        if yolo_seg_name and yolo_seg_name != "(none)":
+            try:
+                # Low conf: we only want the mask shape; the bbox already located the face.
+                seg_dets = self._detect_yolo_seg(img, yolo_seg_name, 0.01, seg_class)
+            except Exception as e:
+                logger.warning("[FaceDetailer] yolo_bbox_seg: seg mask unavailable (%s); "
+                              "falling back to rectangle mask", e)
+        out = []
+        for (x1, y1, x2, y2, _) in bbox_boxes:
+            best_mask = None
+            best_iou = 0.0
+            for (sx1, sy1, sx2, sy2, smask) in seg_dets:
+                if smask is None:
+                    continue
+                iou = _bbox_iou((x1, y1, x2, y2), (sx1, sy1, sx2, sy2))
+                if iou > best_iou:
+                    best_iou = iou
+                    best_mask = smask
+            out.append((x1, y1, x2, y2, best_mask))
+        return out
 
     def _resolve_yolo(self, name):
         from ._latent_upscaler import PROJECT_ROOT
