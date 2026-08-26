@@ -199,7 +199,11 @@ comfyui_llm_prompt_studio/
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
     `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
     `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`, `server_status`, `release_vram_after_run`.
+    `top_k`, `top_p`, `min_p`, `server_status`, `release_vram_after_run`, `cv_scene_hint`.
+  - **Опциональный вход `image`:** подключите изображение и включите `cv_scene_hint` (по умолчанию
+    вкл), чтобы подать дёшевый анализ на OpenCV (тип сцены, освещённость, число лиц — без
+    дополнительного vision-вызова) в бриф, и сгенерированный промпт соответствовал содержимому
+    (аниме/иллюстрация против фото, натуральные тона кожи для портретов).
   - **`prompt_mode`** выбирает, как обрабатывается негативный промпт: `auto` (по умолчанию)
     переключается на системный промпт без негатива, когда семейство чекпоинта дистиллировано
     (DMD / LCM / Turbo / Hyper / Lightning / Flash, **либо** применена дистиллированная LoRA к
@@ -285,8 +289,12 @@ comfyui_llm_prompt_studio/
   - **Входы:** `image`, `prompt`, `server_url`, `api_key`, `model`, `load_model_profile`,
     `context_length`, `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`,
     `temperature`, `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`,
-    `vision_check`, `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`,
+    `vision_check`, `revision_view`, `cv_scene_hint`, `flash_attention`, `offload_kv_cache_to_gpu`,
     `server_status`, `release_vram_after_run`.
+  - **`cv_scene_hint`** (по умолчанию вкл): запускает дёшевый анализ на OpenCV (тип сцены,
+    освещённость, число лиц — без дополнительного vision-вызова) и добавляет его в контекст оценки,
+    чтобы модель критиковала изображение в правильном ключе (аниме/иллюстрация против фото,
+    натуральные тона кожи для портретов). Подсказка также выводится в поле `scene_hint` узла.
   - **`load_model_profile`** работает точно так же, как у Писателя (по умолчанию `auto`,
     универсальная рекомендация по размеру, `custom` сохраняет значения виджетов). Поскольку Критик
     всегда является зрительной моделью, его профиль расширяет вызов `chat_completion`
@@ -387,7 +395,8 @@ comfyui_llm_prompt_studio/
     `gender_model_female_class` (COMBO, `female`), `gender_threshold` (FLOAT, 0.5),
     `detection_threshold` (FLOAT, 0.5), `drop_size` (INT, 0), `feather` (INT, 5 — радиус
     растушёвки маски в px), `mask_shape` (`square` / `oval`, по умолчанию `square`),
-    `bbox_scale` (FLOAT, 1.0), `iterations` (INT, 1), `inpaint_model` (BOOLEAN, false).
+     `bbox_scale` (FLOAT, 1.0), `iterations` (INT, 1), `inpaint_model` (BOOLEAN, false),
+     `match_color` (COMBO, `luminance`).
   - **Входы (опциональные):** `image` (IMAGE, force input), `latent` (LATENT, force input),
     `face_positive` / `face_negative` (CONDITIONING), `vae_tile_size` (INT, 0 = весь кадр).
   - **Выходы:** `IMAGE` (композитный кадр с уточнёнными лицами). Вся диагностика пишется в
@@ -419,8 +428,13 @@ comfyui_llm_prompt_studio/
   - **`guide_size`** / **`max_size`**: целевой размер короткой стороны лица (px) после увеличения
     кропа. Лица, уже достигшие `guide_size`, пропускаются; `max_size` ограничивает кроп сверху,
     снижая коэффициент увеличения.
-  - **Выравнивание яркости:** отрефайненное лицо согласуется по яркости/контрасту с окружением в
-    пределах растушёванной маски (`match_luminance`), устраняя шов «лицо ярче кадра».
+   - **Выравнивание яркости:** отрефайненное лицо согласуется по яркости/контрасту с окружением в
+     пределах растушёванной маски (`match_luminance`), устраняя шов «лицо ярче кадра».
+   - **`match_color`** (по умолчанию `luminance`): как отрефайненное лицо вливается обратно в кадр.
+     `luminance` выравнивает только яркость/контраст; `lab` делает то же аффинное преобразование в
+     цветовом пространстве LAB, убирая и цветовые швы; `histogram` — поканальное CDF-согласование с
+     окружающим оригиналом; `none` — без выравнивания. OpenCV импортируется лениво, поэтому узел
+     грузится и без него (фоллбэк на `luminance`).
   - **Логирование:** узел пишет в консоль ComfyUI (префикс `[FaceDetailer]`) старт (метод,
     guide_size, max_size, drop_size, yolo_seg_class), каждое обнаруженное лицо (размер px),
     коэффициент увеличения, ограничение кропа по max_size, пропуск лица (уже ≥ guide_size / мельче

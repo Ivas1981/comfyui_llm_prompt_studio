@@ -120,3 +120,120 @@ def match_luminance(src, ref, weight, eps=1e-6):
         scale = (std_r / std_s).clamp(0.5, 2.0)
         out[..., c] = (s - mu_s) * scale + mu_r
     return out
+
+
+def match_color(src, ref, weight, mode="luminance", eps=1e-6):
+    """Match ``src`` to ``ref`` inside the ``weight`` region, per ``mode``.
+
+    - ``none`` / ``luminance``: brightness/contrast affine per RGB channel
+      (see :func:`match_luminance`). ``luminance`` is the historical default and
+      removes only a brightness seam.
+    - ``lab``: the same affine transfer computed in LAB space, so hue/chroma are
+      matched as well — removes colour seams, not just brightness, after an inpaint.
+    - ``histogram``: per-channel CDF (histogram) matching of ``src`` to the ``ref``
+      distribution sampled under ``weight`` (stronger, can shift local tones).
+
+    ``weight`` is ``(B, H, W, 1)`` in 0..1; ``src``/``ref`` are ``(B, H, W, C)``.
+    OpenCV is imported lazily so the module still imports headlessly; on failure
+    it falls back to ``luminance``.
+    """
+    if mode in (None, "none"):
+        return src
+    if mode == "luminance":
+        return match_luminance(src, ref, weight, eps=eps)
+    try:
+        import cv2  # noqa: F401 - used in the LAB path
+    except Exception:
+        return match_luminance(src, ref, weight, eps=eps)
+
+    src_np = _t2np(src)
+    ref_np = _t2np(ref)
+    w_np = _t2np(weight)[..., 0]
+    if mode == "lab":
+        out = _match_lab(src_np, ref_np, w_np, eps)
+    elif mode == "histogram":
+        out = _match_hist(src_np, ref_np, w_np)
+    else:
+        out = src_np
+    return _np2t(out, src)
+
+
+def _t2np(t):
+    a = t.detach().cpu().numpy() if hasattr(t, "detach") else np.asarray(t)
+    return np.clip(a, 0.0, 1.0).astype(np.float32)
+
+
+def _np2t(a, like):
+    t = torch.from_numpy(a.astype(np.float32))
+    if like is not None:
+        if hasattr(like, "device"):
+            t = t.to(device=like.device)
+        if hasattr(like, "dtype"):
+            t = t.to(dtype=like.dtype)
+    return t
+
+
+def _weighted_affine(src, ref, w, eps):
+    """Per-channel affine transfer ``src -> (src-mu_s)*scale+mu_r`` over ``w``."""
+    w3 = w[..., None]
+    wsum = w3.sum() + eps
+    out = np.empty_like(src)
+    for c in range(src.shape[-1]):
+        s = src[..., c]
+        r = ref[..., c]
+        mu_s = (s * w).sum() / wsum
+        mu_r = (r * w).sum() / wsum
+        var_s = (w * (s - mu_s) ** 2).sum() / wsum
+        var_r = (w * (r - mu_r) ** 2).sum() / wsum
+        std_s = np.sqrt(var_s + eps)
+        std_r = np.sqrt(var_r + eps)
+        scale = float(np.clip(std_r / std_s, 0.5, 2.0))
+        out[..., c] = (s - mu_s) * scale + mu_r
+    return out
+
+
+def _match_lab(src, ref, w, eps=1e-6):
+    """Affine colour transfer in OpenCV LAB space, per batch item."""
+    import cv2
+    batch = src.shape[0]
+    out = np.empty_like(src)
+    for i in range(batch):
+        s = (np.clip(src[i], 0, 1) * 255).astype(np.uint8)
+        r = (np.clip(ref[i], 0, 1) * 255).astype(np.uint8)
+        s_lab = cv2.cvtColor(s, cv2.COLOR_RGB2LAB).astype(np.float32)
+        r_lab = cv2.cvtColor(r, cv2.COLOR_RGB2LAB).astype(np.float32)
+        adj = _weighted_affine(s_lab, r_lab, w[i], eps)
+        adj = np.clip(adj, 0, 255).astype(np.uint8)
+        out[i] = cv2.cvtColor(adj, cv2.COLOR_LAB2RGB).astype(np.float32) / 255.0
+    return out
+
+
+def _match_hist(src, ref, w):
+    """Per-channel histogram (CDF) matching of ``src`` to ``ref`` under ``w``."""
+    batch = src.shape[0]
+    out = np.empty_like(src)
+    for i in range(batch):
+        mask = w[i] > 0.5
+        out[i] = src[i]
+        for c in range(src.shape[-1]):
+            s_u8 = (np.clip(src[i, ..., c], 0, 1) * 255).astype(np.uint8)
+            r_u8 = (np.clip(ref[i, ..., c], 0, 1) * 255).astype(np.uint8)
+            if mask.any():
+                r_u8 = r_u8[mask]
+            else:
+                r_u8 = r_u8.ravel()
+            if r_u8.size == 0:
+                continue
+            mapped = _hist_match_channel(s_u8.ravel(), r_u8)
+            out[i, ..., c] = mapped.reshape(s_u8.shape).astype(np.float32) / 255.0
+    return out
+
+
+def _hist_match_channel(src_flat, ref_pix):
+    """Map ``src_flat`` distribution onto ``ref_pix`` via cumulative CDF interp."""
+    s_vals, s_idx, s_counts = np.unique(src_flat, return_inverse=True, return_counts=True)
+    r_vals, r_counts = np.unique(ref_pix, return_counts=True)
+    s_cdf = np.cumsum(s_counts).astype(np.float64) / len(src_flat)
+    r_cdf = np.cumsum(r_counts).astype(np.float64) / len(ref_pix)
+    interp = np.interp(s_cdf, r_cdf, r_vals)
+    return interp[s_idx]

@@ -21,7 +21,7 @@ logger = logging.getLogger("llm_prompt_studio")
 from ._ksample import sample_latent, node_span
 from ._imgutils import (
     tensor_resize, mask_resize, to_latent_image,
-    tensor_gaussian_blur_mask, tensor_paste, match_luminance,
+    tensor_gaussian_blur_mask, tensor_paste, match_color,
 )
 from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
 from ._latent_upscaler import (
@@ -258,6 +258,14 @@ class LLMPromptStudioFaceDetailer:
                                              "sees the original face structure (concat latent) while "
                                              "regenerating the face area. Off = differential noise "
                                              "mask (refines in place)."}),
+                "match_color": (["luminance", "lab", "histogram", "none"], {"default": "luminance",
+                                  "tooltip": "Согласование отрефайненного лица с окружением при "
+                                             "композитинге обратно в кадр. luminance = только "
+                                             "яркость/контраст (как раньше, убирает световой шов); "
+                                             "lab = то же, но в цветовом пространстве LAB, убирает и "
+                                             "цветовые швы; histogram = CDF-согласование распределения "
+                                             "цветов с окружением (сильнее, может сдвинуть локальные "
+                                             "тона); none = без согласования."}),
             },
             "optional": {
                 "image": ("IMAGE", {"forceInput": True}),
@@ -718,13 +726,13 @@ class LLMPromptStudioFaceDetailer:
                            sampler_name, scheduler, denoise, guide_size, max_size,
                            crop_factor, detection_method, yolo_model_name,
                            yolo_seg_model_name, detection_threshold, feather,
-                           mask_shape, bbox_scale, iterations,
-                            inpaint_model, seg_threshold=0.1, vae_tile_size=0, yolo_seg_class="face",
-                            drop_size=0, gender_filter="any",
-                            gender_model_name="(none)", gender_model_female_class="female",
-                           gender_threshold=0.5,
-                           image=None, latent=None,
-                           face_positive=None, face_negative=None, unique_id=None):
+                            mask_shape, bbox_scale, iterations,
+                             inpaint_model, seg_threshold=0.1, vae_tile_size=0, yolo_seg_class="face",
+                             drop_size=0, gender_filter="any",
+                             gender_model_name="(none)", gender_model_female_class="female",
+                            gender_threshold=0.5, match_color="luminance",
+                            image=None, latent=None,
+                            face_positive=None, face_negative=None, unique_id=None):
         with node_span("LLMPromptStudioFaceDetailer", unique_id):
             release_before_sample()
             if latent is not None:
@@ -738,8 +746,9 @@ class LLMPromptStudioFaceDetailer:
             face_idx = 0
             total = img.shape[0]
             logger.info("[FaceDetailer] start: frames=%d, method=%s, guide_size=%d, "
-                        "max_size=%d, drop_size=%d, yolo_seg_class=%s",
-                        total, detection_method, guide_size, max_size, drop_size, yolo_seg_class)
+                        "max_size=%d, drop_size=%d, yolo_seg_class=%s, match_color=%s",
+                        total, detection_method, guide_size, max_size, drop_size, yolo_seg_class,
+                        match_color)
             for i in range(img.shape[0]):
                 # Detect faces per image in the batch: the seg masks returned by
                 # _detect_yolo_seg are sized to the image passed in, so detection must
@@ -782,11 +791,14 @@ class LLMPromptStudioFaceDetailer:
                         continue
                     y1, y2, x1, x2, ref_crop, face_mask = out
                     region = result[i:i + 1, y1:y2, x1:x2, :]
-                    # Match the refined face's brightness/contrast to the surrounding
-                    # original (within the feathered mask) so the inpaint does not leave
-                    # a brighter seam. The margin is masked out at composite time, so
-                    # adjusting the whole crop by masked-region stats is safe.
-                    ref_crop = match_luminance(ref_crop, region, face_mask)
+                    # Match the refined face to the surrounding original (within the
+                    # feathered mask) so the inpaint does not leave a seam. `match_color`
+                    # controls how strongly and in which space the match is done
+                    # (brightness only, LAB colour, or histogram); the margin is masked
+                    # out at composite time, so adjusting the whole crop by masked-region
+                    # stats is safe.
+                    if match_color not in ("none", None):
+                        ref_crop = match_color(ref_crop, region, face_mask, mode=match_color)
                     result[i:i + 1, y1:y2, x1:x2, :] = tensor_paste(region, ref_crop, face_mask)
             logger.info("[FaceDetailer] done: processed %d face(s) across %d frame(s)",
                         face_idx, total)

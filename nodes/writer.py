@@ -11,6 +11,7 @@ from ..presets import (apply_preset_to_prompts, apply_preset_style, get_preset_b
                         get_architecture_guidance, append_negative_tags)
 from .model_recommendations import resolve_profile
 from ..debug import log_node_enter, log_node_exit, log_error
+from ._scene_analysis import analyze_scene, describe_scene
 from ..vram import (release_after_llm, release_enabled,
                      mark_keep_loaded, coerce_bool_widget)
 from ._defaults import (DEFAULT_SYSTEM, DEFAULT_SYSTEM_NO_NEGATIVE,
@@ -89,6 +90,10 @@ class LLMPromptStudioWriter:
                                  "control_after_generate": True}),
                 "reuse_last_prompt": ("BOOLEAN", {"default": False}),
                 "generate_face_prompts": ("BOOLEAN", {"default": False}),
+                "cv_scene_hint": ("BOOLEAN", {"default": True,
+                                   "tooltip": "When an image is connected, add a cheap CV "
+                                              "pre-analysis (scene type, lighting, face count) to "
+                                              "the brief so the generated prompt fits the content."}),
                 "max_field_retries": ("INT", {"default": 2, "min": 0, "max": 5}),
                 "face_prompt_instruction": ("STRING", {"multiline": True,
                                                         "default": FACE_PROMPT_INSTRUCTION}),
@@ -131,6 +136,13 @@ class LLMPromptStudioWriter:
                                             "tooltip": "Base architecture detected by Smart "
                                                        "Loader's detected_architecture output; "
                                                        "adapts token style and negatives"}),
+                "image": ("IMAGE", {"forceInput": True,
+                                    "tooltip": "Optional reference image. When provided and "
+                                               "cv_scene_hint is on, a cheap CV pre-analysis "
+                                               "(scene type, lighting, face count) is added to "
+                                               "the brief so the generated prompt fits the content "
+                                               "(anime/illustration vs photo, natural skin for "
+                                               "portraits)."}),
                 "server_status": ("STRING", {"default": "",
                                              "multiline": False,
                                              "tooltip": "Live LM Studio server status "
@@ -152,19 +164,21 @@ class LLMPromptStudioWriter:
 
     def execute(self, server_url, api_key, model, context_length, gpu_offload, system_prompt, idea,
                  revision_notes, temperature, max_tokens, seed,
-                 reuse_last_prompt=False, generate_face_prompts=False,
+                 reuse_last_prompt=False, generate_face_prompts=False, cv_scene_hint=True,
                  max_field_retries=2, face_prompt_instruction="",
                  prompt_mode="auto", family="", unique_id=None,
                  style_preset="— none —", use_preset_system_prompt=True, flash_attention=None,
                   offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
-                   top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto",
-                     server_status="", architecture="", release_vram_after_run=True):
+                    top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto",
+                      server_status="", architecture="", release_vram_after_run=True,
+                 image=None):
         _t0 = time.time()
         log_node_enter("Writer", unique_id, {
             "server_url": server_url, "model": model, "idea": idea,
             "prompt_mode": prompt_mode, "family": family,
             "architecture": architecture,
             "generate_face_prompts": generate_face_prompts,
+            "cv_scene_hint": cv_scene_hint,
             "temperature": temperature, "max_tokens": max_tokens, "seed": seed,
              "reuse_last_prompt": reuse_last_prompt, "max_field_retries": max_field_retries,
              "style_preset": style_preset, "reasoning": reasoning,
@@ -173,25 +187,27 @@ class LLMPromptStudioWriter:
             return self._run(server_url, api_key, model, context_length,
                              gpu_offload, system_prompt,
                              idea, revision_notes, temperature, max_tokens, seed,
-                             reuse_last_prompt, generate_face_prompts, max_field_retries,
+                             reuse_last_prompt, generate_face_prompts, cv_scene_hint,
+                             max_field_retries,
                              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
                               style_preset, use_preset_system_prompt, flash_attention,
                               offload_kv_cache_to_gpu, reasoning,
-                repeat_penalty, top_k, top_p, min_p,
-                  load_model_profile, architecture, release_vram_after_run)
+                    repeat_penalty, top_k, top_p, min_p,
+                      load_model_profile, architecture, release_vram_after_run, image)
         except Exception as e:
             log_error(unique_id, e, traceback.format_exc())
             raise
 
     def _run(self, server_url, api_key, model, context_length, gpu_offload, system_prompt, idea,
-              revision_notes, temperature, max_tokens, seed,
-              reuse_last_prompt, generate_face_prompts, max_field_retries,
-              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
-              style_preset, use_preset_system_prompt=True, flash_attention=None,
-              offload_kv_cache_to_gpu=None, reasoning="off",
-                repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
-                  load_model_profile="auto", architecture="",
-                  release_vram_after_run=True):
+               revision_notes, temperature, max_tokens, seed,
+               reuse_last_prompt, generate_face_prompts, cv_scene_hint,
+               max_field_retries,
+               face_prompt_instruction, prompt_mode, family, unique_id, _t0,
+               style_preset, use_preset_system_prompt=True, flash_attention=None,
+               offload_kv_cache_to_gpu=None, reasoning="off",
+                 repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
+                   load_model_profile="auto", architecture="",
+                   release_vram_after_run=True, image=None):
         # Reuse mode: return the cached prompt without calling the LLM. The key is the node
         # id + the inputs that actually shape the generated prompt, so a change to any of
         # them bypasses the cache and regenerates. `family` is intentionally excluded: it is
@@ -201,7 +217,8 @@ class LLMPromptStudioWriter:
         # so two architectures must never share a cached prompt.
         cache_key = (unique_id, prompt_mode, style_preset, system_prompt,
                      idea, revision_notes, generate_face_prompts, face_prompt_instruction,
-                     architecture)
+                     architecture,
+                     tuple(image.shape) if image is not None else None)
         # Reuse mode: return cached result without calling the LLM
         if reuse_last_prompt:
             cached = _prompt_cache.get(cache_key)
@@ -362,6 +379,18 @@ class LLMPromptStudioWriter:
                     "Generate a CORRECTED prompt taking these fixes into account, "
                     "in the same JSON format."
                 ))
+
+            if image is not None and cv_scene_hint:
+                try:
+                    hint = describe_scene(analyze_scene(image))
+                    if hint:
+                        _append_or_merge_user(
+                            messages,
+                            f"{hint} Use this to tailor the prompt to the actual content "
+                            "(e.g. treat anime/illustration differently from a photo, keep "
+                            "skin tones natural for portraits).")
+                except Exception as e:  # noqa: BLE001 - hint is best-effort
+                    logger.debug("Writer scene hint failed: %s", e)
     
             raw = chat_completion(server_url, api_key, model, messages,
                                     temperature, max_tokens, seed=seed,

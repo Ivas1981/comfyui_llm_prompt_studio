@@ -198,7 +198,10 @@ Generates an SDXL prompt from an idea.
     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
     `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
     `use_preset_system_prompt`, `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`, `server_status`, `release_vram_after_run`.
+    `top_k`, `top_p`, `min_p`, `server_status`, `release_vram_after_run`, `cv_scene_hint`.
+  - **Optional `image` input:** connect an image and enable `cv_scene_hint` (default on) to feed a
+    cheap OpenCV pre-analysis (scene type, lighting, face count — no extra vision call) into the brief,
+    so the generated prompt fits the content (anime/illustration vs photo, natural skin for portraits).
   - **`prompt_mode`** selects how the negative prompt is handled: `auto` (default) switches
     to a no-negative system prompt when the checkpoint family is distilled (DMD / LCM /
     Turbo / Hyper / Lightning / Flash, **or** a distillation LoRA applied to a base checkpoint —
@@ -282,8 +285,12 @@ A vision model scores how well the image matches the prompt.
   - **Inputs:** `image`, `prompt`, `server_url`, `api_key`, `model`, `load_model_profile`,
     `context_length`, `gpu_offload`, `critic_prompt`, `threshold`, `image_max_size`,
     `temperature`, `max_tokens`, `clear_notes_on_approve`, `auto_loop`, `max_retries`,
-    `vision_check`, `revision_view`, `flash_attention`, `offload_kv_cache_to_gpu`,
+    `vision_check`, `revision_view`, `cv_scene_hint`, `flash_attention`, `offload_kv_cache_to_gpu`,
     `server_status`, `release_vram_after_run`.
+  - **`cv_scene_hint`** (default on): runs a cheap OpenCV pre-analysis (scene type, lighting,
+    face count — no extra vision call) and adds it to the evaluation context, so the model critiques
+    the image in the right frame (anime/illustration vs photo, natural skin for portraits). The hint
+    is also surfaced in the node's `scene_hint` output.
   - **`load_model_profile`** works exactly as on the Writer (default `auto`, universal
     size-based recommendation, `custom` keeps the widget values). Because the Critic is
     always a vision model, its profile expands the `chat_completion` call with the
@@ -526,7 +533,7 @@ input when chained after the Hires Fix node.
    (COMBO, `female`), `gender_threshold` (FLOAT, 0.5), `detection_threshold` (FLOAT, 0.5),
   `drop_size` (INT, 0), `feather` (INT, 5 — mask feather radius in px), `mask_shape`
   (`square` / `oval`, default `square`), `bbox_scale` (FLOAT, 1.0), `iterations` (INT, 1),
-  `inpaint_model` (BOOLEAN, false).
+   `inpaint_model` (BOOLEAN, false), `match_color` (COMBO, `luminance`).
 - **Inputs (optional):** `image` (IMAGE, force input), `latent` (LATENT, force input),
   `face_positive` / `face_negative` (CONDITIONING), `vae_tile_size` (INT, 0 = whole frame).
 - **Outputs:** `IMAGE` (the composited frame with the refined faces). All diagnostic info is
@@ -558,6 +565,11 @@ input when chained after the Hires Fix node.
   lowering the upscale ratio when needed.
 - **Brightness match:** the refined face is matched to the surroundings' brightness/contrast
   within the feathered mask (`match_luminance`), removing the "face brighter than the frame" seam.
+- **`match_color`** (default `luminance`): how the refined face is blended back into the frame.
+  `luminance` matches only brightness/contrast; `lab` runs the same affine transfer in LAB space so
+  hue/chroma seams are removed too; `histogram` does per-channel CDF matching against the surrounding
+  original; `none` disables matching. OpenCV is imported lazily, so the node still loads if OpenCV is
+  unavailable (falling back to `luminance`).
 - **Logging:** the node writes to the ComfyUI console (prefix `[FaceDetailer]`) the start params
   (method, guide_size, max_size, drop_size, yolo_seg_class), each detected face (size in px), the
   upscale ratio, the max_size crop clamp, any skip (already ≥ guide_size / smaller than drop_size)
