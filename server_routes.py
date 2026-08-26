@@ -1,6 +1,8 @@
 """aiohttp routes exposed to the web JS bridge (/llm_prompt_studio/*)."""
+import json
 import logging
 import os
+import threading
 
 from aiohttp import web
 from server import PromptServer
@@ -11,8 +13,32 @@ from .library import load_library, resolve_library_path, save_prompt_to_library
 from .lm_http import cache_models, fetch_models, server_status
 from .model_meta import detect_checkpoint_family
 
-# Cache of a model's class list so repeated widget refreshes don't reload it.
-_MODEL_CLASS_CACHE = {}
+# Persistent cache of a model's class list so repeated widget refreshes (and
+# ComfyUI restarts) don't reload every model. Stored next to the weights as a
+# JSON file; new or replaced models are inspected and the cache is augmented.
+_MODEL_CLASS_CACHE_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "models", "ultralytics", ".class_cache.json",
+)
+_MODEL_CLASS_CACHE = {}        # (kind, filename) -> [(index, name), ...]
+_MODEL_CLASS_LOCK = threading.Lock()
+
+
+def _load_class_cache_file():
+    try:
+        with open(_MODEL_CLASS_CACHE_FILE, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:  # noqa: BLE001 - missing/corrupt cache -> empty
+        return {}
+
+
+def _save_class_cache_file(data):
+    try:
+        os.makedirs(os.path.dirname(_MODEL_CLASS_CACHE_FILE), exist_ok=True)
+        with open(_MODEL_CLASS_CACHE_FILE, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, sort_keys=True)
+    except Exception as e:  # noqa: BLE001 - caching is best-effort
+        logger.warning("could not persist model class cache: %s", e)
 
 
 def _model_class_names(filename, kind):
@@ -20,26 +46,53 @@ def _model_class_names(filename, kind):
 
     ``kind`` is one of ``"seg"`` / ``"gender"`` / ``"bbox"`` and selects the
     models sub-folder. ``ultralytics`` is an optional dependency, so failures
-    degrade to an empty list (the front-end keeps its current options)."""
+    degrade to an empty list (the front-end keeps its current options).
+
+    Results are cached in memory and on disk. A model is re-inspected only when
+    it is first seen or its file mtime/size changed, so adding new models (or
+    replacing existing ones) augments the cache automatically."""
     if not filename or filename == "(none)":
         return []
-    key = (kind, filename)
-    if key in _MODEL_CLASS_CACHE:
-        return _MODEL_CLASS_CACHE[key]
-    root = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(root, "models", "ultralytics", kind, filename)
-    if not os.path.isfile(path):
+    if kind not in ("seg", "gender", "bbox"):
         return []
-    try:
-        from ultralytics import YOLO
-        model = YOLO(path)
-        names = getattr(getattr(model, "model", None), "names", None) or {}
-        out = [(int(i), str(n)) for i, n in sorted(names.items())]
-    except Exception as e:  # noqa: BLE001 - optional dep / bad file -> empty
-        logger.warning("model class list failed for %s/%s: %s", kind, filename, e)
-        out = []
-    _MODEL_CLASS_CACHE[key] = out
-    return out
+    key = (kind, filename)
+    with _MODEL_CLASS_LOCK:
+        if key in _MODEL_CLASS_CACHE:
+            return _MODEL_CLASS_CACHE[key]
+        root = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(root, "models", "ultralytics", kind, filename)
+        if not os.path.isfile(path):
+            return []
+        stat = os.stat(path)
+        cache = _load_class_cache_file()
+        ckey = f"{kind}:{filename}"
+        entry = cache.get(ckey)
+        if entry is not None and (
+            entry.get("mtime") == stat.st_mtime
+            and entry.get("size") == stat.st_size
+        ):
+            out = [
+                (int(d["index"]), str(d["name"]))
+                for d in entry.get("names", [])
+            ]
+            _MODEL_CLASS_CACHE[key] = out
+            return out
+        try:
+            from ultralytics import YOLO
+            model = YOLO(path)
+            names = getattr(getattr(model, "model", None), "names", None) or {}
+            out = [(int(i), str(n)) for i, n in sorted(names.items())]
+        except Exception as e:  # noqa: BLE001 - optional dep / bad file -> empty
+            logger.warning("model class list failed for %s/%s: %s", kind, filename, e)
+            out = []
+        cache[ckey] = {
+            "names": [{"index": i, "name": n} for i, n in out],
+            "mtime": stat.st_mtime,
+            "size": stat.st_size,
+        }
+        _save_class_cache_file(cache)
+        _MODEL_CLASS_CACHE[key] = out
+        return out
 
 
 @PromptServer.instance.routes.get("/llm_prompt_studio/model_classes")

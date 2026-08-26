@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Detections of other classes (person, car, etc.) are ignored, removing false positives so
   `detection_threshold` can stay at a normal value (~0.5) instead of being lowered
   to 0.1–0.2.
+- **Face Detailer: persistent class cache.** The class lists for the `yolo_seg_class` and
+  `gender_model_female_class` combos are cached on disk
+  (`models/ultralytics/.class_cache.json`) and in memory, keyed by model file mtime/size.
+  Each model is inspected only once (or when the file changes), so restarting ComfyUI or
+  refreshing the widget is instant; dropping a new `.pt` into `models/ultralytics/*`
+  augments the cache automatically. The cache file is git-ignored.
 - **Face Detailer: post-inpaint brightness match.** The refined face is now
   matched in brightness/contrast to its surroundings within the feathered mask
   (`match_luminance`), removing the "face brighter than the rest of the frame" seam.
