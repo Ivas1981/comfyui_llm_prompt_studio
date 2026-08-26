@@ -30,9 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   dropdown with no code changes. All were verified locally (ultralytics 8.4.x) to detect
   faces (class `0`) at confidence 0.78–0.95 on real photos, including small and
   poorly-lit faces.
-- **Face Detailer: class filter for `yolo_seg`.** New `yolo_seg_class` widget
-  (default `0`) selects which seg-model class to treat as a face. Detections of
-  other classes (person, car, etc.) are now ignored, removing false positives so
+- **Face Detailer: class filter for `yolo_seg` (now a combo).** `yolo_seg_class` is a
+  combo populated automatically from the selected `yolo_seg_model_name` — picking a seg
+  model lists its real class names (e.g. `face`, `hair`, `skin`) instead of a raw index.
+  Detections of other classes (person, car, etc.) are ignored, removing false positives so
   `detection_threshold` can stay at a normal value (~0.5) instead of being lowered
   to 0.1–0.2.
 - **Face Detailer: post-inpaint brightness match.** The refined face is now
@@ -42,11 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `male`, default `any`) restricts refinement to one gender. A lightweight ultralytics
   gender-classification model (selected in `gender_model_name`, dropped into
   `models/ultralytics/gender/`) is run on each detected face crop; faces whose predicted
-  class does not match `gender_filter` are skipped. The female class index is set via
-  `gender_model_female_class` (default `0`); with no model selected the filter logs a
-  warning and processes all faces. Gender detection runs for **all** detection methods
-  (haar, yolo bbox, yolo seg), and the refined-face brightness match
-  (`match_luminance`) is likewise applied on every method's mask.
+  class does not match `gender_filter` are skipped. The female class is now chosen via
+  the `gender_model_female_class` **combo**, which is populated automatically from the
+  selected `gender_model_name` (real class names, e.g. `female`, `male`) instead of a raw
+  index; with no model selected the filter logs a warning and processes all faces. Gender
+  detection runs for **all** detection methods (haar, yolo bbox, yolo seg, yolo_bbox_seg),
+  and the refined-face brightness match (`match_luminance`) is likewise applied on every
+  method's mask.
 - **Face Detailer: gender-confidence threshold (`gender_threshold`).** New FLOAT widget
   (default `0.5`) sets the minimum confidence of the gender classifier. Faces whose predicted
   gender confidence is below the threshold are treated as `unknown` and are **kept** (not dropped

@@ -35,6 +35,29 @@ def _clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
+def _resolve_class_index(value, model):
+    """Map a user-supplied class selector (int index OR class name) to an int index.
+
+    ``value`` may be an int (used directly) or a string. Strings are accepted as
+    either a decimal index or a class name (case-insensitive match against the
+    model's ``names``). Falls back to ``0`` with a warning when nothing matches,
+    so a mistyped combo value never silently crashes the node."""
+    names = getattr(getattr(model, "model", None), "names", None) or {}
+    if isinstance(value, int):
+        return value
+    sval = str(value).strip()
+    try:
+        return int(sval)
+    except (TypeError, ValueError):
+        pass
+    lowered = {str(n).lower(): i for i, n in names.items()}
+    if sval.lower() in lowered:
+        return lowered[sval.lower()]
+    logger.warning("[FaceDetailer] class '%s' not found in model names %s; "
+                   "defaulting to index 0", value, names)
+    return 0
+
+
 def _bbox_iou(a, b):
     """IoU of two ``(x1, y1, x2, y2)`` boxes."""
     ax1, ay1, ax2, ay2 = a
@@ -158,15 +181,14 @@ class LLMPromptStudioFaceDetailer:
                      "tooltip": "Segmentation model for `yolo_seg`. Only used when "
                                 "detection_method = yolo_seg. The per-detection mask "
                                 "(real shape) replaces the rectangular face mask."}),
-                "yolo_seg_class": ("INT", {"default": 0, "min": 0, "max": 20, "step": 1,
-                                  "tooltip": "Номер класса, который сег-модель должна считать "
-                                             "лицом. Для стандартной face_yolov8s_seg это 0 "
-                                             "(класс 'face'). Детекции других классов (person, "
-                                             "автомобиль и т.п.) игнорируются — это убирает "
-                                             "ложные срабатывания, поэтому порог уверенности "
-                                             "можно держать нормальным (~0.5). Если ваша модель "
-                                             "выдаёт лицо под другим номером класса, укажите "
-                                             "его здесь."}),
+                "yolo_seg_class": (["face", "hair", "skin"], {"default": "face",
+                                  "tooltip": "Класс сег-модели, который считать лицом. Список "
+                                             "заполняется автоматически из выбранной модели "
+                                             "(yolo_seg_model_name): при выборе модели в комбобоксе "
+                                             "появляются реальные имена её классов (напр. face / hair "
+                                             "/ skin). Детекции других классов игнорируются — это "
+                                             "убирает ложные срабатывания. Если модель не выбрана "
+                                             "(none), действует значение по умолчанию 'face'."}),
                 "gender_filter": (["any", "female", "male"], {"default": "any",
                                   "tooltip": "Пол лиц для обработки. `any` — все найденные "
                                              "лица; `female` / `male` — обрабатывать только "
@@ -181,10 +203,12 @@ class LLMPromptStudioFaceDetailer:
                                 "Поместите .pt в models/ultralytics/gender/. Используется "
                                 "только когда gender_filter != any. Класс, соответствующий "
                                 "женщине, задаётся в gender_model_female_class."}),
-                "gender_model_female_class": ("INT", {"default": 0, "min": 0, "max": 20, "step": 1,
-                                  "tooltip": "Номер класса, который gender-модель выдаёт для "
-                                             "женского лица (обычно 0 для female/male). "
-                                             "Лица с другим номером класса считаются "
+                "gender_model_female_class": (["female", "male"], {"default": "female",
+                                  "tooltip": "Класс, который gender-модель выдаёт для женского "
+                                             "лица. Список заполняется автоматически из выбранной "
+                                             "модели (gender_model_name): при выборе модели в "
+                                             "комбобоксе появляются реальные имена её классов "
+                                             "(напр. female / male). Лица с другим классом считаются "
                                              "мужскими. Используется при gender_filter != any."}),
                 "gender_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
                                   "tooltip": "Минимальная уверенность классификатора пола. "
@@ -315,6 +339,8 @@ class LLMPromptStudioFaceDetailer:
         if not path:
             raise FileNotFoundError("YOLO seg model not found: %s" % yolo_name)
         model = _get_yolo_model(path)
+        # Resolve the (now name-based) class selector against this model's labels.
+        seg_class = _resolve_class_index(seg_class, model)
         arr = (img[0].clamp(0.0, 1.0).cpu().numpy() * 255.0).astype("uint8")
         # Forward `conf=threshold` (see _detect_yolo for why this matters).
         res = model(arr, verbose=False, retina_masks=True, conf=threshold)[0]
@@ -471,6 +497,8 @@ class LLMPromptStudioFaceDetailer:
                            "skipped (all faces kept)", gender_model_name)
             return boxes
         model = _get_yolo_model(path)
+        # Resolve the (now name-based) class selector against this model's labels.
+        gender_female_class = _resolve_class_index(gender_female_class, model)
         H, W = arr.shape[0], arr.shape[1]
         want_female = (gender_filter == "female")
         active = gender_filter not in (None, "any")
@@ -691,9 +719,9 @@ class LLMPromptStudioFaceDetailer:
                            crop_factor, detection_method, yolo_model_name,
                            yolo_seg_model_name, detection_threshold, feather,
                            mask_shape, bbox_scale, iterations,
-                           inpaint_model, seg_threshold=0.1, vae_tile_size=0, yolo_seg_class=0,
-                           drop_size=0, gender_filter="any",
-                           gender_model_name="(none)", gender_model_female_class=0,
+                            inpaint_model, seg_threshold=0.1, vae_tile_size=0, yolo_seg_class="face",
+                            drop_size=0, gender_filter="any",
+                            gender_model_name="(none)", gender_model_female_class="female",
                            gender_threshold=0.5,
                            image=None, latent=None,
                            face_positive=None, face_negative=None, unique_id=None):
@@ -710,7 +738,7 @@ class LLMPromptStudioFaceDetailer:
             face_idx = 0
             total = img.shape[0]
             logger.info("[FaceDetailer] start: frames=%d, method=%s, guide_size=%d, "
-                        "max_size=%d, drop_size=%d, yolo_seg_class=%d",
+                        "max_size=%d, drop_size=%d, yolo_seg_class=%s",
                         total, detection_method, guide_size, max_size, drop_size, yolo_seg_class)
             for i in range(img.shape[0]):
                 # Detect faces per image in the batch: the seg masks returned by

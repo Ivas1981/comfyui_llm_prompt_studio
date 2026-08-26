@@ -380,11 +380,11 @@ comfyui_llm_prompt_studio/
     randomize/increment/decrement/fixed), `steps` (INT, 20), `cfg` (FLOAT, 7.0), `sampler_name`,
     `scheduler`, `denoise` (FLOAT, 0.5), `guide_size` (INT, 512), `max_size` (INT, 1024),
     `crop_factor` (FLOAT, 1.5 — запас контекста вокруг лица), `detection_method`
-    (`haar` / `yolo` / `yolo_seg`, по умолчанию `haar`), `yolo_model_name` (YOLO-детектор bbox,
-    по умолчанию `face_yolov8s.pt`), `yolo_seg_model_name` (seg-модель для `yolo_seg`,
-    по умолчанию `(none)`), `yolo_seg_class` (INT, 0), `gender_filter` (`any` / `female` / `male`,
+    (`haar` / `yolo` / `yolo_seg` / `yolo_bbox_seg`, по умолчанию `haar`), `yolo_model_name` (YOLO-детектор bbox,
+    по умолчанию `face_yolov8s.pt`), `yolo_seg_model_name` (seg-модель для `yolo_seg` / `yolo_bbox_seg`,
+    по умолчанию `(none)`), `yolo_seg_class` (COMBO, `face`), `gender_filter` (`any` / `female` / `male`,
     по умолчанию `any`), `gender_model_name` (классификатор пола, по умолчанию `(none)`),
-    `gender_model_female_class` (INT, 0), `gender_threshold` (FLOAT, 0.5),
+    `gender_model_female_class` (COMBO, `female`), `gender_threshold` (FLOAT, 0.5),
     `detection_threshold` (FLOAT, 0.5), `drop_size` (INT, 0), `feather` (INT, 5 — радиус
     растушёвки маски в px), `mask_shape` (`square` / `oval`, по умолчанию `square`),
     `bbox_scale` (FLOAT, 1.0), `iterations` (INT, 1), `inpaint_model` (BOOLEAN, false).
@@ -392,10 +392,12 @@ comfyui_llm_prompt_studio/
     `face_positive` / `face_negative` (CONDITIONING), `vae_tile_size` (INT, 0 = весь кадр).
   - **Выходы:** `IMAGE` (композитный кадр с уточнёнными лицами). Вся диагностика пишется в
     консоль ComfyUI (узел — выходной).
-  - **`yolo_seg_class`** (по умолчанию `0`): какой класс сег-модели YOLO считать лицом. Детекции
-    других классов (person, автомобиль и т.п.) игнорируются — это убирает ложные срабатывания
-    `yolo_seg`, поэтому `detection_threshold` можно держать нормальным (~0.5) вместо опускания
-    до 0.1–0.2.
+  - **`yolo_seg_class`** (по умолчанию `face`): какой класс сег-модели YOLO считать лицом. Виджет —
+    **комбобокс, который автоматически заполняется из выбранной `yolo_seg_model_name`** — при выборе
+    модели в списке появляются реальные имена её классов (напр. `face`, `hair`, `skin`), больше не
+    нужно вводить «сырой» индекс. Детекции других классов (person, автомобиль и т.п.) игнорируются —
+    это убирает ложные срабатывания `yolo_seg`, поэтому `detection_threshold` можно держать нормальным
+    (~0.5) вместо опускания до 0.1–0.2.
   - **`detection_threshold`** (по умолчанию `0.5`): порог уверенности детектора. Рекомендуется
     держать около 0.5 после включения фильтра по классу. Он также передаётся в YOLO как `conf`,
     поэтому ползунок узла — авторитетен даже для слабых лиц ниже встроенного порога ultralytics 0.25.
@@ -403,7 +405,9 @@ comfyui_llm_prompt_studio/
     оставляют только лица выбранного пола и пропускают остальные; `any` обрабатывает все
     найденные лица. Для работы запускается лёгкая ultralytics-**модель классификации пола**
     (указывается в `gender_model_name`) на каждом кропе лица, и лица с несовпадающим классом
-    отсекаются. Номер «женского» класса задаётся в `gender_model_female_class` (по умолчанию `0`).
+    отсекаются. Номер «женского» класса задаётся в `gender_model_female_class` (по умолчанию `female`) —
+    это комбобокс, который **автоматически заполняется из выбранной `gender_model_name`** (реальные
+    имена классов, напр. `female`, `male`).
     Если gender-модель не выбрана, фильтр логирует предупреждение и отключается (обрабатываются
     все лица). Поместите `.pt`-классификатор в `models/ultralytics/gender/`.
   - **`gender_threshold`** (по умолчанию `0.5`): минимальная уверенность классификатора пола. Лица,
@@ -424,7 +428,9 @@ comfyui_llm_prompt_studio/
     (`N female, M male, K unknown`).
   - **Детекция:** `haar` — встроенный cv2-каскад; `yolo` — YOLO-детектор bbox из `yolo_model_name`;
     `yolo_seg` — seg-маска реальной формы из `yolo_seg_model_name` вместо прямоугольника
-    (`yolo_seg_class` выбирает класс лица). Детектор загружается один раз и кэшируется на сессию.
+    (`yolo_seg_class` выбирает класс лица); `yolo_bbox_seg` — bbox-модель (`yolo_model_name`) находит
+    лица, а seg-модель (`yolo_seg_model_name`) лишь задаёт форму маски внутри каждого найденного кропа
+    (сопоставление по IoU, иначе прямоугольник). Детектор загружается один раз и кэшируется на сессию.
     `mask_shape` (`square` / `oval`) задаёт форму маски для `haar` / `yolo` (игнорируется для
     `yolo_seg`); `bbox_scale` (0.1–3.0, по умолчанию 1.0) расширяет/сужает кроп вокруг центра лица;
     `iterations` (1–10, по умолчанию 1) повторяет проход рефайна; `feather` (px) смягчает край

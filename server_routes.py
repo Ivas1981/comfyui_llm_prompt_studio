@@ -1,5 +1,6 @@
 """aiohttp routes exposed to the web JS bridge (/llm_prompt_studio/*)."""
 import logging
+import os
 
 from aiohttp import web
 from server import PromptServer
@@ -9,6 +10,55 @@ logger = logging.getLogger("llm_prompt_studio")
 from .library import load_library, resolve_library_path, save_prompt_to_library
 from .lm_http import cache_models, fetch_models, server_status
 from .model_meta import detect_checkpoint_family
+
+# Cache of a model's class list so repeated widget refreshes don't reload it.
+_MODEL_CLASS_CACHE = {}
+
+
+def _model_class_names(filename, kind):
+    """Return ``[(index, name), ...]`` for an ultralytics model, or ``[]``.
+
+    ``kind`` is one of ``"seg"`` / ``"gender"`` / ``"bbox"`` and selects the
+    models sub-folder. ``ultralytics`` is an optional dependency, so failures
+    degrade to an empty list (the front-end keeps its current options)."""
+    if not filename or filename == "(none)":
+        return []
+    key = (kind, filename)
+    if key in _MODEL_CLASS_CACHE:
+        return _MODEL_CLASS_CACHE[key]
+    root = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(root, "models", "ultralytics", kind, filename)
+    if not os.path.isfile(path):
+        return []
+    try:
+        from ultralytics import YOLO
+        model = YOLO(path)
+        names = getattr(getattr(model, "model", None), "names", None) or {}
+        out = [(int(i), str(n)) for i, n in sorted(names.items())]
+    except Exception as e:  # noqa: BLE001 - optional dep / bad file -> empty
+        logger.warning("model class list failed for %s/%s: %s", kind, filename, e)
+        out = []
+    _MODEL_CLASS_CACHE[key] = out
+    return out
+
+
+@PromptServer.instance.routes.get("/llm_prompt_studio/model_classes")
+async def llm_prompt_studio_model_classes(request):
+    """Class list of a selected ultralytics model, for dynamic widget combos.
+
+    Query params: ``model`` (filename) and ``kind`` (seg|gender|bbox). Returns
+    ``{"names": [{"index": i, "name": n}, ...]}``; ``names`` is empty when the
+    model is ``(none)`` or cannot be inspected."""
+    model = request.query.get("model", "")
+    kind = request.query.get("kind", "")
+    if kind not in ("seg", "gender", "bbox"):
+        return web.json_response({"names": []})
+    try:
+        names = [{"index": i, "name": n} for i, n in _model_class_names(model, kind)]
+    except Exception as e:  # noqa: BLE001
+        logger.error("model_classes route failed: %s", e)
+        names = []
+    return web.json_response({"names": names})
 
 
 @PromptServer.instance.routes.post("/llm_prompt_studio/models")
