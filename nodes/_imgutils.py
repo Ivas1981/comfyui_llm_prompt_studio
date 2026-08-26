@@ -11,12 +11,18 @@ from PIL import Image
 
 
 def tensor_resize(tensor, w, h):
-    """Resize a ``(B, H, W, C)`` image tensor to ``(B, h, w, C)`` via bilinear."""
+    """Resize a ``(B, H, W, C)`` image tensor to ``(B, h, w, C)`` via bicubic.
+
+    Bicubic preserves more high-frequency detail than bilinear when the refined
+    crop is downscaled back to its original size after VAE decode (the detailer's
+    final visible step), so the regenerated face keeps sharpness instead of being
+    softened by a bilinear low-pass.
+    """
     if w is None or h is None or w <= 0 or h <= 0:
         return tensor
     t = tensor.permute(0, 3, 1, 2)
     t = torch.nn.functional.interpolate(
-        t, size=(int(h), int(w)), mode="bilinear", align_corners=False)
+        t, size=(int(h), int(w)), mode="bicubic", align_corners=False)
     return t.permute(0, 2, 3, 1)
 
 
