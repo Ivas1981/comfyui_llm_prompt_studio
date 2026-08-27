@@ -278,54 +278,54 @@ export function sendToWriter(node) {
 // ---------------------------------------------------------------------------
 export async function reloadPresets(node) {
     try {
-        const data = await getJSON("/llm_prompt_studio/presets");
+        const data = await getJSON("/llm_prompt_studio/styles");
         const names = data.names || [];
         const w = getW(node, "style_preset");
         if (!w) return;
         const opts = ["— none —", ...names];
         w.options = w.options || {};
         w.options.values = opts;
-        // Preserve an old saved value. After categorization the combobox shows labels like
-        // "Category > Photorealism"; a workflow saved with the bare name "Photorealism" is no
-        // longer in `opts`, so match it by its bare name (the part after "> ") before resetting.
+        // Preserve a previously saved value. The combobox shows labels like
+        // "Category / Name"; a workflow saved with a bare name "Name" is no longer in
+        // `opts`, so fall back to the entry whose bare name (after "/ ") matches.
         if (!opts.includes(w.value)) {
-            const match = opts.find(o => o.indexOf("> ") !== -1 && o.split("> ").pop() === w.value);
+            const match = opts.find(o => o.split("/ ").pop().trim() === w.value);
             w.value = match || "— none —";
         }
         app.graph.setDirtyCanvas(true, true);
     } catch (e) {
-        alert("Could not reload presets: " + e);
+        alert("Could not reload styles: " + e);
     }
 }
 
 export async function resetPresets(node) {
     if (typeof confirm === "function" &&
-        !confirm("Reset style presets to defaults? Your custom edits will be lost.")) {
+        !confirm("Reset style presets to defaults? Your custom edits to the Styles/ files will be lost.")) {
         return;
     }
     try {
-        const data = await postJSON("/llm_prompt_studio/presets/reset", {});
+        const data = await postJSON("/llm_prompt_studio/styles/reset", {});
         if (data.error) {
-            alert("Preset reset failed: " + data.error);
+            alert("Style reset failed: " + data.error);
             return;
         }
         await reloadPresets(node);
-        alert("Presets reset to defaults.");
+        alert("Styles reset to defaults.");
     } catch (e) {
-        alert("Preset reset failed: " + e);
+        alert("Style reset failed: " + e);
     }
 }
 
 export async function copyPresetsPath(node) {
     try {
-        const data = await getJSON("/llm_prompt_studio/presets");
+        const data = await getJSON("/llm_prompt_studio/styles");
         const path = data.path || "";
         if (typeof navigator !== "undefined" && navigator.clipboard) {
             navigator.clipboard.writeText(path).catch(() => {});
         }
-        alert("Presets file path copied:\n" + path);
+        alert("Styles folder path copied:\n" + path);
     } catch (e) {
-        alert("Could not get presets path: " + e);
+        alert("Could not get styles path: " + e);
     }
 }
 

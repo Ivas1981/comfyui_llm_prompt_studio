@@ -13,14 +13,44 @@
   теперь хранятся отдельными JSON-файлами в `Styles/` (по одному файлу на направление), базовые
   промпты — в `Styles/system_prompts.json`. Пресет может `extends` другой (наследование: потомок
   объединяет `system_prompt` + `system_prompt_suffix` и объединяет `style_tags_*`, глубина ≤ 3).
-- **Ортогональные переключатели Writer.** `negative_prompt` (самодостаточный позитив при выключении),
-  `face_prompt` (вставить инструкцию по лицу даже без `generate_face_prompts`), `nsfw` (по умолчанию
-  безопасный контент), `prompt_format` (`natural` / `tags` / `weighted` / `structured` / `midjourney`
-  / `booru`) и `blend_styles` (до 3 id/меток стилей через запятую, добавляются аддитивно). Они
-  применяются при сборке в `styles.build_system_prompt`, никогда не хранятся внутри пресета.
+- **Ортогональные переключатели Writer.** `generate_face_prompts` (выдаёт `face_positive` /
+  `face_negative` для FaceDetailer и вставляет блок инструкции по лицу в системный промпт), `nsfw`
+  (по умолчанию безопасный контент), `prompt_format` (`natural` / `tags` / `weighted` / `structured`
+  / `midjourney` / `booru`) и `blend_styles` (до 3 id/меток стилей через запятую, добавляются
+  аддитивно). Они применяются при сборке в `styles.build_system_prompt`, никогда не хранятся
+  внутри пресета. `prompt_mode` (`auto` / `standard` / `no_negative`) — единственный управляющий
+  негативным промптом.
+
+### Удалено
+- **Избыточный переключатель `negative_prompt` узла Writer.** Негативный промпт теперь
+  управляется только `prompt_mode` (`auto` = no-negative для дистиллированного семейства / Flux /
+  SD3, `standard` = всегда, `no_negative` = никогда). Старый BOOLEAN `negative_prompt` был
+  AND-перекрытием без отдельного поведения и удалён.
+- **Избыточный переключатель `face_prompt` узла Writer.** `face_on` объединял
+  `generate_face_prompts` ИЛИ `face_prompt` без отдельного кода, поэтому второй переключатель
+  делал ровно то же, что `generate_face_prompts`. BOOLEAN `face_prompt` удалён;
+  `generate_face_prompts` теперь единственный управляющий лицом (выдаёт `face_positive` /
+  `face_negative` и вставляет блок инструкции по лицу).
+
 - **Редактируемая копия стилей (вариант B).** При первом запуске вся папка `Styles/` копируется в
-  `llm_prompt_studio_styles/` в каталоге вывода ComfyUI (не перезаписывается). Переключатели
-  `reload_presets` / `reset_styles` перечитывают с диска / восстанавливают поставляемый набор.
+  `llm_prompt_studio_styles/` в каталоге вывода ComfyUI (не перезаписывается). Кнопки
+  **Reload Styles** / **Reset Styles** перечитывают с диска / восстанавливают поставляемый набор.
+- **Кнопки Reload Styles / Reset Styles (вместо старых переключателей).** Два `BOOLEAN`-переключателя
+  узла (`reload_presets`, `reset_styles`) удалены — их поведение перенесено в кнопки узла **Reload Styles**
+  (перечитывает `Styles/` с диска и обновляет комбо `style_preset`) и **Reset Styles** (удаляет
+  пользовательскую копию, возвращает поставляемый `Styles/`). Кнопки теперь подключены к системе
+  `Styles/` (раньше ошибочно указывали на устаревший `presets_default.json`), поэтому реально обновляют
+  выпадающий список стилей.
+- **Расширены стили Cinema.** `Styles/cinema.json` вырос с 3 до 34 пресетов: 19 стилей режиссёров
+  (Кубрик, Нолан, Тарантино, Финчер, Скотт, Вильнёв, дель Торо, Бёртон, Вонг Кар-вай, Куросава,
+  Тарковский, Коппола, Малик, Пон Джун-хо, братья Коэн, Пол Томас Андерсон, Годар, Эйзенштейн,
+  Фриц Ланг) и 12 жанровых (Нуар, Нео-нуар, Спагетти-вестерн, Вестерн, Слешер, Found Footage,
+  Зомби / Постапокалипсис, Документалистика, Мокьюментари, Мюзикл, Грайндхаус, Артхаус). Каждый
+  новый пресет несёт и `system_prompt_no_negative` с фокусом стиля (режим no-negative сохраняет
+  стиль, устраняя пробел в старых коротких записях «Style focus:»).
+- **Исправлен дублирующийся стиль `Gothic Horror`.** В `Styles/fantasy_horror.json` два пресета
+  имели одинаковое имя «Gothic Horror» (`gothic_horror` и `gothic_architecture_horror`). Второй
+  переименован в **Gothic Ruins** (хоррор руин/соборов), чтобы в комбо не было дубликата.
 - **Face Detailer: режим детекции `yolo_bbox_seg`.** Новый вариант `detection_method`:
   лицо ищет уверенная bbox-модель (`yolo_model_name`) с обычным `detection_threshold`, а
   сег-модель (`yolo_seg_model_name`) используется только для формы маски внутри этого
@@ -185,9 +215,18 @@
 - **`_pixel_stage` в KSampler Hires Fix падал без VAE (`#2.5`).** Pixel-путь апскейла
   разыменовывал `optional_vae` без проверки; при отсутствии VAE возникал `AttributeError`.
   Теперь выдаётся понятный `RuntimeError` с указанием подключить `optional_vae`.
-- **Тесты:** добавлен `test_detect_family_info_from_parent_folder` (детекция по папке),
-  удалён дубликат `test_detect_family_from_parent_folder`, убран no-op `assert True` в
-  `tests/test_vram.py`.
+ - **Тесты:** добавлен `test_detect_family_info_from_parent_folder` (детекция по папке),
+   удалён дубликат `test_detect_family_from_parent_folder`, убран no-op `assert True` в
+   `tests/test_vram.py`.
+
+### Changed
+- **Убран переключатель `negative_prompt` у Writer.** `BOOLEAN`-вход `negative_prompt` был
+  избыточен: `prompt_mode` уже управлял негативным промптом (`auto` / `standard` / `no_negative`).
+  Переключатель удалён из `INPUT_TYPES`, `execute` и `_run`; теперь `prompt_mode` — единственный
+  управляющий элемент. `auto` переключается на no-negative, когда определённое `family` дистиллировано
+  (DMD/LCM/Turbo/Hyper/Lightning/Flash — включая дистиллирующую LoRA, свёрнутую Smart Loader'ом в
+  `detected_family`), либо когда `architecture` = Flux/SD3; `standard` всегда выдаёт негатив;
+  `no_negative` — никогда.
 
 ## [1.2.3] — 2026-08-24
 
@@ -962,8 +1001,8 @@ jideka/ComfyUI-SmartPromptCrafter); всё добавлено аддитивно
   комбобокс `style_preset`; выбор добавляет `style_tags_positive`/`style_tags_negative` пресета к
   сгенерированному промпту и (когда системный промпт оставлен по умолчанию) применяет
   `system_prompt` пресета. Пресеты копируются в редактируемый пользовательский файл
-  (`llm_prompt_studio_presets.json` в директории вывода ComfyUI) при первом запуске; «Reload presets»
-  обновляет комбо, а «Reset to defaults» восстанавливает поставляемый набор. Пресеты, отказывающиеся
+  (`llm_prompt_studio_presets.json` в директории вывода ComfyUI) при первом запуске; «Reload Styles»
+  обновляет комбо, а «Reset Styles» восстанавливает поставляемый набор. Пресеты, отказывающиеся
   от режима без негатива, там пропускаются автоматически.
 - **Отладочное логирование** (`debug.py`) — опционально, ВЫКЛ по умолчанию. `DEBUG_LEVEL` = `MINIMAL`
   логирует вход/выход/ошибку узла; `FULL` добавляет запросы/ответы HTTP и попытки парсинга JSON.

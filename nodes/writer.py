@@ -9,9 +9,8 @@ from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ..presets import (get_architecture_guidance, append_negative_tags, append_positive_tags)
 from ..styles import (build_system_prompt, get_style_by_label, get_style_labels,
-                      reload_styles, ensure_styles_dir, resolve_style,
-                      resolve_style_token,
-                      reset_styles as styles_reset)
+                      ensure_styles_dir, resolve_style,
+                      resolve_style_token)
 from .model_recommendations import resolve_profile
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._scene_analysis import analyze_scene, describe_scene
@@ -62,11 +61,11 @@ class LLMPromptStudioWriter:
     `scene_name` falls back to `slugify(positive)`; empty face fields fall back to the main
     prompts.
 
-    `prompt_mode` selects the negative-handling strategy:
+    `prompt_mode` selects the negative-handling strategy (the only control for negatives):
     - `auto` (default): switches to the no-negative prompt when the detected checkpoint
-      family is a distilled one (DMD/LCM/Turbo/Hyper/Lightning/Flash/Schnell/TCD/PCM).
-      Wire the Smart Loader's `detected_family` output into the `family` input to enable
-      detection (the full family set is defined in `model_meta.FAMILY_MARKERS`).
+      family is a distilled one (DMD/LCM/Turbo/Hyper/Lightning/Flash/Schnell/TCD/PCM) or the
+      base architecture is Flux/SD3. Wire the Smart Loader's `detected_family` /
+      `detected_architecture` outputs into `family` / `architecture` to enable detection.
     - `standard`: always emit a negative prompt.
     - `no_negative`: always emit an empty negative (for CFG~1 distilled sampling)."""
     CATEGORY = "LLM Prompt Studio"
@@ -91,7 +90,10 @@ class LLMPromptStudioWriter:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
                                  "control_after_generate": True}),
                 "reuse_last_prompt": ("BOOLEAN", {"default": False}),
-                "generate_face_prompts": ("BOOLEAN", {"default": False}),
+                "generate_face_prompts": ("BOOLEAN", {"default": False,
+                                          "tooltip": "Generate face_positive/face_negative prompts "
+                                                     "for FaceDetailer inpainting, and inject the "
+                                                     "face-instruction block into the system prompt."}),
                 "cv_scene_hint": ("BOOLEAN", {"default": True,
                                    "tooltip": "When an image is connected, add a cheap CV "
                                               "pre-analysis (scene type, lighting, face count) to "
@@ -99,7 +101,11 @@ class LLMPromptStudioWriter:
                 "max_field_retries": ("INT", {"default": 2, "min": 0, "max": 5}),
                 "face_prompt_instruction": ("STRING", {"multiline": True,
                                                         "default": FACE_PROMPT_INSTRUCTION}),
-                "prompt_mode": (["auto", "standard", "no_negative"], {"default": "auto"}),
+                "prompt_mode": (["auto", "standard", "no_negative"], {"default": "auto",
+                                  "tooltip": "Negative handling: auto = no-negative when a distilled "
+                                             "model/LoRA family or a Flux/SD3 architecture is detected, "
+                                             "else standard; standard = always emit a negative; "
+                                             "no_negative = never emit a negative (CFG~1 distilled)."}),
                 "style_preset": (_preset_names(), {"default": "— none —",
                                   "tooltip": "Apply a style preset (Styles/ folder) — its system "
                                              "prompt, style tags and blend note"}),
@@ -115,22 +121,9 @@ class LLMPromptStudioWriter:
                                   {"default": "natural",
                                    "tooltip": "How the model should phrase the positive prompt "
                                               "(sentences / tags / weighted / structured / MJ / booru)"}),
-                "negative_prompt": ("BOOLEAN", {"default": True,
-                                     "tooltip": "On = emit a Negative prompt section. Off = craft a "
-                                                "self-contained positive prompt (no negative needed), "
-                                                "required for CFG~1 distilled models."}),
-                "face_prompt": ("BOOLEAN", {"default": False,
-                                    "tooltip": "Generate separate face_positive/face_negative prompts "
-                                               "for FaceDetailer inpainting."}),
                 "blend_styles": ("STRING", {"default": "",
-                                   "tooltip": "Comma-separated style ids to blend with the main "
-                                              "preset (max 3). Union of tags + blend notes."}),
-                "reload_presets": ("BOOLEAN", {"default": False,
-                                     "tooltip": "Force re-read of the Styles/ folder from disk "
-                                                "(and mirror it to the user output dir)."}),
-                "reset_styles": ("BOOLEAN", {"default": False,
-                                   "tooltip": "Delete the user copy of Styles/ and restore the "
-                                              "shipped defaults."}),
+                                    "tooltip": "Comma-separated style ids to blend with the main "
+                                               "preset (max 3). Union of tags + blend notes."}),
                 "flash_attention": ("BOOLEAN", {"default": False,
                                     "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage"}),
                 "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
@@ -194,10 +187,10 @@ class LLMPromptStudioWriter:
                  max_field_retries=2, face_prompt_instruction="",
                  prompt_mode="auto", family="", unique_id=None,
                  style_preset="— none —", use_preset_system_prompt=True,
-                 nsfw=False, prompt_format="natural", negative_prompt=True,
-                 face_prompt=False, blend_styles="", reload_presets=False,
-                 reset_styles=False, flash_attention=None,
-                  offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
+                  nsfw=False, prompt_format="natural",
+                   blend_styles="",
+                  flash_attention=None,
+                   offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
                      top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto",
                        server_status="", architecture="", release_vram_after_run=True,
                   image=None):
@@ -218,11 +211,11 @@ class LLMPromptStudioWriter:
                              idea, revision_notes, temperature, max_tokens, seed,
                              reuse_last_prompt, generate_face_prompts, cv_scene_hint,
                              max_field_retries,
-                             face_prompt_instruction, prompt_mode, family, unique_id, _t0,
-                              style_preset, use_preset_system_prompt, nsfw, prompt_format,
-                              negative_prompt, face_prompt, blend_styles, reload_presets,
-                              reset_styles, flash_attention,
-                              offload_kv_cache_to_gpu, reasoning,
+                              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
+                               style_preset, use_preset_system_prompt, nsfw, prompt_format,
+                                blend_styles,
+                               flash_attention,
+                               offload_kv_cache_to_gpu, reasoning,
                     repeat_penalty, top_k, top_p, min_p,
                       load_model_profile, architecture, release_vram_after_run, image)
         except Exception as e:
@@ -233,10 +226,10 @@ class LLMPromptStudioWriter:
                revision_notes, temperature, max_tokens, seed,
                reuse_last_prompt, generate_face_prompts, cv_scene_hint,
                max_field_retries,
-               face_prompt_instruction, prompt_mode, family, unique_id, _t0,
-               style_preset, use_preset_system_prompt, nsfw, prompt_format,
-               negative_prompt, face_prompt, blend_styles, reload_presets,
-               reset_styles, flash_attention=None,
+                face_prompt_instruction, prompt_mode, family, unique_id, _t0,
+                style_preset, use_preset_system_prompt, nsfw, prompt_format,
+                 blend_styles,
+                flash_attention=None,
                offload_kv_cache_to_gpu=None, reasoning="off",
                  repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
                    load_model_profile="auto", architecture="",
@@ -248,23 +241,15 @@ class LLMPromptStudioWriter:
         # carry over when the user swaps to a different checkpoint. `architecture` IS included
         # because it changes token style, negatives and (for Flux/SD3) the no-negative path,
         # so two architectures must never share a cached prompt.
-        # Styles: reload / reset handling (variant B user copy in the ComfyUI output dir).
-        if reset_styles:
-            try:
-                styles_reset()
-            except Exception:
-                pass
-        if reload_presets or reset_styles:
-            try:
-                reload_styles()
-            except Exception:
-                pass
+        # Ensure the user-editable Styles/ copy exists (mirrored from the shipped Styles/ on
+        # first run). The actual reload/reset is done by the node's "Reload Styles" /
+        # "Reset Styles" buttons, which call the corresponding backend routes.
         ensure_styles_dir()
 
         cache_key = (unique_id, prompt_mode, style_preset, system_prompt,
-                     idea, revision_notes, generate_face_prompts, face_prompt_instruction,
-                     architecture, nsfw, prompt_format, negative_prompt, face_prompt,
-                     blend_styles,
+                      idea, revision_notes, generate_face_prompts, face_prompt_instruction,
+                      architecture, nsfw, prompt_format,
+                      blend_styles,
                      tuple(image.shape) if image is not None else None)
         # Reuse mode: return cached result without calling the LLM
         if reuse_last_prompt:
@@ -317,8 +302,8 @@ class LLMPromptStudioWriter:
             logger.info("Writer node %s prompt mode: %s (family=%r, arch=%r) -> no_negative=%s",
                         unique_id, prompt_mode, family, architecture, no_negative)
 
-            # The negative_prompt toggle is the user's intent; architecture/family may force it off.
-            eff_negative = bool(negative_prompt) and not no_negative
+            # prompt_mode is the sole controller of negatives (architecture may still force it off).
+            eff_negative = not no_negative
 
             # Drop a preset that opts out of no-negative mode (e.g. Photorealism).
             if preset and no_negative and preset.get("disabled_in_no_negative_mode"):
@@ -326,7 +311,7 @@ class LLMPromptStudioWriter:
                             preset.get("name"))
                 preset = None
 
-            face_on = bool(generate_face_prompts) or bool(face_prompt)
+            face_on = bool(generate_face_prompts)
 
             # Assemble the system prompt from base + style + orthogonal toggles (nsfw,
             # prompt_format, negative, face, blend, architecture). The preset is only injected

@@ -176,24 +176,25 @@ async def llm_prompt_studio_library_save(request):
         return web.json_response({"error": "Failed to save to library"}, status=500)
 
 
-@PromptServer.instance.routes.get("/llm_prompt_studio/presets")
-async def llm_prompt_studio_presets(request):
+@PromptServer.instance.routes.get("/llm_prompt_studio/styles")
+async def llm_prompt_studio_styles(request):
     try:
-        from .presets import load_presets, get_user_presets_path, get_preset_names
-        load_presets()  # ensure migrated user file exists
+        from .styles import reload_styles, get_style_labels, get_styles_dir
+        reload_styles()  # drop the in-memory cache so disk edits are picked up
+        names = [lbl for lbl in get_style_labels() if lbl != "— none —"]
         return web.json_response({
-            "names": get_preset_names(),
-            "path": get_user_presets_path(),
+            "names": names,
+            "path": get_styles_dir(),
         })
     except Exception as e:
         return web.json_response({"names": [], "error": str(e)})
 
 
-@PromptServer.instance.routes.post("/llm_prompt_studio/presets/reset")
-async def llm_prompt_studio_presets_reset(request):
+@PromptServer.instance.routes.post("/llm_prompt_studio/styles/reset")
+async def llm_prompt_studio_styles_reset(request):
     try:
-        from .presets import reset_to_defaults
-        reset_to_defaults()
+        from .styles import reset_styles
+        reset_styles()  # delete the user copy; fall back to the shipped Styles/
         return web.json_response({"ok": True})
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)})

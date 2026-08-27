@@ -28,8 +28,8 @@ Tested against ComfyUI 0.19.3 (classic).
 - [ ] Selecting a preset appends its style tags to `positive`/`negative`; in no-negative mode the
       negative tags are skipped.
 - [ ] A preset with `disabled_in_no_negative_mode` is skipped automatically in no-negative mode.
-- [ ] "Reload presets" refreshes the combo after editing the user file.
-- [ ] "Reset to defaults" restores the shipped presets; "Copy presets path" puts the path on the
+- [ ] "Reload Styles" refreshes the `style_preset` combo after editing a `Styles/` file.
+- [ ] "Reset Styles" restores the shipped Styles/; "Copy styles path" puts the folder path on the
       clipboard.
 - [ ] A broken `presets` JSON file falls back to defaults without crashing.
 - [ ] Selecting a preset overrides the system prompt only when the system-prompt widget is at its

@@ -182,9 +182,9 @@ function setupNodeUI(node) {
             addButton(node, "Refresh models", () => refreshModels(node));
         }
         if (isWriter(node)) {
-            addButton(node, "Reload presets", () => reloadPresets(node));
-            addButton(node, "Reset presets", () => resetPresets(node));
-            addButton(node, "Copy presets path", () => copyPresetsPath(node));
+            addButton(node, "Reload Styles", () => reloadPresets(node));
+            addButton(node, "Reset Styles", () => resetPresets(node));
+            addButton(node, "Copy styles path", () => copyPresetsPath(node));
         }
         if (isScene(node)) {
             addButton(node, "-> Send to Writer", () => sendToWriter(node));

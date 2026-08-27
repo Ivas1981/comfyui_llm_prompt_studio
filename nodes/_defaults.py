@@ -50,7 +50,7 @@ def _fallback(text: str, key: str) -> str:
 
 
 # The new no-negative handling is per-style (each style carries system_prompt_no_negative)
-# and runtime-driven by the negative_prompt toggle, so the base writer system is shared.
+# and runtime-driven by prompt_mode, so the base writer system is shared.
 DEFAULT_SYSTEM = _with_hint(_P.get("writer_system", ""))
 DEFAULT_SYSTEM_NO_NEGATIVE = _with_hint(
     _P.get("writer_system_no_negative") or _P.get("writer_system", ""))
