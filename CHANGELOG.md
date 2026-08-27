@@ -13,14 +13,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   now live as individual JSON files under `Styles/` (one file per direction/category), with base
   prompts in `Styles/system_prompts.json`. A preset may `extends` another for inheritance
   (child merges `system_prompt` + `system_prompt_suffix` and unions `style_tags_*`, depth ≤ 3).
-- **Orthogonal Writer toggles.** `negative_prompt` (self-contained positive when off), `face_prompt`
-  (inject face instructions even without `generate_face_prompts`), `nsfw` (safe-for-work by
-  default), `prompt_format` (`natural` / `tags` / `weighted` / `structured` / `midjourney` /
-  `booru`), and `blend_styles` (up to 3 comma-separated style ids/labels merged additively).
-  These are applied at assembly time in `styles.build_system_prompt`, never stored per preset.
+- **Orthogonal Writer toggles.** `generate_face_prompts` (emit `face_positive` / `face_negative`
+  prompts for FaceDetailer and inject the face-instruction block into the system prompt), `nsfw`
+  (safe-for-work by default), `prompt_format` (`natural` / `tags` / `weighted` / `structured` /
+  `midjourney` / `booru`), and `blend_styles` (up to 3 comma-separated style ids/labels merged
+  additively). These are applied at assembly time in `styles.build_system_prompt`, never stored
+  per preset. `prompt_mode` (`auto` / `standard` / `no_negative`) is the sole control of the
+  negative prompt.
+
+### Removed
+- **Redundant `negative_prompt` Writer toggle.** The negative prompt is now driven solely by
+  `prompt_mode` (`auto` = no-negative for distilled family / Flux / SD3, `standard` = always,
+  `no_negative` = never). The old `negative_prompt` BOOLEAN was an AND-override with no extra
+  behavior and has been deleted.
+- **Redundant `face_prompt` Writer toggle.** `face_on` combined `generate_face_prompts` OR
+  `face_prompt` with no separate code path, so the second toggle did exactly what `generate_face_prompts`
+  already did. The `face_prompt` BOOLEAN is deleted; `generate_face_prompts` is now the single face
+  controller (emits `face_positive` / `face_negative` and injects the face-instruction block).
+
 - **User-editable styles copy (variant B).** On first run the whole `Styles/` folder is mirrored
   into `llm_prompt_studio_styles/` in the ComfyUI output directory (never overwritten). The
-  `reload_presets` / `reset_styles` toggles re-read disk / restore the shipped set.
+  **Reload Styles** / **Reset Styles** buttons re-read disk / restore the shipped set.
+- **Reload Styles / Reset Styles buttons (replaces the old toggles).** The Writer node's two
+  `BOOLEAN` toggles (`reload_presets`, `reset_styles`) were removed; their behavior now lives in
+  the node buttons **Reload Styles** (re-reads `Styles/` from disk, refreshes the `style_preset`
+  combo) and **Reset Styles** (deletes the user copy, falls back to shipped `Styles/`). These
+  buttons are now wired to the `Styles/` system (previously they mistakenly targeted the legacy
+  `presets_default.json`), so they actually refresh the style dropdown.
+- **Cinema styles expanded.** `Styles/cinema.json` grew from 3 to 34 presets: 19 director styles
+  (Kubrick, Nolan, Tarantino, Fincher, Scott, Villeneuve, del Toro, Burton, Wong Kar-wai, Kurosawa,
+  Tarkovsky, Coppola, Malick, Bong Joon-ho, Coen Brothers, PTA, Godard, Eisenstein, Lang) plus 12
+  film-genre styles (Film Noir, Neo-Noir, Spaghetti Western, Western, Slasher, Found Footage,
+  Zombie / Post-Apocalyptic, Documentary, Mockumentary, Movie Musical, Grindhouse, Arthouse).
+  Each new preset carries its `system_prompt_no_negative` focus (so distilled/no-negative mode
+  keeps the style identity, fixing the gap in the older short "Style focus:" entries).
+- **Fixed duplicate `Gothic Horror` style.** In `Styles/fantasy_horror.json` two presets shared the
+  display name "Gothic Horror" (`gothic_horror` and `gothic_architecture_horror`). The second is
+  renamed to **Gothic Ruins** (cathedral/ruin horror) so the combo no longer shows a duplicate.
 - **Face Detailer: `yolo_bbox_seg` detection mode.** New `detection_method` option locates
   faces with a strong bbox model (`yolo_model_name`) at the normal `detection_threshold`,
   then uses a segmentation model (`yolo_seg_model_name`) only to derive the mask shape
@@ -180,6 +209,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Tests:** added `test_detect_family_info_from_parent_folder` (folder detection), removed the
   duplicate `test_detect_family_from_parent_folder`, and dropped a no-op `assert True` from
   `tests/test_vram.py`.
+
+### Changed
+- **Writer `negative_prompt` toggle removed.** The `BOOLEAN` `negative_prompt` input was redundant:
+  `prompt_mode` already controlled the negative prompt (`auto` / `standard` / `no_negative`). The
+  toggle is gone from `INPUT_TYPES`, `execute` and `_run`; `prompt_mode` is now the sole controller.
+  `auto` switches to no-negative when the detected `family` is a distilled one (DMD/LCM/Turbo/Hyper/
+  Lightning/Flash — including a distilled LoRA folded into `detected_family` by the Smart Loader) or
+  the `architecture` is Flux/SD3; `standard` always emits a negative; `no_negative` never does.
 
 ## [1.2.3] — 2026-08-24
 
@@ -941,8 +978,8 @@ applies the valid fixes and explicitly ignores the non-bug items.
   selecting one appends the preset's `style_tags_positive`/`style_tags_negative` to the generated
   prompt and (when the system prompt is left at default) applies the preset's `system_prompt`.
   Presets are copied to an editable user file (`llm_prompt_studio_presets.json` in the ComfyUI
-  output dir) on first run; "Reload presets" refreshes the combo and "Reset to defaults" restores
-  the shipped set. Presets that opt out of no-negative mode are skipped automatically there.
+   output dir) on first run; "Reload Styles" refreshes the combo and "Reset Styles" restores
+   the shipped set. Presets that opt out of no-negative mode are skipped automatically there.
 - **Debug logging** (`debug.py`) — opt-in, OFF by default. `DEBUG_LEVEL` = `MINIMAL` logs node
   enter/exit/error; `FULL` adds HTTP request/response and JSON-parse attempts. API keys and
   base64 blobs are masked/truncated; the rotating log file is only created when logging is active.

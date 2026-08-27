@@ -66,11 +66,12 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
    Fantasy & Horror, Anime & Manga, Cinematic, Period & Style, Basic Styles, and more); the
    combobox shows `Category > Name` labels. Each preset lives in its own JSON file under
    `Styles/` and may `extends` another for inheritance. A preset appends its style tags to the
-   prompt and can override the system prompt. Orthogonal generation toggles — `negative_prompt`,
-   `face_prompt`, `nsfw`, `prompt_format` (natural / tags / weighted / structured / midjourney /
-   booru) and `blend_styles` — are applied at assembly time, not stored per preset. The Writer /
-   Scene Builder also expose an `architecture` input that adapts token style and default
-   negatives for SD1.5 / Pony / Illustrious / Flux / SD3.
+    prompt and can override the system prompt. `prompt_mode` is the sole control for the negative
+     prompt (see below). The other orthogonal generation toggles — `generate_face_prompts`, `nsfw`,
+     `prompt_format` (natural / tags / weighted / structured / midjourney / booru) and `blend_styles`
+    — are applied at assembly time, not stored per preset. The Writer / Scene Builder also expose an
+    `architecture` input that adapts token style and default negatives for SD1.5 / Pony / Illustrious
+    / Flux / SD3.
 - **Advanced LM Studio v1 options** — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
   `repeat_penalty`, `top_k`, `top_p`, `min_p` are forwarded to LM Studio's native v1 API when
   supported.
@@ -98,8 +99,8 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
    `Styles/system_prompts.json` and the 162 style presets each live in their own direction file
    under `Styles/` (a mirror of the former single `presets_default.json`). On first run the whole
    `Styles/` folder is copied into the user-editable `llm_prompt_studio_styles/` folder inside the
-   ComfyUI output directory (never overwritten — hand edits survive a refresh). Use the node
-   `reload_presets` / `reset_styles` toggles to re-read or restore the shipped styles. The legacy
+   ComfyUI output directory (never overwritten — hand edits survive a refresh). Use the node's
+   **Reload Styles** / **Reset Styles** buttons to re-read or restore the shipped styles. The legacy
    `presets_default.json` is kept only as a fallback source.
 
 ---
@@ -208,9 +209,9 @@ Generates an SDXL prompt from an idea.
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
      `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
      `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
-     `use_preset_system_prompt`, `nsfw`, `prompt_format`, `negative_prompt`, `face_prompt`,
-     `blend_styles`, `reload_presets`, `reset_styles`,
-     `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
+       `use_preset_system_prompt`, `nsfw`, `prompt_format`,
+       `blend_styles`,
+      `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
      `top_k`, `top_p`, `min_p`, `server_status`, `release_vram_after_run`, `cv_scene_hint`.
   - **Optional `image` input:** connect an image and enable `cv_scene_hint` (default on) to feed a
     cheap OpenCV pre-analysis (scene type, lighting, face count — no extra vision call) into the brief,
@@ -259,7 +260,7 @@ Generates an SDXL prompt from an idea.
  - **`release_vram_after_run`** (default on) unloads the LM Studio model after the node
    finishes so the diffusion pipeline reclaims the VRAM. Turn it off only when the LLM and the
    checkpoint fit in VRAM simultaneously.
-- **`generate_face_prompts`** (default on): turn it on to also get short face-only prompts
+- **`generate_face_prompts`** (default off): turn it on to also get short face-only prompts
   (`face_positive` / `face_negative`) for FaceDetailer/inpainting. When **turned off**, both
   face fields are forcibly cleared (even if the model returned them in the JSON), so FaceDetailer
   correctly falls back to the main `positive`/`negative`. When on, empty face fields automatically
@@ -285,20 +286,18 @@ Generates an SDXL prompt from an idea.
    matches the chosen style. Presets that opt out of no-negative mode (`disabled_in_no_negative_mode`)
    are skipped automatically in that mode, and a preset's `system_prompt_no_negative` variant is used
    when the negative prompt is off.
-   - **Orthogonal generation toggles** (applied at assembly time, never stored per preset):
-     - **`negative_prompt`** (default on) — on emits a Negative section; off crafts a self-contained
-       positive (every constraint phrased as a positive, no separate negative).
-     - **`face_prompt`** (default off) — injects the face-instruction block even when
-       `generate_face_prompts` is off.
-     - **`nsfw`** (default off) — safe-for-work by default; on permits explicit content only when the
+     - **Orthogonal generation toggles** (applied at assembly time, never stored per preset):
+       - **`nsfw`** (default off) — safe-for-work by default; on permits explicit content only when the
        idea explicitly requests it.
      - **`prompt_format`** — `natural` (default) / `tags` / `weighted` / `structured` / `midjourney` /
        `booru`: how the model phrases the positive prompt.
      - **`blend_styles`** — comma-separated style ids/labels (max 3) whose tags and blend notes are
         merged additively onto the primary preset. Every listed style must appear visibly in the
         generated prompt (strict fuse), so all referenced looks are present at once.
-     - **`reload_presets`** / **`reset_styles`** — re-read the `Styles/` folder from disk / delete the
-       user-editable `llm_prompt_studio_styles/` copy and fall back to the shipped `Styles/`.
+      - **Reload Styles / Reset Styles buttons** — the node's *Reload Styles* button re-reads the
+        `Styles/` folder from disk (picking up any hand edits you made to a style file) and refreshes
+        the `style_preset` combo; *Reset Styles* deletes your user-editable `llm_prompt_studio_styles/`
+        copy and falls back to the shipped `Styles/`.
 - **Advanced options** (`reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
   `repeat_penalty`, `top_k`, `top_p`, `min_p`): forwarded to LM Studio's native v1 API when the
   server supports them. Leaving them at defaults keeps the old
@@ -645,7 +644,7 @@ root — edit them without touching Python.
 
 On first run the whole `Styles/` folder is copied into a user-editable
 **`llm_prompt_studio_styles/`** folder inside the ComfyUI output directory (never overwritten — hand
-edits survive a refresh). Use the node `reload_presets` / `reset_styles` toggles to re-read disk or
+edits survive a refresh). Use the node **Reload Styles** / **Reset Styles** buttons to re-read disk or
 restore the shipped set. The legacy `presets_default.json` is kept only as a fallback source.
 Every node also exposes its prompt as an editable widget, so you can override per-node.
 
@@ -690,8 +689,8 @@ described with anatomically correct, precise terms and is never censored.
 
 Presets are copied from the `Styles/` folder into an editable `llm_prompt_studio_styles/`
 folder in the ComfyUI output directory on first run (never overwritten — hand edits survive a
-refresh). Use the node **`reload_presets`** toggle to re-read the folder after editing, and
-**`reset_styles`** to delete the user copy and fall back to the shipped `Styles/`. A preset with
+refresh). Use the node **Reload Styles** button to re-read the folder after editing, and
+**Reset Styles** to delete the user copy and fall back to the shipped `Styles/`. A preset with
 `disabled_in_no_negative_mode` set is automatically skipped in no-negative mode.
 
 ---

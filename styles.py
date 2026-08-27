@@ -77,6 +77,14 @@ def reload_styles():
     _cache.clear()
 
 
+def get_styles_dir() -> str:
+    """Return the live styles folder (user copy if present, else the shipped Styles/).
+
+    Shown by the UI 'Copy styles path' button so the user knows which file is actually read.
+    """
+    return _active_styles_dir()
+
+
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
