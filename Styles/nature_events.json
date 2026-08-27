@@ -20,7 +20,7 @@
       "blend_note": "shimmering curtains",
       "category": "Natural Events",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: aurora photography. Shimmering green/violet curtains over dark landscape, long exposure, reflection in water, silent cold majesty."
     },
     {
       "id": "extreme_weather",
@@ -40,11 +40,11 @@
       "blend_note": "nature's force",
       "category": "Natural Events",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: extreme weather. Blizzards, floods, heat haze, monumental atmosphere, human scale against nature's force, raw documentary intensity."
     },
     {
       "id": "landscape_photo",
-      "name": "Landscape Photography",
+      "name": "Landscape Scene",
       "description": "Scenic landscape photo",
       "system_prompt": "Style focus: landscape photography. Expansive vistas, layered depth, balanced composition, atmospheric light, fine natural detail.",
       "style_tags_positive": [
@@ -60,7 +60,7 @@
       "blend_note": "expansive vista",
       "category": "Natural Events",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: landscape photography. Expansive vistas, layered depth, balanced composition, atmospheric light, fine natural detail."
     },
     {
       "id": "nat_geo_doc",
@@ -80,7 +80,7 @@
       "blend_note": "pristine realism",
       "category": "Natural Events",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: National Geographic documentary. Pristine wildlife in habitat, scientific accuracy, golden-hour light, unobtrusive telephoto realism."
     },
     {
       "id": "storm",
@@ -100,7 +100,7 @@
       "blend_note": "dramatic sky",
       "category": "Natural Events",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: storm photography. Towering thunderheads, rain shafts, lightning, dramatic chiaroscuro sky, sense of awe and scale."
     },
     {
       "id": "tornado",
@@ -119,7 +119,7 @@
       "blend_note": "ominous rotation",
       "category": "Natural Events",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: supercell/tornado. Rotation, green-tinged sky, funnel to ground, ominous mammatus clouds, vast prairie scale."
     },
     {
       "id": "volcanic_eruption",
@@ -139,7 +139,7 @@
       "blend_note": "fire vs rock",
       "category": "Natural Events",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: volcanic eruption. Glowing lava, ash plume, incandescent flows, stark contrast of fire and dark rock, primordial drama."
     }
   ]
 }

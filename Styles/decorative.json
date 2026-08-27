@@ -20,7 +20,7 @@
       "blend_note": "crackle motifs",
       "category": "Decorative & Pattern",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: batik. Wax-resist dye cracks, flowing organic motifs, layered earthy palette, textile repetition."
     },
     {
       "id": "celtic_knot",
@@ -40,7 +40,7 @@
       "blend_note": "interwoven ribbons",
       "category": "Decorative & Pattern",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Celtic knotwork. Unbroken interwoven ribbons, symmetric loops, stone-and-metal palette, ritual ornament."
     },
     {
       "id": "folk_art",
@@ -60,7 +60,7 @@
       "blend_note": "naive charm",
       "category": "Decorative & Pattern",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: folk art. Naive charming forms, bright flat local palette, traditional motifs, hand-made imperfect delight."
     },
     {
       "id": "islamic_geometric",
@@ -80,7 +80,7 @@
       "blend_note": "mathematical symmetry",
       "category": "Decorative & Pattern",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Islamic geometric tilework. Precise star-and-polygon tessellation, mathematical symmetry, glazed tile palette."
     },
     {
       "id": "persian_miniature_pat",
@@ -100,7 +100,7 @@
       "blend_note": "interlacing geometry",
       "category": "Decorative & Pattern",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Persian/Islamic pattern. Interlacing arabesque, geometric tessellation, jewel palette, infinitely repeating ornamental logic."
     },
     {
       "id": "william_morris",
@@ -120,7 +120,7 @@
       "blend_note": "dense foliage",
       "category": "Decorative & Pattern",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: William Morris pattern. Dense symmetrical foliage, flowering vines, muted natural palette, intricate repeating wallpaper design."
     }
   ]
 }

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **Styles/ folder system (replaces `presets_default.json` single file).** All 162 style presets
+ - **Styles/ folder system (replaces `presets_default.json` single file).** All 210 style presets
   now live as individual JSON files under `Styles/` (one file per direction/category), with base
   prompts in `Styles/system_prompts.json`. A preset may `extends` another for inheritance
   (child merges `system_prompt` + `system_prompt_suffix` and unions `style_tags_*`, depth ≤ 3).
@@ -50,6 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Fixed duplicate `Gothic Horror` style.** In `Styles/fantasy_horror.json` two presets shared the
   display name "Gothic Horror" (`gothic_horror` and `gothic_architecture_horror`). The second is
   renamed to **Gothic Ruins** (cathedral/ruin horror) so the combo no longer shows a duplicate.
+- **Photography styles expanded + camera/lens EXIF guidance.** `Styles/photography.json` grew from
+  8 to 25 presets (added Amateur/Snapshot, Professional Studio, Photojournalism, Documentary, Wedding,
+  Travel, Sports/Action, Wildlife, Food, Concert/Live Event, Film/Analog, Drone/Aerial, Real Estate/
+  Interior, Product/Commercial, Vintage/Lomo, Night/Long Exposure, Newborn/Family). Every photographic
+  preset now carries a "Capture-EXIF rule" that tells the LLM to name a plausible camera body, lens
+  (focal length + max aperture) and key exposure settings suited to the genre (e.g. street -> 28-35mm
+  rangefinder f/5.6-f/8; portrait -> 85/135mm prime f/1.4-f/2.8; sports -> 300/400mm f/2.8 at 1/1000s+),
+  so generated prompts include realistic technical capture detail. Total presets now 210.
 - **Face Detailer: `yolo_bbox_seg` detection mode.** New `detection_method` option locates
   faces with a strong bbox model (`yolo_model_name`) at the normal `detection_threshold`,
   then uses a segmentation model (`yolo_seg_model_name`) only to derive the mask shape
@@ -116,6 +124,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   by the gender filter) regardless of `gender_filter`. Applies only when `gender_filter != any`.
 
 ### Changed
+- **Style `system_prompt` blocks fully centralized (DRY).** Per-preset `system_prompt` now holds only the
+  genre persona plus genre-specific guidance (photography "Capture-EXIF rule", anime booru-tag vocabulary,
+  etc.). All generic craft rules that were duplicated across presets have been stripped and are now sourced
+  from `Styles/system_prompts.json` at assembly time: `writer_system` (write-in-English + JSON envelope),
+  `engineering_rules` (composition, concrete descriptors, spatial relationships, sparing weighting).
+  Concretely removed from every preset: the literal "Engineering rules (apply to every prompt)" block,
+  "Write in English only (never mirror the user's language)", "Avoid empty booster tags…",
+  "Concise (60-140 words)", the "Respond STRICTLY in JSON…" boilerplate, and inline
+  "Explicit/NSFW fully authorized" text.
+- **NSFW authorization centralized.** Per-style "fully authorized" NSFW text was removed from all presets;
+  explicit content is now governed solely by the Writer's `nsfw` toggle (`nsfw_policy` in
+  `system_prompts.json`). Anime and other styles no longer auto-authorize explicit content regardless of
+  the toggle state.
+- **`system_prompt_no_negative` regenerated for every preset.** All presets now carry a consistent
+  `system_prompt_no_negative = canonical NO-NEGATIVE prefix + cleaned style text`. This fixes a latent bug
+  where several presets (e.g. Shojo / Shonen / Western Animated Film) stored only the NO-NEGATIVE prefix and
+  therefore lost their style entirely in no-negative mode (`build_system_prompt` uses
+  `system_prompt_no_negative` verbatim). The same normalization was applied to `presets_default.json` so the
+  `tools/build_styles.py` generator will not reintroduce the duplication.
+- **Duplicate display names disambiguated.** `Documentary` -> `Documentary Film` (cinema) /
+  `Documentary Photography` (photography); `Landscape Photography` -> `Landscape Scene` (nature preset).
 - **Face Detailer: `detection_threshold`** now ships with an explanatory tooltip
   and is recommended around 0.5 once the class filter is enabled.
 - **Face Detailer: console logging (English + diagnostics).** All `[FaceDetailer]`
@@ -158,6 +187,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   descriptive `blend_note` values so both styles appear in the blended prompt.
 
 ### Fixed
+- **Face Detailer `match_color` crash (`TypeError: 'str' object is not callable`).** The node's
+  `match_color` widget parameter shadowed the imported `match_color` function, so the compositing
+  call tried to invoke the string value (e.g. `"luminance"`) as a callable. The function is now
+  imported as `_match_color` and called with `mode=match_color`, so the widget value still selects
+  the color-match mode without name collision.
+
 - **Style tag duplication (Audit7/1.2).** `apply_preset_style` now deduplicates positive
   (and face-positive) style tags against what is already in the prompt, matching the
   long-standing negative-tag behavior (previously repeated style tags could be appended
