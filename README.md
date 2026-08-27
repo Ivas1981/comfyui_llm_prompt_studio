@@ -61,7 +61,7 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
   `● Server down`), polled from the pack's status route every few seconds.
  - **Smart Multi-Clip** — architecture-aware encoding of up to four prompt pairs with one CLIP
    and shared size settings; wire the Smart Loader's `detected_architecture` for non-SDXL models.
- - **Style presets (Styles/ folder)** — pick from 162 built-in styles across ~25 domains
+ - **Style presets (Styles/ folder)** — pick from 210 built-in styles across ~25 domains
    (Photography, Art Movements, Asian Art, Traditional Media, Digital & Contemporary,
    Fantasy & Horror, Anime & Manga, Cinematic, Period & Style, Basic Styles, and more); the
    combobox shows `Category > Name` labels. Each preset lives in its own JSON file under
@@ -96,7 +96,7 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
   Scene Builder. Workflows saved before this widget existed will load with the recommended `auto`
   profile applied until you choose `custom`.
  - **System/style prompts now live in the `Styles/` folder.** Base prompts are in
-   `Styles/system_prompts.json` and the 162 style presets each live in their own direction file
+   `Styles/system_prompts.json` and the 210 style presets each live in their own direction file
    under `Styles/` (a mirror of the former single `presets_default.json`). On first run the whole
    `Styles/` folder is copied into the user-editable `llm_prompt_studio_styles/` folder inside the
    ComfyUI output directory (never overwritten — hand edits survive a refresh). Use the node's
@@ -160,7 +160,7 @@ comfyui_llm_prompt_studio/
 ├── server_routes.py          # /llm_prompt_studio/* routes used by the JS bridge
 ├── vram.py                   # LM Studio model release helpers
 ├── presets_default.json      # legacy fallback source (superseded by Styles/)
-├── Styles/                   # style system: system_prompts.json + 25 direction files (162 presets)
+├── Styles/                   # style system: system_prompts.json + 25 direction files (210 presets)
 ├── nodes/
 │   ├── __init__.py           # node mappings
 │   ├── _contracts.py         # sampler/scheduler combo contract checks
@@ -279,7 +279,7 @@ Generates an SDXL prompt from an idea.
   warning so the run keeps going when the LM Studio server briefly hiccups.
 - Button **🔄 Refresh models** re-reads the model list from the server.
  - **Style presets (`Styles/` system)** (`style_preset` + `use_preset_system_prompt`): pick a
-   built-in style (from the `Styles/` folder, 162 presets) to append its style tags to the prompt.
+   built-in style (from the `Styles/` folder, 210 presets) to append its style tags to the prompt.
    `use_preset_system_prompt` (default on) additionally overrides the system prompt with the
    preset's; turn it off to keep your own system prompt while still applying the preset's style tags.
    The selected style also shapes `face_positive` / `face_negative`, so a FaceDetailer-refined face
@@ -635,7 +635,7 @@ root — edit them without touching Python.
   `architecture_guidance` (per-arch `system_addendum` / `default_negative` / `force_no_negative`).
 
 - **`Styles/<direction>.json`** — 25 direction files, each containing a `presets` list. Together they
-  provide **162 style presets** (see [Style presets](#style-presets)). A preset may `extends`
+  provide **210 style presets** (see [Style presets](#style-presets)). A preset may `extends`
   another preset id (inheritance: child merges `system_prompt` + `system_prompt_suffix` and unions
   `style_tags_*`, up to depth 3). Each preset supports: `id`, `name`, `category`, `description`,
   `system_prompt`, `system_prompt_no_negative` (used when the negative prompt is off or the arch
@@ -664,7 +664,7 @@ back with **Library Loader**.
 
 ## Style presets
 
-The Writer's `style_preset` combobox lists **162 built-in styles** across ~25 domains
+The Writer's `style_preset` combobox lists **210 built-in styles** across ~25 domains
 (Photography, Art Movements, Asian Art, Traditional Media, Digital & Contemporary,
 Fantasy & Horror, Anime & Manga, Cinematic, Period & Style, Basic Styles, and more); each
 entry is shown as `Category > Name`. Presets are loaded from the `Styles/` folder (see

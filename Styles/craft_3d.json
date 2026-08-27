@@ -20,7 +20,7 @@
       "blend_note": "clay texture",
       "category": "Craft & Physical",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: claymation. Hand-made clay textures, visible fingerprints, slightly imperfect forms, charming stop-motion lighting, tactile warmth."
     },
     {
       "id": "felt_art",
@@ -40,7 +40,7 @@
       "blend_note": "fuzzy hand-made",
       "category": "Craft & Physical",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: felt craft. Soft fuzzy fiber texture, stitched edges, matte pastel palette, hand-made toy warmth."
     },
     {
       "id": "lego_art",
@@ -60,7 +60,7 @@
       "blend_note": "brick diorama",
       "category": "Craft & Physical",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: LEGO-built scene. Studded plastic bricks, limited brick palette, blocky forms, playful miniature diorama lighting."
     },
     {
       "id": "origami",
@@ -80,7 +80,7 @@
       "blend_note": "crisp folds",
       "category": "Craft & Physical",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: origami. Crisp folded paper geometry, sharp creases, matte single-sheet palette, elegant minimal form."
     },
     {
       "id": "papercraft",
@@ -100,7 +100,7 @@
       "blend_note": "cut-paper layers",
       "category": "Craft & Physical",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: papercraft. Layered cut paper, visible fold and cut edges, matte flat color, diorama depth, hand-made charm."
     },
     {
       "id": "voxel_art",
@@ -120,7 +120,7 @@
       "blend_note": "blocky cubes",
       "category": "Craft & Physical",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: voxel art. Blocky cube-based geometry, limited palette per material, Minecraft-like readable forms, soft even light."
     },
     {
       "id": "wireframe",
@@ -140,7 +140,7 @@
       "blend_note": "glowing edges",
       "category": "Craft & Physical",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: 3D wireframe. Visible polygonal edges, glowing lines on dark, structural blueprint aesthetic, technical beauty."
     }
   ]
 }

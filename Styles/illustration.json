@@ -20,7 +20,7 @@
       "blend_note": "ornate elegance",
       "category": "Illustration",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Alphonse Mucha. Elegant women in ornate arches, flowing hair, decorative botanical frames, muted jewel palette, flat idealized beauty."
     },
     {
       "id": "childrens_book",
@@ -40,7 +40,7 @@
       "blend_note": "charming whimsy",
       "category": "Illustration",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: children's-book illustration. Charming stylized characters, soft warm palette, friendly simplified forms, whimsical storybook detail."
     },
     {
       "id": "editorial_illustration",
@@ -60,7 +60,7 @@
       "blend_note": "conceptual idea",
       "category": "Illustration",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: editorial illustration. Conceptual metaphor, strong graphic idea, controlled palette, stylized but intelligent, fits a printed column."
     },
     {
       "id": "norman_rockwell",
@@ -80,7 +80,7 @@
       "blend_note": "warm narrative",
       "category": "Illustration",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Norman Rockwell. Warm narrative realism, relatable everyday Americana, precise storytelling detail, gentle humor, luminous indoor light."
     },
     {
       "id": "pulp_cover",
@@ -100,7 +100,7 @@
       "blend_note": "sensational drama",
       "category": "Illustration",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: pulp-magazine cover. Dramatic action, lurid saturated color, daring pose, bold simplified forms, sensational mood."
     },
     {
       "id": "vintage_advertising",
@@ -120,7 +120,7 @@
       "blend_note": "retro commercial",
       "category": "Illustration",
       "disabled_in_no_negative_mode": false,
-      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: vintage advertising illustration. Clean mid-century product hero, limited palette, confident flat shading, optimistic commercial charm."
     }
   ]
 }

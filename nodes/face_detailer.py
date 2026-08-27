@@ -21,7 +21,7 @@ logger = logging.getLogger("llm_prompt_studio")
 from ._ksample import sample_latent, node_span
 from ._imgutils import (
     tensor_resize, mask_resize, to_latent_image,
-    tensor_gaussian_blur_mask, tensor_paste, match_color,
+    tensor_gaussian_blur_mask, tensor_paste, match_color as _match_color,
 )
 from .smart_parameters import SAMPLERS_WITH_BASE, SCHEDULERS_WITH_BASE
 from ._latent_upscaler import (
@@ -798,7 +798,7 @@ class LLMPromptStudioFaceDetailer:
                     # out at composite time, so adjusting the whole crop by masked-region
                     # stats is safe.
                     if match_color not in ("none", None):
-                        ref_crop = match_color(ref_crop, region, face_mask, mode=match_color)
+                        ref_crop = _match_color(ref_crop, region, face_mask, mode=match_color)
                     result[i:i + 1, y1:y2, x1:x2, :] = tensor_paste(region, ref_crop, face_mask)
             logger.info("[FaceDetailer] done: processed %d face(s) across %d frame(s)",
                         face_idx, total)

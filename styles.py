@@ -248,14 +248,20 @@ def build_system_prompt(preset: Optional[Dict] = None, *,
     """Assemble the full system prompt the Writer sends to the local model.
 
     Order (mirrors Plans/styles_system_redesign.md):
-      base writer_system -> style.system_prompt -> face -> nsfw -> prompt_format
-      -> negative(on/off) -> blend notes -> architecture addendum -> reasoning hint
+      base writer_system -> general craft rules -> style.system_prompt -> face
+      -> nsfw -> prompt_format -> negative(on/off) -> blend notes
+      -> architecture addendum -> reasoning hint
     """
     sp = get_system_prompts()
     parts: List[str] = []
 
     # 1) Base prompt engineer instruction (format-agnostic, JSON envelope).
     parts.append(base if base is not None else sp.get("writer_system", ""))
+
+    # 1b) Shared general craft rules (applied once, so presets stay DRY).
+    eng = sp.get("engineering_rules", "")
+    if eng:
+        parts.append(eng)
 
     # 2) Style preset (choose no-negative variant when negative prompt is off).
     if preset:
