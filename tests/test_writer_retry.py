@@ -72,10 +72,12 @@ def test_retry_on_missing_face_fields_when_requested():
 
 
 def test_no_retry_on_face_fields_when_not_requested():
-    # Face fields empty but not required -> no retry; existing fallback copies them.
+    # Face fields empty and face prompts not requested -> no retry, and the node emits
+    # empty face outputs (Q5) so FaceDetailer falls back to the main prompts.
     result, call = _run([_json(positive="a cat", negative="b", scene_name="s")])
     assert call.call_count == 1
-    assert result[4] == "a cat"  # face_positive falls back to positive
+    assert result[4] == ""  # face_positive blanked when face is off
+    assert result[5] == ""  # face_negative blanked when face is off
 
 
 def test_scene_name_fallback_via_slugify():
@@ -132,8 +134,7 @@ def test_reuse_cache_key_excludes_family_but_includes_inputs():
     writer._prompt_cache.clear()
     with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion",
-                      return_value=_json(positive="p", negative="n", scene_name="s")) as call, \
-         patch.object(writer, "get_preset_by_name", return_value=None):
+                      return_value=_json(positive="p", negative="n", scene_name="s")) as call:
         base = dict(server_url="http://localhost:1234/v1", api_key="", model="m",
                     context_length=8192, gpu_offload=1.0, system_prompt="SYS",
                     revision_notes="", temperature=0.7, max_tokens=512, seed=0,
@@ -168,8 +169,7 @@ def test_reuse_cache_key_includes_architecture():
     writer._prompt_cache.clear()
     with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion",
-                      return_value=_json(positive="p", negative="n", scene_name="s")) as call, \
-         patch.object(writer, "get_preset_by_name", return_value=None):
+                      return_value=_json(positive="p", negative="n", scene_name="s")) as call:
         base = dict(server_url="http://localhost:1234/v1", api_key="", model="m",
                     context_length=8192, gpu_offload=1.0, system_prompt="SYS",
                     revision_notes="", temperature=0.7, max_tokens=512, seed=0,

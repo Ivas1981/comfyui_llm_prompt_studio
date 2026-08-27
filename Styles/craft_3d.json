@@ -1,0 +1,146 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Craft & Physical",
+  "presets": [
+    {
+      "id": "claymation",
+      "name": "Claymation",
+      "description": "Stop-motion clay look",
+      "system_prompt": "Style focus: claymation. Hand-made clay textures, visible fingerprints, slightly imperfect forms, charming stop-motion lighting, tactile warmth.",
+      "style_tags_positive": [
+        "claymation",
+        "clay texture",
+        "handmade",
+        "stop motion"
+      ],
+      "style_tags_negative": [
+        "smooth cgi",
+        "photoreal"
+      ],
+      "blend_note": "clay texture",
+      "category": "Craft & Physical",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "felt_art",
+      "name": "Felt Craft",
+      "description": "Fuzzy felt look",
+      "system_prompt": "Style focus: felt craft. Soft fuzzy fiber texture, stitched edges, matte pastel palette, hand-made toy warmth.",
+      "style_tags_positive": [
+        "felt",
+        "fuzzy",
+        "stitched",
+        "matte"
+      ],
+      "style_tags_negative": [
+        "rigid",
+        "glossy"
+      ],
+      "blend_note": "fuzzy hand-made",
+      "category": "Craft & Physical",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "lego_art",
+      "name": "LEGO Art",
+      "description": "Brick-built render look",
+      "system_prompt": "Style focus: LEGO-built scene. Studded plastic bricks, limited brick palette, blocky forms, playful miniature diorama lighting.",
+      "style_tags_positive": [
+        "lego",
+        "brick",
+        "studded",
+        "blocky"
+      ],
+      "style_tags_negative": [
+        "organic",
+        "realistic"
+      ],
+      "blend_note": "brick diorama",
+      "category": "Craft & Physical",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "origami",
+      "name": "Origami",
+      "description": "Paper-fold art",
+      "system_prompt": "Style focus: origami. Crisp folded paper geometry, sharp creases, matte single-sheet palette, elegant minimal form.",
+      "style_tags_positive": [
+        "origami",
+        "folded paper",
+        "sharp crease",
+        "minimal"
+      ],
+      "style_tags_negative": [
+        "messy",
+        "rough"
+      ],
+      "blend_note": "crisp folds",
+      "category": "Craft & Physical",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "papercraft",
+      "name": "Papercraft",
+      "description": "Cut-paper diorama look",
+      "system_prompt": "Style focus: papercraft. Layered cut paper, visible fold and cut edges, matte flat color, diorama depth, hand-made charm.",
+      "style_tags_positive": [
+        "papercraft",
+        "cut paper",
+        "layered",
+        "matte"
+      ],
+      "style_tags_negative": [
+        "smooth",
+        "3d render"
+      ],
+      "blend_note": "cut-paper layers",
+      "category": "Craft & Physical",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "voxel_art",
+      "name": "Voxel Art",
+      "description": "Cube-based 3D look",
+      "system_prompt": "Style focus: voxel art. Blocky cube-based geometry, limited palette per material, Minecraft-like readable forms, soft even light.",
+      "style_tags_positive": [
+        "voxel art",
+        "cubes",
+        "blocky",
+        "limited palette"
+      ],
+      "style_tags_negative": [
+        "smooth",
+        "organic"
+      ],
+      "blend_note": "blocky cubes",
+      "category": "Craft & Physical",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "wireframe",
+      "name": "Wireframe",
+      "description": "3D wireframe render",
+      "system_prompt": "Style focus: 3D wireframe. Visible polygonal edges, glowing lines on dark, structural blueprint aesthetic, technical beauty.",
+      "style_tags_positive": [
+        "wireframe",
+        "polygonal edges",
+        "glowing lines",
+        "blueprint"
+      ],
+      "style_tags_negative": [
+        "solid",
+        "textured"
+      ],
+      "blend_note": "glowing edges",
+      "category": "Craft & Physical",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    }
+  ]
+}

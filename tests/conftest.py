@@ -51,6 +51,23 @@ if "comfy" not in sys.modules or "comfy.samplers" not in sys.modules:
     sys.modules["comfy"] = _comfy
     sys.modules["comfy.samplers"] = _samplers
 
+# torch is imported by several nodes at module-load time (e.g. ksampler_hiresfix,
+# face_detailer). Stub a minimal torch package so the node package can be imported in
+# headless tests without a full PyTorch install. Only attribute access / calls are
+# needed at import + node-registration time; real tensors are never built in these tests.
+if "torch" not in sys.modules:
+    from unittest.mock import MagicMock
+    _torch = MagicMock(name="torch")
+    _torch.__version__ = "0.0.0-stub"
+    _torch.cuda.is_available.return_value = False
+    _torch.nn.Module = type("Module", (), {})
+    _torch.nn.functional = MagicMock(name="torch.nn.functional")
+    _torch.Tensor = type("Tensor", (), {})
+    sys.modules["torch"] = _torch
+    sys.modules["torch.nn"] = _torch.nn
+    sys.modules["torch.nn.functional"] = _torch.nn.functional
+    sys.modules["torch.cuda"] = _torch.cuda
+
 # comfy.utils is used by the hires-fix / face-detailer nodes (common_upscale,
 # tiled_scale). Stub the bits we need for headless tests.
 if "comfy.utils" not in sys.modules:

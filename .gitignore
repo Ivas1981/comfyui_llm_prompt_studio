@@ -39,3 +39,9 @@ docs/TestModels.md
 
 # Model weights are committed so users get them without manual downloads.
 # (YOLO face detectors, latent upscalers.)
+
+# Local test/diagnostic output (not part of the project)
+tools/live_results.txt
+tools/_last.txt
+tests/_output/
+

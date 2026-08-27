@@ -1,0 +1,126 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Illustration",
+  "presets": [
+    {
+      "id": "alphonse_mucha",
+      "name": "Alphonse Mucha",
+      "description": "Art-Nouveau poster illustration",
+      "system_prompt": "Style focus: Alphonse Mucha. Elegant women in ornate arches, flowing hair, decorative botanical frames, muted jewel palette, flat idealized beauty.",
+      "style_tags_positive": [
+        "alphonse mucha",
+        "art nouveau",
+        "ornate frame",
+        "flowing hair"
+      ],
+      "style_tags_negative": [
+        "hard",
+        "modern"
+      ],
+      "blend_note": "ornate elegance",
+      "category": "Illustration",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "childrens_book",
+      "name": "Children's Book",
+      "description": "Picture-book illustration",
+      "system_prompt": "Style focus: children's-book illustration. Charming stylized characters, soft warm palette, friendly simplified forms, whimsical storybook detail.",
+      "style_tags_positive": [
+        "childrens book",
+        "charming",
+        "soft palette",
+        "whimsical"
+      ],
+      "style_tags_negative": [
+        "gritty",
+        "realistic"
+      ],
+      "blend_note": "charming whimsy",
+      "category": "Illustration",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "editorial_illustration",
+      "name": "Editorial Illustration",
+      "description": "Magazine opinion illustration",
+      "system_prompt": "Style focus: editorial illustration. Conceptual metaphor, strong graphic idea, controlled palette, stylized but intelligent, fits a printed column.",
+      "style_tags_positive": [
+        "editorial illustration",
+        "conceptual",
+        "graphic",
+        "stylized"
+      ],
+      "style_tags_negative": [
+        "literal",
+        "photoreal"
+      ],
+      "blend_note": "conceptual idea",
+      "category": "Illustration",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "norman_rockwell",
+      "name": "Norman Rockwell",
+      "description": "American narrative illustration",
+      "system_prompt": "Style focus: Norman Rockwell. Warm narrative realism, relatable everyday Americana, precise storytelling detail, gentle humor, luminous indoor light.",
+      "style_tags_positive": [
+        "norman rockwell",
+        "narrative realism",
+        "americana",
+        "storytelling"
+      ],
+      "style_tags_negative": [
+        "abstract",
+        "gritty"
+      ],
+      "blend_note": "warm narrative",
+      "category": "Illustration",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "pulp_cover",
+      "name": "Pulp Cover",
+      "description": "Pulp-magazine illustration",
+      "system_prompt": "Style focus: pulp-magazine cover. Dramatic action, lurid saturated color, daring pose, bold simplified forms, sensational mood.",
+      "style_tags_positive": [
+        "pulp cover",
+        "dramatic",
+        "saturated",
+        "bold"
+      ],
+      "style_tags_negative": [
+        "soft",
+        "muted"
+      ],
+      "blend_note": "sensational drama",
+      "category": "Illustration",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "vintage_advertising",
+      "name": "Vintage Advertising",
+      "description": "Retro ad illustration",
+      "system_prompt": "Style focus: vintage advertising illustration. Clean mid-century product hero, limited palette, confident flat shading, optimistic commercial charm.",
+      "style_tags_positive": [
+        "vintage advertising",
+        "retro ad",
+        "flat shading",
+        "product hero"
+      ],
+      "style_tags_negative": [
+        "photoreal",
+        "messy"
+      ],
+      "blend_note": "retro commercial",
+      "category": "Illustration",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    }
+  ]
+}
