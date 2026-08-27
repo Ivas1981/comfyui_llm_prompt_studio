@@ -7,8 +7,11 @@ from ..lm_http import (chat_completion, ensure_model_loaded,
                        model_architecture, model_param_count)
 from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
-from ..presets import (apply_preset_to_prompts, apply_preset_style, get_preset_by_name,
-                        get_architecture_guidance, append_negative_tags)
+from ..presets import (get_architecture_guidance, append_negative_tags, append_positive_tags)
+from ..styles import (build_system_prompt, get_style_by_label, get_style_labels,
+                      reload_styles, ensure_styles_dir, resolve_style,
+                      resolve_style_token,
+                      reset_styles as styles_reset)
 from .model_recommendations import resolve_profile
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._scene_analysis import analyze_scene, describe_scene
@@ -45,8 +48,7 @@ _prompt_cache = {}
 def _preset_names():
     """Combo options for the style_preset widget (with a no-op default first)."""
     try:
-        from ..presets import get_preset_names
-        return ["— none —"] + list(get_preset_names())
+        return list(get_style_labels())
     except Exception:
         return ["— none —"]
 
@@ -99,12 +101,36 @@ class LLMPromptStudioWriter:
                                                         "default": FACE_PROMPT_INSTRUCTION}),
                 "prompt_mode": (["auto", "standard", "no_negative"], {"default": "auto"}),
                 "style_preset": (_preset_names(), {"default": "— none —",
-                                  "tooltip": "Apply a style preset's system prompt and style tags"}),
+                                  "tooltip": "Apply a style preset (Styles/ folder) — its system "
+                                             "prompt, style tags and blend note"}),
                 "use_preset_system_prompt": ("BOOLEAN", {"default": True,
                                   "tooltip": "When a style preset is selected, override the "
                                              "system prompt with the preset's (unless you have "
                                              "customized it). Turn off to keep your own system "
                                              "prompt even with a preset loaded."}),
+                "nsfw": ("BOOLEAN", {"default": False,
+                                     "tooltip": "Allow explicit/mature content only when the user "
+                                                "explicitly requests it. Off = safe-for-work."}),
+                "prompt_format": (["natural", "tags", "weighted", "structured", "midjourney", "booru"],
+                                  {"default": "natural",
+                                   "tooltip": "How the model should phrase the positive prompt "
+                                              "(sentences / tags / weighted / structured / MJ / booru)"}),
+                "negative_prompt": ("BOOLEAN", {"default": True,
+                                     "tooltip": "On = emit a Negative prompt section. Off = craft a "
+                                                "self-contained positive prompt (no negative needed), "
+                                                "required for CFG~1 distilled models."}),
+                "face_prompt": ("BOOLEAN", {"default": False,
+                                    "tooltip": "Generate separate face_positive/face_negative prompts "
+                                               "for FaceDetailer inpainting."}),
+                "blend_styles": ("STRING", {"default": "",
+                                   "tooltip": "Comma-separated style ids to blend with the main "
+                                              "preset (max 3). Union of tags + blend notes."}),
+                "reload_presets": ("BOOLEAN", {"default": False,
+                                     "tooltip": "Force re-read of the Styles/ folder from disk "
+                                                "(and mirror it to the user output dir)."}),
+                "reset_styles": ("BOOLEAN", {"default": False,
+                                   "tooltip": "Delete the user copy of Styles/ and restore the "
+                                              "shipped defaults."}),
                 "flash_attention": ("BOOLEAN", {"default": False,
                                     "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage"}),
                 "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
@@ -167,11 +193,14 @@ class LLMPromptStudioWriter:
                  reuse_last_prompt=False, generate_face_prompts=False, cv_scene_hint=True,
                  max_field_retries=2, face_prompt_instruction="",
                  prompt_mode="auto", family="", unique_id=None,
-                 style_preset="— none —", use_preset_system_prompt=True, flash_attention=None,
+                 style_preset="— none —", use_preset_system_prompt=True,
+                 nsfw=False, prompt_format="natural", negative_prompt=True,
+                 face_prompt=False, blend_styles="", reload_presets=False,
+                 reset_styles=False, flash_attention=None,
                   offload_kv_cache_to_gpu=None, reasoning="off", repeat_penalty=1.0,
-                    top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto",
-                      server_status="", architecture="", release_vram_after_run=True,
-                 image=None):
+                     top_k=0, top_p=1.0, min_p=0.0, load_model_profile="auto",
+                       server_status="", architecture="", release_vram_after_run=True,
+                  image=None):
         _t0 = time.time()
         log_node_enter("Writer", unique_id, {
             "server_url": server_url, "model": model, "idea": idea,
@@ -190,7 +219,9 @@ class LLMPromptStudioWriter:
                              reuse_last_prompt, generate_face_prompts, cv_scene_hint,
                              max_field_retries,
                              face_prompt_instruction, prompt_mode, family, unique_id, _t0,
-                              style_preset, use_preset_system_prompt, flash_attention,
+                              style_preset, use_preset_system_prompt, nsfw, prompt_format,
+                              negative_prompt, face_prompt, blend_styles, reload_presets,
+                              reset_styles, flash_attention,
                               offload_kv_cache_to_gpu, reasoning,
                     repeat_penalty, top_k, top_p, min_p,
                       load_model_profile, architecture, release_vram_after_run, image)
@@ -203,7 +234,9 @@ class LLMPromptStudioWriter:
                reuse_last_prompt, generate_face_prompts, cv_scene_hint,
                max_field_retries,
                face_prompt_instruction, prompt_mode, family, unique_id, _t0,
-               style_preset, use_preset_system_prompt=True, flash_attention=None,
+               style_preset, use_preset_system_prompt, nsfw, prompt_format,
+               negative_prompt, face_prompt, blend_styles, reload_presets,
+               reset_styles, flash_attention=None,
                offload_kv_cache_to_gpu=None, reasoning="off",
                  repeat_penalty=1.0, top_k=0, top_p=1.0, min_p=0.0,
                    load_model_profile="auto", architecture="",
@@ -215,9 +248,23 @@ class LLMPromptStudioWriter:
         # carry over when the user swaps to a different checkpoint. `architecture` IS included
         # because it changes token style, negatives and (for Flux/SD3) the no-negative path,
         # so two architectures must never share a cached prompt.
+        # Styles: reload / reset handling (variant B user copy in the ComfyUI output dir).
+        if reset_styles:
+            try:
+                styles_reset()
+            except Exception:
+                pass
+        if reload_presets or reset_styles:
+            try:
+                reload_styles()
+            except Exception:
+                pass
+        ensure_styles_dir()
+
         cache_key = (unique_id, prompt_mode, style_preset, system_prompt,
                      idea, revision_notes, generate_face_prompts, face_prompt_instruction,
-                     architecture,
+                     architecture, nsfw, prompt_format, negative_prompt, face_prompt,
+                     blend_styles,
                      tuple(image.shape) if image is not None else None)
         # Reuse mode: return cached result without calling the LLM
         if reuse_last_prompt:
@@ -233,11 +280,12 @@ class LLMPromptStudioWriter:
                 "No model selected. Start the LM Studio server, load a model "
                 "and press the Refresh button on the node.")
 
-        # Resolve the selected style preset (the no-negative opt-out is applied below,
-        # once the effective mode is known).
+        # Resolve the selected style preset (inheritance flattened via styles.resolve_style).
         preset = None
         if style_preset and style_preset != "— none —":
-            preset = get_preset_by_name(style_preset)
+            _lbl = get_style_by_label(style_preset)
+            if _lbl:
+                preset = resolve_style(_lbl.get("id"))
 
         slot = f"{server_url}::writer"
         release = coerce_bool_widget(release_vram_after_run, True)
@@ -252,74 +300,54 @@ class LLMPromptStudioWriter:
                     f"Model '{model}' could not be loaded into LM Studio. Start the "
                     "server, load the model, and press Refresh on the node.")
     
-            # Architecture adaptation lookups (computed BEFORE the no-negative resolution so an
-            # arch-level ``force_no_negative`` can flip the mode; see below). SDXL guidance is
-            # empty, so SDXL generation is unchanged when `architecture` is empty/unwired.
+            # Architecture adaptation lookups (SDXL guidance is empty, so SDXL is unchanged when
+            # `architecture` is empty/unwired). A Flux/SD3 arch may force the no-negative path.
             arch = (architecture or "").strip().lower()
             arch_guidance = get_architecture_guidance().get(arch, {}) if arch else {}
-    
-            # Resolve the effective mode. 'no_negative' forces it; 'standard' forbids it;
-            # 'auto' (and anything unexpected) defers to the detected checkpoint family.
+
+            # Resolve the effective "no negative" state from prompt_mode / family / architecture.
             if prompt_mode == "no_negative":
                 no_negative = True
             elif prompt_mode == "standard":
                 no_negative = False
             else:
                 no_negative = is_no_negative_family(family) or is_no_negative_architecture(architecture)
-            # An architecture may declare force_no_negative (e.g. Flux/SD3) to force the empty
-            # negative path even when the family is not itself a no-negative one.
             if not no_negative and arch_guidance.get("force_no_negative"):
                 no_negative = True
             logger.info("Writer node %s prompt mode: %s (family=%r, arch=%r) -> no_negative=%s",
-                         unique_id, prompt_mode, family, architecture, no_negative)
-    
-            # Drop a preset that opts out of no-negative mode, then optionally override the
-            # system prompt with the preset's when the user hasn't customized it.
+                        unique_id, prompt_mode, family, architecture, no_negative)
+
+            # The negative_prompt toggle is the user's intent; architecture/family may force it off.
+            eff_negative = bool(negative_prompt) and not no_negative
+
+            # Drop a preset that opts out of no-negative mode (e.g. Photorealism).
             if preset and no_negative and preset.get("disabled_in_no_negative_mode"):
                 logger.info("Preset '%s' is disabled in no-negative mode; skipping.",
                             preset.get("name"))
                 preset = None
-    
-            # System prompt selection. A user-edited widget value overrides the built-in
-            # no-negative default; otherwise we use the dedicated no-negative prompt.
-            if no_negative:
-                effective_system = system_prompt if system_prompt != DEFAULT_SYSTEM \
-                    else DEFAULT_SYSTEM_NO_NEGATIVE
-            else:
-                effective_system = system_prompt
 
-            # Override the system prompt with the preset's only when the user left it at default.
-            # In no-negative mode we prefer the preset's dedicated no-negative variant so the
-            # negative is correctly required to be empty; otherwise its standard variant is used.
-            if preset and use_preset_system_prompt:
-                if no_negative and preset.get("system_prompt_no_negative"):
-                    effective_system = preset["system_prompt_no_negative"]
-                else:
-                    effective_system = preset.get("system_prompt") or effective_system
-                # Presets embed their own short reasoning hint; if it is absent for some reason,
-                # make sure the canonical reasoning hint is still present.
-                if REASONING_HINT and "ALWAYS finish your reply with the complete JSON object" \
-                        not in effective_system:
-                    effective_system = effective_system + REASONING_HINT
+            face_on = bool(generate_face_prompts) or bool(face_prompt)
 
-            # Append the face-prompt instruction AFTER the preset override so a preset's system
-            # prompt does not wipe the generate_face_prompts contract (face_positive/face_negative
-            # would otherwise silently fall back to the main prompts).
-            if generate_face_prompts:
-                inst = face_prompt_instruction.strip() if face_prompt_instruction else ""
-                if not inst:
-                    inst = FACE_PROMPT_INSTRUCTION_NO_NEGATIVE if no_negative \
-                        else FACE_PROMPT_INSTRUCTION
-                effective_system = effective_system + inst
+            # Assemble the system prompt from base + style + orthogonal toggles (nsfw,
+            # prompt_format, negative, face, blend, architecture). The preset is only injected
+            # when use_preset_system_prompt is on; otherwise the user's own system_prompt is the base.
+            effective_system = build_system_prompt(
+                preset if use_preset_system_prompt else None,
+                nsfw=bool(nsfw),
+                prompt_format=prompt_format,
+                negative_prompt=eff_negative,
+                face_prompt=face_on,
+                blend_styles=blend_styles,
+                architecture=arch,
+                base=None if use_preset_system_prompt else system_prompt,
+            )
+            if REASONING_HINT and "ALWAYS finish your reply with the complete JSON object" \
+                    not in effective_system:
+                effective_system = effective_system + REASONING_HINT
+            # A custom face instruction (if provided) appends to the generic one.
+            if face_on and face_prompt_instruction.strip():
+                effective_system = effective_system + "\n\n" + face_prompt_instruction.strip()
 
-            # Architecture adaptation: append architecture-specific guidance to the system prompt
-            # (only when a detected architecture is wired in). SDXL guidance is empty, so SDXL
-            # generation is unchanged when `architecture` is empty/unwired. A Flux/SD3 architecture
-            # also forces no-negative via is_no_negative_architecture above.
-            if arch_guidance:
-                addendum = arch_guidance.get("system_addendum", "")
-                if addendum:
-                    effective_system = effective_system + "\n\n" + addendum
     
             # v1-native sampling params: convert "off"/default widget values to None so the
             # default call stays on the OpenAI-compatible path (backward compatible).
@@ -408,7 +436,7 @@ class LLMPromptStudioWriter:
             cur_max_tokens = max_tokens
             while attempt < max_field_retries:
                 missing = find_missing_fields(
-                    parsed, require_face=generate_face_prompts, require_negative=not no_negative)
+                    parsed, require_face=face_on, require_negative=eff_negative)
                 if not missing:
                     break
                 attempt += 1
@@ -442,16 +470,16 @@ class LLMPromptStudioWriter:
     
             positive, negative, scene_name, face_positive, face_negative = parsed
 
-            # In no-negative mode the negative fields are forced empty regardless of what the
-            # model returned (the negative is inert at CFG~1 and must stay consistent).
-            if no_negative:
+            # When the effective mode has no negative (toggle off or distilled/Flux arch), the
+            # negative fields are forced empty regardless of what the model returned.
+            if not eff_negative:
                 negative = ""
                 face_negative = ""
 
             # Q5: when face prompts are disabled, never emit them — the model still returns
             # face_positive/face_negative (the schema asks for them), so blank them out here so
             # FaceDetailer falls back to the main prompts instead of an unwanted face prompt.
-            if not generate_face_prompts:
+            if not face_on:
                 face_positive = ""
                 face_negative = ""
 
@@ -460,7 +488,7 @@ class LLMPromptStudioWriter:
                     f"Model failed to produce a required positive prompt after "
                     f"{max_field_retries} field-retry attempt(s). Try a model with better "
                     "instruction following, or lower max_field_retries and edit manually.")
-            if not no_negative and not negative.strip():
+            if eff_negative and not negative.strip():
                 raise RuntimeError(
                     f"Model failed to produce a required negative prompt after "
                     f"{max_field_retries} field-retry attempt(s). Try a model with better "
@@ -471,23 +499,47 @@ class LLMPromptStudioWriter:
             # lowercase underscore slug, and still falls back to slugify(positive) when empty.
             scene_name = slugify(scene_name) if scene_name.strip() else slugify(positive)
 
-            # Fallback: if face prompts were not generated, the regular prompts go to their outputs
-            if generate_face_prompts and not face_positive:
+            # Fallback: if face prompts were requested but not produced, the regular prompts go to
+            # their outputs.
+            if face_on and not face_positive:
                 face_positive = positive
-            if generate_face_prompts and not no_negative and not face_negative.strip():
+            if face_on and eff_negative and not face_negative.strip():
                 face_negative = negative
 
-            # Architecture default negatives (standard mode only; inert when no_negative already
-            # forced the negative empty above). Deduped against the generated negative.
-            if arch and not no_negative and arch_guidance:
+            # Architecture default negatives (only when a negative is used). Deduped against the
+            # generated negative.
+            if arch and eff_negative and arch_guidance:
                 negative = append_negative_tags(negative, arch_guidance.get("default_negative", ""))
 
-            # Append the preset's style tags to the prompts — and, per Q4, to the face prompts
-            # too so an inpainted face matches the chosen style (negative tags only when not in
-            # no-negative mode, where the negative is intentionally empty).
+            # Append the preset's style tags to the prompts — and to the face prompts so an
+            # inpainted face matches the chosen style. Negative tags only when a negative is used.
+            def _apply_tags(src_positive, src_negative, src_face_pos, src_face_neg, style):
+                pos_tags = list(style.get("style_tags_positive") or [])
+                neg_tags = list(style.get("style_tags_negative") or [])
+                if pos_tags:
+                    j = ", ".join(pos_tags)
+                    src_positive = append_positive_tags(src_positive, j)
+                    if src_face_pos:
+                        src_face_pos = append_positive_tags(src_face_pos, j)
+                if eff_negative and neg_tags:
+                    j = ", ".join(neg_tags)
+                    src_negative = append_negative_tags(src_negative, j)
+                    if src_face_neg:
+                        src_face_neg = append_negative_tags(src_face_neg, j)
+                return src_positive, src_negative, src_face_pos, src_face_neg
+
             if preset:
-                positive, negative, face_positive, face_negative = apply_preset_style(
-                    preset, positive, negative, face_positive, face_negative, no_negative)
+                positive, negative, face_positive, face_negative = _apply_tags(
+                    positive, negative, face_positive, face_negative, preset)
+            # Blend: append tags of each referenced style (max 3, excluding the primary preset).
+            for _bid in [s.strip() for s in (blend_styles or "").split(",") if s.strip()][:3]:
+                if preset and _bid == preset.get("id"):
+                    continue
+                _bp = resolve_style_token(_bid)
+                if not _bp:
+                    continue
+                positive, negative, face_positive, face_negative = _apply_tags(
+                    positive, negative, face_positive, face_negative, _bp)
 
             result = (positive, negative, raw, scene_name, face_positive, face_negative)
             _prompt_cache[cache_key] = result

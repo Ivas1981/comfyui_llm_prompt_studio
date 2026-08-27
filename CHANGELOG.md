@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Styles/ folder system (replaces `presets_default.json` single file).** All 162 style presets
+  now live as individual JSON files under `Styles/` (one file per direction/category), with base
+  prompts in `Styles/system_prompts.json`. A preset may `extends` another for inheritance
+  (child merges `system_prompt` + `system_prompt_suffix` and unions `style_tags_*`, depth ≤ 3).
+- **Orthogonal Writer toggles.** `negative_prompt` (self-contained positive when off), `face_prompt`
+  (inject face instructions even without `generate_face_prompts`), `nsfw` (safe-for-work by
+  default), `prompt_format` (`natural` / `tags` / `weighted` / `structured` / `midjourney` /
+  `booru`), and `blend_styles` (up to 3 comma-separated style ids/labels merged additively).
+  These are applied at assembly time in `styles.build_system_prompt`, never stored per preset.
+- **User-editable styles copy (variant B).** On first run the whole `Styles/` folder is mirrored
+  into `llm_prompt_studio_styles/` in the ComfyUI output directory (never overwritten). The
+  `reload_presets` / `reset_styles` toggles re-read disk / restore the shipped set.
 - **Face Detailer: `yolo_bbox_seg` detection mode.** New `detection_method` option locates
   faces with a strong bbox model (`yolo_model_name`) at the normal `detection_threshold`,
   then uses a segmentation model (`yolo_seg_model_name`) only to derive the mask shape
@@ -103,6 +115,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Writer / Scene Builder: standardized `scene_name` (Q6).** Any non-empty model
   value (quotes, "Scene: …", mixed case, markdown) is normalized to a consistent
   lowercase slug via `slugify`; an empty value still falls back to `slugify(positive)`.
+- **Writer: `structured` prompt format hardened for small local models.** The
+  `prompt_format.structured` fragment in `Styles/system_prompts.json` now shows a
+  concrete labeled-block example and explicitly forbids reusing the example's subject
+  or wording, so compact models (e.g. qwen3-4b, CPU) emit literal `[Subject]` /
+  `[Lighting]` / `[Style]` / `[Camera]` / `[Composition]` headers without copying the
+  sample content into the answer.
+- **Writer: `blend_styles` strictly fuses every referenced style.** `styles.build_system_prompt`
+  now unions each style's `blend_note` (falling back to the first line of its
+  `system_prompt`, truncated to ≤200 chars when `blend_note` is empty or equals the name)
+  into a strict "fuse ALL … every listed style MUST be clearly and visibly present …
+  never drop any" header. `oil_painting` and `cyberpunk` presets received explicit,
+  descriptive `blend_note` values so both styles appear in the blended prompt.
 
 ### Fixed
 - **Style tag duplication (Audit7/1.2).** `apply_preset_style` now deduplicates positive

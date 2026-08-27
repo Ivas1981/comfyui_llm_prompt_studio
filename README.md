@@ -61,12 +61,16 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
   `● Server down`), polled from the pack's status route every few seconds.
  - **Smart Multi-Clip** — architecture-aware encoding of up to four prompt pairs with one CLIP
    and shared size settings; wire the Smart Loader's `detected_architecture` for non-SDXL models.
-- **Style presets** — pick from 51 built-in styles grouped into categories (Photography,
-  Art Movements, Asian Art, Traditional Media, Digital & Contemporary, Fantasy & Horror,
-  Period & Style, Basic Styles); the combobox shows `Category > Name` labels. A preset appends
-  its style tags to the prompt and can override the system prompt. The Writer / Scene Builder
-  also expose an `architecture` input that adapts token style and default negatives for
-  SD1.5 / Pony / Illustrious / Flux / SD3.
+ - **Style presets (Styles/ folder)** — pick from 162 built-in styles across ~25 domains
+   (Photography, Art Movements, Asian Art, Traditional Media, Digital & Contemporary,
+   Fantasy & Horror, Anime & Manga, Cinematic, Period & Style, Basic Styles, and more); the
+   combobox shows `Category > Name` labels. Each preset lives in its own JSON file under
+   `Styles/` and may `extends` another for inheritance. A preset appends its style tags to the
+   prompt and can override the system prompt. Orthogonal generation toggles — `negative_prompt`,
+   `face_prompt`, `nsfw`, `prompt_format` (natural / tags / weighted / structured / midjourney /
+   booru) and `blend_styles` — are applied at assembly time, not stored per preset. The Writer /
+   Scene Builder also expose an `architecture` input that adapts token style and default
+   negatives for SD1.5 / Pony / Illustrious / Flux / SD3.
 - **Advanced LM Studio v1 options** — `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
   `repeat_penalty`, `top_k`, `top_p`, `min_p` are forwarded to LM Studio's native v1 API when
   supported.
@@ -90,8 +94,13 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
 - **`load_model_profile` is now always present** (default `auto`) on Writer / Image Critic /
   Scene Builder. Workflows saved before this widget existed will load with the recommended `auto`
   profile applied until you choose `custom`.
-- **System/style prompts now live only in `presets_default.json`.** The editable `prompts.json`
-  file was deleted; base prompts are read from `presets_default.json` via `nodes/_defaults.py`.
+ - **System/style prompts now live in the `Styles/` folder.** Base prompts are in
+   `Styles/system_prompts.json` and the 162 style presets each live in their own direction file
+   under `Styles/` (a mirror of the former single `presets_default.json`). On first run the whole
+   `Styles/` folder is copied into the user-editable `llm_prompt_studio_styles/` folder inside the
+   ComfyUI output directory (never overwritten — hand edits survive a refresh). Use the node
+   `reload_presets` / `reset_styles` toggles to re-read or restore the shipped styles. The legacy
+   `presets_default.json` is kept only as a fallback source.
 
 ---
 
@@ -139,7 +148,8 @@ comfyui_llm_prompt_studio/
 ├── __init__.py               # logging setup + node registration
 ├── constants.py              # shared placeholder constants
 ├── debug.py                  # DEBUG_LEVEL / masked debug logging
-├── presets.py                # preset loading / migration
+├── presets.py                # legacy preset loading / fallback
+├── styles.py                 # Styles/ folder loader + system-prompt assembler
 ├── lm_http.py                # HTTP client, model cache, SSRF guard
 ├── combos.py                 # combo lists (models / checkpoints / LoRA / VAE)
 ├── parsing.py                # JSON extraction / salvage / slugify
@@ -148,11 +158,12 @@ comfyui_llm_prompt_studio/
 ├── model_meta.py             # generation metadata, safetensors, family detection
 ├── server_routes.py          # /llm_prompt_studio/* routes used by the JS bridge
 ├── vram.py                   # LM Studio model release helpers
-├── presets_default.json      # single source of truth: base `defaults` + style `presets`
+├── presets_default.json      # legacy fallback source (superseded by Styles/)
+├── Styles/                   # style system: system_prompts.json + 25 direction files (162 presets)
 ├── nodes/
 │   ├── __init__.py           # node mappings
 │   ├── _contracts.py         # sampler/scheduler combo contract checks
-│   ├── _defaults.py          # loads base `defaults` from presets_default.json
+│   ├── _defaults.py          # loads base prompts from Styles/system_prompts.json
 │   ├── _distilled_presets.py # distilled-family preset tables
 │   ├── _imgutils.py          # image helper utilities
 │   ├── _ksample.py           # shared KSampler execution helper
@@ -195,10 +206,12 @@ All nodes live under the **`LLM Prompt Studio`** category.
 Generates an SDXL prompt from an idea.
   - **Inputs:** `server_url`, `api_key`, `model`, `load_model_profile`, `context_length`, `gpu_offload`,
     `system_prompt`, `idea`, `revision_notes`, `temperature`, `max_tokens`, `seed`,
-    `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
-    `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
-    `use_preset_system_prompt`, `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`, `server_status`, `release_vram_after_run`, `cv_scene_hint`.
+     `reuse_last_prompt`, `generate_face_prompts`, `max_field_retries`,
+     `face_prompt_instruction`, `prompt_mode`, `family`, `architecture`, `style_preset`,
+     `use_preset_system_prompt`, `nsfw`, `prompt_format`, `negative_prompt`, `face_prompt`,
+     `blend_styles`, `reload_presets`, `reset_styles`,
+     `reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`, `repeat_penalty`,
+     `top_k`, `top_p`, `min_p`, `server_status`, `release_vram_after_run`, `cv_scene_hint`.
   - **Optional `image` input:** connect an image and enable `cv_scene_hint` (default on) to feed a
     cheap OpenCV pre-analysis (scene type, lighting, face count — no extra vision call) into the brief,
     so the generated prompt fits the content (anime/illustration vs photo, natural skin for portraits).
@@ -264,15 +277,28 @@ Generates an SDXL prompt from an idea.
   generation / auto-revision loop instead of aborting the node; each failure is logged as a
   warning so the run keeps going when the LM Studio server briefly hiccups.
 - Button **🔄 Refresh models** re-reads the model list from the server.
-- **Style presets** (`style_preset` + `use_preset_system_prompt`): pick a built-in style to append its style tags to the
-  prompt. `use_preset_system_prompt` (default on) additionally overrides the system prompt with the
-  preset's; turn it off to keep your own system prompt while still applying the preset's style tags.
-  The selected style now also shapes `face_positive` / `face_negative`, so a FaceDetailer-refined
-  face matches the chosen style. Photographic camera/lens tags (`camera/lens`) are no longer forced
-  onto non-photographic styles (anime, illustration, painting): the shared "camera/lens" layer was
-  removed from every preset's engineering rules; photographic presets still describe the camera in
-  their own text. Presets that opt out of no-negative mode are skipped automatically in that mode.
-  Use "Reload presets" / "Reset to defaults" in the node menu to manage them.
+ - **Style presets (`Styles/` system)** (`style_preset` + `use_preset_system_prompt`): pick a
+   built-in style (from the `Styles/` folder, 162 presets) to append its style tags to the prompt.
+   `use_preset_system_prompt` (default on) additionally overrides the system prompt with the
+   preset's; turn it off to keep your own system prompt while still applying the preset's style tags.
+   The selected style also shapes `face_positive` / `face_negative`, so a FaceDetailer-refined face
+   matches the chosen style. Presets that opt out of no-negative mode (`disabled_in_no_negative_mode`)
+   are skipped automatically in that mode, and a preset's `system_prompt_no_negative` variant is used
+   when the negative prompt is off.
+   - **Orthogonal generation toggles** (applied at assembly time, never stored per preset):
+     - **`negative_prompt`** (default on) — on emits a Negative section; off crafts a self-contained
+       positive (every constraint phrased as a positive, no separate negative).
+     - **`face_prompt`** (default off) — injects the face-instruction block even when
+       `generate_face_prompts` is off.
+     - **`nsfw`** (default off) — safe-for-work by default; on permits explicit content only when the
+       idea explicitly requests it.
+     - **`prompt_format`** — `natural` (default) / `tags` / `weighted` / `structured` / `midjourney` /
+       `booru`: how the model phrases the positive prompt.
+     - **`blend_styles`** — comma-separated style ids/labels (max 3) whose tags and blend notes are
+        merged additively onto the primary preset. Every listed style must appear visibly in the
+        generated prompt (strict fuse), so all referenced looks are present at once.
+     - **`reload_presets`** / **`reset_styles`** — re-read the `Styles/` folder from disk / delete the
+       user-editable `llm_prompt_studio_styles/` copy and fall back to the shipped `Styles/`.
 - **Advanced options** (`reasoning`, `flash_attention`, `offload_kv_cache_to_gpu`,
   `repeat_penalty`, `top_k`, `top_p`, `min_p`): forwarded to LM Studio's native v1 API when the
   server supports them. Leaving them at defaults keeps the old
@@ -597,35 +623,31 @@ input when chained after the Hires Fix node.
 
 ---
 
-## Prompt templates and style presets (`presets_default.json`)
+## Prompt templates and style presets (`Styles/`)
 
-All default system prompts and all style presets live in a **single file**,
-**`presets_default.json`** at the package root — edit them without touching Python. It has two
-top-level sections:
+All default system prompts and all style presets live in the **`Styles/`** folder at the package
+root — edit them without touching Python.
 
-- **`defaults`** — the base system prompts used when no style preset is selected. Keys:
+- **`Styles/system_prompts.json`** — the base system prompts and the orthogonal assembly fragments
+  (nsfw policy, prompt_format, negative handling, face instruction, architecture addenda, reasoning
+  hint). Keys: `writer_system`, `face_instruction`, `critic_system`, `describe`, `composer`,
+  `reasoning_hint`, `nsfw_policy` (`on`/`off`), `prompt_format` (`natural`/`tags`/`weighted`/
+  `structured`/`midjourney`/`booru`), `negative` (`on`/`off`), `face_prompt` (`on`/`off`),
+  `architecture_guidance` (per-arch `system_addendum` / `default_negative` / `force_no_negative`).
 
-| Key | Used by |
-|-----|---------|
-| `reasoning_hint` | appended to writer/critic/composer (clear it to disable) |
-| `writer_system` | Prompt Writer |
-| `face_instruction` | Prompt Writer (face prompts) |
-| `critic_system` | Image Critic |
-| `describe` | Scene Builder (stage 1) |
-| `composer` | Scene Builder (stage 2) |
-| `writer_system_no_negative` | Prompt Writer (distilled/no-negative mode; falls back to `writer_system`) |
-| `composer_no_negative` | Scene Builder (distilled/no-negative mode; falls back to `composer`) |
-| `face_instruction_no_negative` | Prompt Writer face prompts (no-negative mode; falls back to `face_instruction`) |
+- **`Styles/<direction>.json`** — 25 direction files, each containing a `presets` list. Together they
+  provide **162 style presets** (see [Style presets](#style-presets)). A preset may `extends`
+  another preset id (inheritance: child merges `system_prompt` + `system_prompt_suffix` and unions
+  `style_tags_*`, up to depth 3). Each preset supports: `id`, `name`, `category`, `description`,
+  `system_prompt`, `system_prompt_no_negative` (used when the negative prompt is off or the arch
+  forces no-negative), `system_prompt_suffix`, `style_tags_positive`, `style_tags_negative`,
+  `blend_note`, `disabled_in_no_negative_mode`.
 
-- **`presets`** — the 51 style presets listed in the Writer's `style_preset` combobox (see
-  [Style presets](#style-presets)). When the combobox is left at "— none —" the Writer uses the
-  `defaults.writer_system` prompt; when a preset is chosen, that preset's `system_prompt` (or
-  `system_prompt_no_negative` in no-negative mode) overrides it and its `style_tags` are appended.
-
-Both sections are copied together into a user-editable **`llm_prompt_studio_presets.json`** in the
-ComfyUI output directory on first run (use "Reset to defaults" to restore). Changes take effect
-after restarting ComfyUI (templates are loaded at startup). Every node also exposes its prompt as
-an editable widget, so you can override per-node.
+On first run the whole `Styles/` folder is copied into a user-editable
+**`llm_prompt_studio_styles/`** folder inside the ComfyUI output directory (never overwritten — hand
+edits survive a refresh). Use the node `reload_presets` / `reset_styles` toggles to re-read disk or
+restore the shipped set. The legacy `presets_default.json` is kept only as a fallback source.
+Every node also exposes its prompt as an editable widget, so you can override per-node.
 
 ---
 
@@ -643,11 +665,11 @@ back with **Library Loader**.
 
 ## Style presets
 
-The Writer's `style_preset` combobox lists 51 built-in styles grouped by category
+The Writer's `style_preset` combobox lists **162 built-in styles** across ~25 domains
 (Photography, Art Movements, Asian Art, Traditional Media, Digital & Contemporary,
-Fantasy & Horror, Period & Style, Basic Styles); each entry is shown as `Category > Name`.
-The original 14 styles keep their names, so workflows saved with a bare preset name still
-resolve. Selecting one:
+Fantasy & Horror, Anime & Manga, Cinematic, Period & Style, Basic Styles, and more); each
+entry is shown as `Category > Name`. Presets are loaded from the `Styles/` folder (see
+[Prompt templates and style presets](#prompt-templates-and-style-presets-styles)). Selecting one:
 
 - appends the preset's `style_tags_positive` / `style_tags_negative` to the generated
   `positive` / `negative` (and to `face_positive` / `face_negative`, so a refined face matches
@@ -666,10 +688,10 @@ visual descriptors over abstract booster adjectives, keep negatives short and ta
 the most important trait as `(concept:1.1)`–`(concept:1.3)`. NSFW is fully authorized — intimate content must be
 described with anatomically correct, precise terms and is never censored.
 
-Presets are copied from `presets_default.json` to an editable `llm_prompt_studio_presets.json`
-in the ComfyUI output directory on first run. Use the node menu **"Reload presets"** to refresh
-the combo after editing that file, and **"Reset to defaults"** to restore the shipped set
-("Copy presets path" puts the file location on your clipboard). A preset with
+Presets are copied from the `Styles/` folder into an editable `llm_prompt_studio_styles/`
+folder in the ComfyUI output directory on first run (never overwritten — hand edits survive a
+refresh). Use the node **`reload_presets`** toggle to re-read the folder after editing, and
+**`reset_styles`** to delete the user copy and fall back to the shipped `Styles/`. A preset with
 `disabled_in_no_negative_mode` set is automatically skipped in no-negative mode.
 
 ---

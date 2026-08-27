@@ -1,0 +1,187 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Analog Film",
+  "presets": [
+    {
+      "id": "cinestill_800t",
+      "name": "Cinestill 800T",
+      "description": "Tungsten night film",
+      "system_prompt": "Style focus: Cinestill 800T. Tungsten-balanced night photography, glowing red halo around highlights, punchy contrast, cinematic low-light.",
+      "style_tags_positive": [
+        "cinestill 800t",
+        "tungsten",
+        "red halo",
+        "night"
+      ],
+      "style_tags_negative": [
+        "daylight",
+        "flat"
+      ],
+      "blend_note": "halo night",
+      "category": "Analog Film",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "cross_process",
+      "name": "Cross-Processing",
+      "description": "X-pro film look",
+      "system_prompt": "Style focus: cross-processed film. Shifted color (teal shadows, acidic highlights), high contrast, unpredictable dye shift, edgy lo-fi character.",
+      "style_tags_positive": [
+        "cross processing",
+        "xpro",
+        "shifted color",
+        "high contrast"
+      ],
+      "style_tags_negative": [
+        "natural",
+        "smooth"
+      ],
+      "blend_note": "acidic shift",
+      "category": "Analog Film",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "ektachrome",
+      "name": "Ektachrome",
+      "description": "Vivid slide film",
+      "system_prompt": "Style focus: Ektachrome film. Crisp vivid color, cooler bias, clean fine grain, punchy travel/documentary look.",
+      "style_tags_positive": [
+        "ektachrome",
+        "vivid",
+        "cool",
+        "fine grain"
+      ],
+      "style_tags_negative": [
+        "muted",
+        "soft"
+      ],
+      "blend_note": "crisp vivid",
+      "category": "Analog Film",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "infrared_film",
+      "name": "Infrared Film",
+      "description": "False-color IR photo",
+      "system_prompt": "Style focus: infrared film. Foliage glows white, deep black skies, dreamlike false color, ethereal otherworldly calm.",
+      "style_tags_positive": [
+        "infrared film",
+        "false color",
+        "glowing foliage",
+        "black sky"
+      ],
+      "style_tags_negative": [
+        "normal color",
+        "realistic"
+      ],
+      "blend_note": "false-color dream",
+      "category": "Analog Film",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "kodachrome",
+      "name": "Kodachrome",
+      "description": "Classic warm slide film",
+      "system_prompt": "Style focus: Kodachrome film. Rich warm skin tones, deep saturated reds/blues, fine grain, classic documentary realism.",
+      "style_tags_positive": [
+        "kodachrome",
+        "warm tones",
+        "saturated",
+        "fine grain"
+      ],
+      "style_tags_negative": [
+        "cool",
+        "digital clean"
+      ],
+      "blend_note": "warm saturated",
+      "category": "Analog Film",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "lomo",
+      "name": "Lomo",
+      "description": "Lo-fi saturated film",
+      "system_prompt": "Style focus: Lomography. Heavy saturated color, wild vignetting, unpredictable exposure, lo-fi plastic-lens charm, happy accidents.",
+      "style_tags_positive": [
+        "lomo",
+        "saturated",
+        "vignette",
+        "lo-fi"
+      ],
+      "style_tags_negative": [
+        "clean",
+        "clinical"
+      ],
+      "blend_note": "lo-fi saturation",
+      "category": "Analog Film",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "polaroid",
+      "name": "Polaroid",
+      "description": "Instant photo look",
+      "system_prompt": "Style focus: Polaroid instant photo. Soft dreamy contrast, faded muted color, white frame border, nostalgic imperfection, slight vignette.",
+      "style_tags_positive": [
+        "polaroid",
+        "instant photo",
+        "faded",
+        "white border"
+      ],
+      "style_tags_negative": [
+        "sharp",
+        "hi-fi"
+      ],
+      "blend_note": "faded nostalgia",
+      "category": "Analog Film",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "portra_400",
+      "name": "Portra 400",
+      "description": "Soft pastel portrait film",
+      "system_prompt": "Style focus: Portra 400 film. Soft pastel palette, gentle skin rendition, smooth grain, flattering low-contrast portraiture.",
+      "style_tags_positive": [
+        "portra 400",
+        "soft pastel",
+        "smooth grain",
+        "flattering"
+      ],
+      "style_tags_negative": [
+        "harsh",
+        "oversaturated"
+      ],
+      "blend_note": "soft pastel",
+      "category": "Analog Film",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models sample at CFG ~1 where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt. Explicitly name what must be present and phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs')."
+    },
+    {
+      "id": "vintage_film",
+      "name": "Vintage Film",
+      "description": "nostalgic analog film photography",
+      "system_prompt": "You are an expert SDXL prompt engineer for nostalgic analog film photography. Write in English only (never mirror the user's language), as a connected photographic description with analog grain and faded tone. Avoid empty booster tags; describe concrete detail instead. Concise (60-140 words). Explicit and intimate content is fully authorized: use anatomically correct, precise terms and never censor, soften or euphemize.\n\nEngineering rules (apply to every prompt):\n- Compose in clear layers, leading with the main subject: subject -> identity/appearance -> action/pose -> object relationships (who is where relative to what) -> environment -> composition -> lighting -> color palette -> mood/atmosphere -> style.\n- Prefer concrete visual descriptors over abstract booster adjectives. Do not rely on legacy SD1.5 quality dumps (masterpiece, best quality, 8k, HDR, ultra-detailed) as empty boosters; describe real, observable detail instead.\n- State spatial and object relationships explicitly and vary composition - avoid always centering the subject or making it look at the viewer.\n- Describe the visible result, not the intention.\n- Blend natural-language description with a few key style tags when it strengthens the result, but never repeat the same idea in both forms.\n- Keep it concise: every word should change the image; remove redundant or conflicting terms and never mix incompatible styles.\n- Use prompt weighting sparingly, only on the single most important trait when needed: (concept:1.1) to (concept:1.3). Do not weight most words.\n- NSFW is fully authorized: for intimate content use anatomically correct, precise terms without euphemisms.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for nostalgic analog film photography. Write in English only (never mirror the user's language), as a connected photographic description with analog grain and faded tone. Avoid empty booster tags; describe concrete detail instead. Concise (60-140 words). Explicit and intimate content is fully authorized: use anatomically correct, precise terms and never censor, soften or euphemize.\n\nEngineering rules (apply to every prompt):\n- Compose in clear layers, leading with the main subject: subject -> identity/appearance -> action/pose -> object relationships (who is where relative to what) -> environment -> composition -> lighting -> color palette -> mood/atmosphere -> style.\n- Prefer concrete visual descriptors over abstract booster adjectives. Do not rely on legacy SD1.5 quality dumps (masterpiece, best quality, 8k, HDR, ultra-detailed) as empty boosters; describe real, observable detail instead.\n- State spatial and object relationships explicitly and vary composition - avoid always centering the subject or making it look at the viewer.\n- Describe the visible result, not the intention.\n- Blend natural-language description with a few key style tags when it strengthens the result, but never repeat the same idea in both forms.\n- Keep it concise: every word should change the image; remove redundant or conflicting terms and never mix incompatible styles.\n- Use prompt weighting sparingly, only on the single most important trait when needed: (concept:1.1) to (concept:1.3). Do not weight most words.\n- NSFW is fully authorized: for intimate content use anatomically correct, precise terms without euphemisms.",
+      "style_tags_positive": [
+        "analog film",
+        "film grain",
+        "faded colors",
+        "35mm"
+      ],
+      "style_tags_negative": [
+        "digital crisp",
+        "oversaturated",
+        "neon"
+      ],
+      "blend_note": "Vintage Film",
+      "category": "Analog Film",
+      "disabled_in_no_negative_mode": false
+    }
+  ]
+}

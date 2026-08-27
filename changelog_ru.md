@@ -9,6 +9,18 @@
 ## [Unreleased]
 
 ### Добавлено
+- **Система папки `Styles/` (заменяет единый `presets_default.json`).** Все 162 пресета стилей
+  теперь хранятся отдельными JSON-файлами в `Styles/` (по одному файлу на направление), базовые
+  промпты — в `Styles/system_prompts.json`. Пресет может `extends` другой (наследование: потомок
+  объединяет `system_prompt` + `system_prompt_suffix` и объединяет `style_tags_*`, глубина ≤ 3).
+- **Ортогональные переключатели Writer.** `negative_prompt` (самодостаточный позитив при выключении),
+  `face_prompt` (вставить инструкцию по лицу даже без `generate_face_prompts`), `nsfw` (по умолчанию
+  безопасный контент), `prompt_format` (`natural` / `tags` / `weighted` / `structured` / `midjourney`
+  / `booru`) и `blend_styles` (до 3 id/меток стилей через запятую, добавляются аддитивно). Они
+  применяются при сборке в `styles.build_system_prompt`, никогда не хранятся внутри пресета.
+- **Редактируемая копия стилей (вариант B).** При первом запуске вся папка `Styles/` копируется в
+  `llm_prompt_studio_styles/` в каталоге вывода ComfyUI (не перезаписывается). Переключатели
+  `reload_presets` / `reset_styles` перечитывают с диска / восстанавливают поставляемый набор.
 - **Face Detailer: режим детекции `yolo_bbox_seg`.** Новый вариант `detection_method`:
   лицо ищет уверенная bbox-модель (`yolo_model_name`) с обычным `detection_threshold`, а
   сег-модель (`yolo_seg_model_name`) используется только для формы маски внутри этого
@@ -111,6 +123,18 @@
   имя сцены от модели (кавычки, «Scene: …», смешанный регистр, markdown) теперь
   приводится к единообразному lowercase slug через `slugify`; пустое значение
   по-прежнему заменяется на `slugify(positive)`.
+- **Writer: формат `structured` усилен для маленьких локальных моделей.**
+  Фрагмент `prompt_format.structured` в `Styles/system_prompts.json` теперь показывает
+  конкретный пример блочной разметки и явно запрещает переиспользовать содержимое
+  примера, поэтому компактные модели (напр. qwen3-4b на CPU) выдают буквальные
+  заголовки `[Subject]` / `[Lighting]` / `[Style]` / `[Camera]` / `[Composition]`,
+  не копируя пример в ответ.
+- **Writer: `blend_styles` теперь строго сплавляет все указанные стили.**
+  `styles.build_system_prompt` объединяет `blend_note` каждого стиля (при пустом или
+  совпадающем с именем — берётся первая строка `system_prompt`, усечённая до ≤200
+  символов) в строгий заголовок «fuse ALL … every listed style MUST be clearly and
+  visibly present … never drop any». Пресеты `oil_painting` и `cyberpunk` получили
+  содержательные `blend_note`, чтобы оба стиля появлялись в сплавленном промпте.
 
 ### Исправлено
 - **Дублирование стилевых тегов (Audit7/1.2).** `apply_preset_style` теперь
