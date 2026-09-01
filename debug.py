@@ -165,6 +165,32 @@ def log_error(node_id: Any, exception: Exception, tb: str):
     log("ERROR", "NODE_ERROR", str(node_id), {"error": str(exception), "traceback": tb})
 
 
+def log_type_mismatch(node_id: Any, input_name: str, source_type: Any, dest_type: Any,
+                      note: str = ""):
+    """Log a sampler/scheduler (or other combo) type-contract violation.
+
+    ComfyUI validates a prompt link by comparing the source node's output TYPE tuple
+    against the destination node's input TYPE tuple for exact equality. Two different
+    tuple objects (even with equal contents) make the whole prompt fail to validate
+    with a ``Return type mismatch`` error before any node runs. This event surfaces
+    such mismatches early so they are not mistaken for a generation/runtime failure.
+    """
+    def _repr(t: Any) -> str:
+        try:
+            if isinstance(t, (list, tuple)):
+                return "(%d) %s" % (len(t), ", ".join(map(str, t))[:120])
+            return str(t)
+        except Exception:
+            return repr(t)
+
+    log("ERROR", "TYPE_MISMATCH", str(node_id), {
+        "input": input_name,
+        "source_type": _repr(source_type),
+        "dest_type": _repr(dest_type),
+        "note": note,
+    })
+
+
 def log_http_request(method: str, url: str, headers: Optional[Dict[str, Any]], body: Any):
     log("DEBUG", "HTTP_REQUEST", "-",
         {"method": method, "url": url, "headers": _mask_headers(headers),

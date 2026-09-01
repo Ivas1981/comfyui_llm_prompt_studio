@@ -1,0 +1,146 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Poster & Graphic",
+  "presets": [
+    {
+      "id": "gig_poster",
+      "name": "Gig Poster",
+      "description": "Screenprinted music poster",
+      "system_prompt": "Style focus: gig poster. Hand-pulled screenprint texture, limited spot colors, bold illustrative focal image, slight off-register charm, music-scene attitude.",
+      "style_tags_positive": [
+        "gig poster",
+        "screenprint",
+        "spot color",
+        "bold illustration"
+      ],
+      "style_tags_negative": [
+        "photoreal"
+      ],
+      "blend_note": "screenprint texture",
+      "category": "Poster & Graphic",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: gig poster. Hand-pulled screenprint texture, limited spot colors, bold illustrative focal image, slight off-register charm, music-scene attitude."
+    },
+    {
+      "id": "psychedelic_poster",
+      "name": "Psychedelic Poster",
+      "description": "60s liquid poster art",
+      "system_prompt": "Style focus: psychedelic poster. Swirling organic letterforms, melting gradients, vivid clashing colors, Art-Nouveau-influenced line, hallucinatory energy.",
+      "style_tags_positive": [
+        "psychedelic",
+        "swirling",
+        "vivid gradient",
+        "organic line"
+      ],
+      "style_tags_negative": [
+        "minimal",
+        "flat"
+      ],
+      "blend_note": "swirling vivid",
+      "category": "Poster & Graphic",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: psychedelic poster. Swirling organic letterforms, melting gradients, vivid clashing colors, Art-Nouveau-influenced line, hallucinatory energy."
+    },
+    {
+      "id": "soviet_poster",
+      "name": "Soviet Poster",
+      "description": "Agitprop constructivist poster",
+      "system_prompt": "Style focus: Soviet agitprop poster. Heroic stylized figure, raised dynamic pose, bold red/black palette, diagonal energy, stark propaganda typography.",
+      "style_tags_positive": [
+        "soviet poster",
+        "agitprop",
+        "heroic",
+        "red black"
+      ],
+      "style_tags_negative": [
+        "soft",
+        "pastel"
+      ],
+      "blend_note": "heroic red/black",
+      "category": "Poster & Graphic",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Soviet agitprop poster. Heroic stylized figure, raised dynamic pose, bold red/black palette, diagonal energy, stark propaganda typography."
+    },
+    {
+      "id": "sticker_art",
+      "name": "Sticker Art",
+      "description": "bold die-cut sticker illustration",
+      "system_prompt": "You are an expert SDXL prompt engineer for bold die-cut sticker illustration. Write as connected art-direction prose with thick outline and flat color.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for bold die-cut sticker illustration. Write as connected art-direction prose with thick outline and flat color.",
+      "style_tags_positive": [
+        "sticker art",
+        "thick outline",
+        "flat color",
+        "die-cut"
+      ],
+      "style_tags_negative": [
+        "photorealistic",
+        "subtle",
+        "muted"
+      ],
+      "blend_note": "Sticker Art",
+      "category": "Poster & Graphic",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "swiss_poster",
+      "name": "Swiss Style Poster",
+      "description": "International-typographic poster",
+      "system_prompt": "Style focus: Swiss/International poster. Grid-based layout, Helvetica-style sans, asymmetric balance, generous whitespace, single bold accent color, objective clarity.",
+      "style_tags_positive": [
+        "swiss style",
+        "grid layout",
+        "sans serif",
+        "minimal"
+      ],
+      "style_tags_negative": [
+        "ornate",
+        "messy"
+      ],
+      "blend_note": "grid, minimal type",
+      "category": "Poster & Graphic",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Swiss/International poster. Grid-based layout, Helvetica-style sans, asymmetric balance, generous whitespace, single bold accent color, objective clarity."
+    },
+    {
+      "id": "travel_poster",
+      "name": "Travel Poster",
+      "description": "Mid-century travel advert",
+      "system_prompt": "Style focus: mid-century travel poster. Layered flat scenery, sunburst or atomic motifs, warm limited palette, optimistic stylization, clean vector shapes.",
+      "style_tags_positive": [
+        "travel poster",
+        "mid century",
+        "flat scenery",
+        "warm palette"
+      ],
+      "style_tags_negative": [
+        "photoreal",
+        "gritty"
+      ],
+      "blend_note": "flat scenic",
+      "category": "Poster & Graphic",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: mid-century travel poster. Layered flat scenery, sunburst or atomic motifs, warm limited palette, optimistic stylization, clean vector shapes."
+    },
+    {
+      "id": "wpa_poster",
+      "name": "WPA Poster",
+      "description": "Depression-era public poster",
+      "system_prompt": "Style focus: WPA poster. Silkscreen flat color, strong simple shapes, optimistic public-works iconography, limited earthy palette, bold readable composition.",
+      "style_tags_positive": [
+        "wpa poster",
+        "silkscreen",
+        "flat color",
+        "bold shapes"
+      ],
+      "style_tags_negative": [
+        "photoreal",
+        "busy"
+      ],
+      "blend_note": "flat silkscreen",
+      "category": "Poster & Graphic",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: WPA poster. Silkscreen flat color, strong simple shapes, optimistic public-works iconography, limited earthy palette, bold readable composition."
+    }
+  ]
+}

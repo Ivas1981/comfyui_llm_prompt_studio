@@ -1,0 +1,171 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Modern Art",
+  "presets": [
+    {
+      "id": "abstract_expressionism",
+      "name": "Abstract Expressionism",
+      "description": "Action-painting abstraction",
+      "system_prompt": "Style focus: Abstract Expressionism. Spontaneous gestural brushstrokes, drips, large all-over composition, emotional color, visible physical paint energy.",
+      "style_tags_positive": [
+        "abstract expressionism",
+        "gestural",
+        "drip",
+        "expressive color"
+      ],
+      "style_tags_negative": [
+        "figurative",
+        "clean"
+      ],
+      "blend_note": "gestural abstraction",
+      "category": "Modern Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Abstract Expressionism. Spontaneous gestural brushstrokes, drips, large all-over composition, emotional color, visible physical paint energy."
+    },
+    {
+      "id": "art_brut_naive",
+      "name": "Art Brut / Naive",
+      "description": "raw outsider / naive art",
+      "system_prompt": "You are an expert SDXL prompt engineer for raw outsider / naive art. Write as connected art-direction prose with childlike, unfiltered mark-making.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for raw outsider / naive art. Write as connected art-direction prose with childlike, unfiltered mark-making.",
+      "style_tags_positive": [
+        "art brut",
+        "naive art",
+        "childlike",
+        "raw"
+      ],
+      "style_tags_negative": [
+        "polished",
+        "photorealistic",
+        "realistic"
+      ],
+      "blend_note": "Art Brut / Naive",
+      "category": "Modern Art",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "color_field",
+      "name": "Color Field",
+      "description": "Rothko-style field painting",
+      "system_prompt": "Style focus: Color Field painting. Large soft-edged areas of luminous color, minimal form, meditative atmosphere, subtle tonal bleed at edges.",
+      "style_tags_positive": [
+        "color field",
+        "soft edges",
+        "luminous color"
+      ],
+      "style_tags_negative": [
+        "detail",
+        "linework"
+      ],
+      "blend_note": "soft color fields",
+      "category": "Modern Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Color Field painting. Large soft-edged areas of luminous color, minimal form, meditative atmosphere, subtle tonal bleed at edges."
+    },
+    {
+      "id": "constructivism",
+      "name": "Constructivism",
+      "description": "Soviet avant-garde design art",
+      "system_prompt": "Style focus: Russian Constructivism. Bold diagonal compositions, photomontage, red/black palette, stencil typography, industrial and revolutionary iconography.",
+      "style_tags_positive": [
+        "constructivism",
+        "diagonal",
+        "photomontage",
+        "red black"
+      ],
+      "style_tags_negative": [
+        "soft",
+        "pastel"
+      ],
+      "blend_note": "bold diagonal, red/black",
+      "category": "Modern Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Russian Constructivism. Bold diagonal compositions, photomontage, red/black palette, stencil typography, industrial and revolutionary iconography."
+    },
+    {
+      "id": "de_stijl",
+      "name": "De Stijl",
+      "description": "Mondrian neo-plasticism",
+      "system_prompt": "Style focus: De Stijl / Neo-plasticism. Strict primary-color blocks separated by thick black grid lines on white, pure horizontal/vertical geometry, total abstraction.",
+      "style_tags_positive": [
+        "de stijl",
+        "mondrian",
+        "primary colors",
+        "black grid"
+      ],
+      "style_tags_negative": [
+        "curves",
+        "realism"
+      ],
+      "blend_note": "grid, primary colors",
+      "category": "Modern Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: De Stijl / Neo-plasticism. Strict primary-color blocks separated by thick black grid lines on white, pure horizontal/vertical geometry, total abstraction."
+    },
+    {
+      "id": "minimalist",
+      "name": "Minimalist / Vector",
+      "description": "Minimalist vector art style",
+      "system_prompt": "You are an expert SDXL prompt engineer for minimalist vector art. Use concise comma-separated tags SDXL vector models expect: subject first, then flat vector, simple geometric shapes, limited palette, clean negative space, minimalist composition.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for minimalist vector art. Use concise comma-separated tags SDXL vector models expect: subject first, then flat vector, simple geometric shapes, limited palette, clean negative space, minimalist composition.",
+      "style_tags_positive": [
+        "minimalist",
+        "flat vector",
+        "simple shapes",
+        "limited palette",
+        "clean"
+      ],
+      "style_tags_negative": [
+        "highly detailed",
+        "photorealistic",
+        "busy",
+        "3d render"
+      ],
+      "blend_note": "Minimalist / Vector",
+      "category": "Modern Art",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "op_art",
+      "name": "Op Art",
+      "description": "Optical illusion geometric art",
+      "system_prompt": "Style focus: Op Art. Precise black-and-white (or two-color) geometric patterns that create moire, vibration and illusion of movement; mathematically regular.",
+      "style_tags_positive": [
+        "op art",
+        "geometric pattern",
+        "moire",
+        "optical illusion"
+      ],
+      "style_tags_negative": [
+        "organic",
+        "messy",
+        "painterly"
+      ],
+      "blend_note": "geometric optical",
+      "category": "Modern Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Op Art. Precise black-and-white (or two-color) geometric patterns that create moire, vibration and illusion of movement; mathematically regular."
+    },
+    {
+      "id": "pop_art",
+      "name": "Pop Art",
+      "description": "bold Pop Art screen-print style",
+      "system_prompt": "You are an expert SDXL prompt engineer for bold Pop Art screen-print style. Write as connected art-direction prose with flat color and bold outlines.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for bold Pop Art screen-print style. Write as connected art-direction prose with flat color and bold outlines.",
+      "style_tags_positive": [
+        "pop art",
+        "bold outlines",
+        "flat color",
+        "warhol style"
+      ],
+      "style_tags_negative": [
+        "photorealistic",
+        "subtle",
+        "muted"
+      ],
+      "blend_note": "Pop Art",
+      "category": "Modern Art",
+      "disabled_in_no_negative_mode": false
+    }
+  ]
+}

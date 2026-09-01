@@ -6,6 +6,707 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+ - **Styles/ folder system (replaces `presets_default.json` single file).** All 210 style presets
+  now live as individual JSON files under `Styles/` (one file per direction/category), with base
+  prompts in `Styles/system_prompts.json`. A preset may `extends` another for inheritance
+  (child merges `system_prompt` + `system_prompt_suffix` and unions `style_tags_*`, depth ≤ 3).
+- **Orthogonal Writer toggles.** `generate_face_prompts` (emit `face_positive` / `face_negative`
+  prompts for FaceDetailer and inject the face-instruction block into the system prompt), `nsfw`
+  (safe-for-work by default), `prompt_format` (`natural` / `tags` / `weighted` / `structured` /
+  `midjourney` / `booru`), and `blend_styles` (up to 3 comma-separated style ids/labels merged
+  additively). These are applied at assembly time in `styles.build_system_prompt`, never stored
+  per preset. `prompt_mode` (`auto` / `standard` / `no_negative`) is the sole control of the
+  negative prompt.
+
+### Removed
+- **Redundant `negative_prompt` Writer toggle.** The negative prompt is now driven solely by
+  `prompt_mode` (`auto` = no-negative for distilled family / Flux / SD3, `standard` = always,
+  `no_negative` = never). The old `negative_prompt` BOOLEAN was an AND-override with no extra
+  behavior and has been deleted.
+- **Redundant `face_prompt` Writer toggle.** `face_on` combined `generate_face_prompts` OR
+  `face_prompt` with no separate code path, so the second toggle did exactly what `generate_face_prompts`
+  already did. The `face_prompt` BOOLEAN is deleted; `generate_face_prompts` is now the single face
+  controller (emits `face_positive` / `face_negative` and injects the face-instruction block).
+
+- **User-editable styles copy (variant B).** On first run the whole `Styles/` folder is mirrored
+  into `llm_prompt_studio_styles/` in the ComfyUI output directory (never overwritten). The
+  **Reload Styles** / **Reset Styles** buttons re-read disk / restore the shipped set.
+- **Reload Styles / Reset Styles buttons (replaces the old toggles).** The Writer node's two
+  `BOOLEAN` toggles (`reload_presets`, `reset_styles`) were removed; their behavior now lives in
+  the node buttons **Reload Styles** (re-reads `Styles/` from disk, refreshes the `style_preset`
+  combo) and **Reset Styles** (deletes the user copy, falls back to shipped `Styles/`). These
+  buttons are now wired to the `Styles/` system (previously they mistakenly targeted the legacy
+  `presets_default.json`), so they actually refresh the style dropdown.
+- **Cinema styles expanded.** `Styles/cinema.json` grew from 3 to 34 presets: 19 director styles
+  (Kubrick, Nolan, Tarantino, Fincher, Scott, Villeneuve, del Toro, Burton, Wong Kar-wai, Kurosawa,
+  Tarkovsky, Coppola, Malick, Bong Joon-ho, Coen Brothers, PTA, Godard, Eisenstein, Lang) plus 12
+  film-genre styles (Film Noir, Neo-Noir, Spaghetti Western, Western, Slasher, Found Footage,
+  Zombie / Post-Apocalyptic, Documentary, Mockumentary, Movie Musical, Grindhouse, Arthouse).
+  Each new preset carries its `system_prompt_no_negative` focus (so distilled/no-negative mode
+  keeps the style identity, fixing the gap in the older short "Style focus:" entries).
+- **Fixed duplicate `Gothic Horror` style.** In `Styles/fantasy_horror.json` two presets shared the
+  display name "Gothic Horror" (`gothic_horror` and `gothic_architecture_horror`). The second is
+  renamed to **Gothic Ruins** (cathedral/ruin horror) so the combo no longer shows a duplicate.
+- **Photography styles expanded + camera/lens EXIF guidance.** `Styles/photography.json` grew from
+  8 to 25 presets (added Amateur/Snapshot, Professional Studio, Photojournalism, Documentary, Wedding,
+  Travel, Sports/Action, Wildlife, Food, Concert/Live Event, Film/Analog, Drone/Aerial, Real Estate/
+  Interior, Product/Commercial, Vintage/Lomo, Night/Long Exposure, Newborn/Family). Every photographic
+  preset now carries a "Capture-EXIF rule" that tells the LLM to name a plausible camera body, lens
+  (focal length + max aperture) and key exposure settings suited to the genre (e.g. street -> 28-35mm
+  rangefinder f/5.6-f/8; portrait -> 85/135mm prime f/1.4-f/2.8; sports -> 300/400mm f/2.8 at 1/1000s+),
+  so generated prompts include realistic technical capture detail. Total presets now 210.
+- **Face Detailer: `yolo_bbox_seg` detection mode.** New `detection_method` option locates
+  faces with a strong bbox model (`yolo_model_name`) at the normal `detection_threshold`,
+  then uses a segmentation model (`yolo_seg_model_name`) only to derive the mask shape
+  inside that crop (matched by IoU). This gives reliable detection (no need to drop
+  `detection_threshold` to ~0.1) while still refining along the real face contour — useful
+  for 3/4-turn faces where pure `yolo_seg` misses or false-positives. Falls back to the
+  rectangular/oval mask when no seg mask overlaps the detected box or no seg model is chosen.
+- **Face Detailer: bicubic crop resize.** The face crop is now resized with bicubic
+  interpolation (`tensor_resize`) instead of bilinear, preserving detail when the refined
+  crop is downscaled back after VAE decode.
+- **Face Detailer: separate `seg_threshold`.** New `seg_threshold` widget (default `0.1`)
+  controls the segmentation model's confidence independently of `detection_threshold`
+  (bbox detection). In `yolo_seg` it drives face detection; in `yolo_bbox_seg` it is used
+  only to fetch the mask shape inside the bbox-located crop. This replaces the previous
+  hard-coded `0.01` and lets you trade mask coverage vs. false positives per model.
+- **Face Detailer: additional YOLO face detectors.** Added YOLOv10/11/12 (n/s/m) and
+  YOLO26 face-detection `.pt` weights to `models/ultralytics/bbox/`. They are picked up
+  automatically by `project_local_ultralytics_bbox()` and appear in the `yolo_model_name`
+  dropdown with no code changes. All were verified locally (ultralytics 8.4.x) to detect
+  faces (class `0`) at confidence 0.78–0.95 on real photos, including small and
+  poorly-lit faces.
+- **Face Detailer: class filter for `yolo_seg` (now a combo).** `yolo_seg_class` is a
+  combo populated automatically from the selected `yolo_seg_model_name` — picking a seg
+  model lists its real class names (e.g. `face`, `hair`, `skin`) instead of a raw index.
+  Detections of other classes (person, car, etc.) are ignored, removing false positives so
+  `detection_threshold` can stay at a normal value (~0.5) instead of being lowered
+  to 0.1–0.2.
+- **Face Detailer: persistent class cache.** The class lists for the `yolo_seg_class` and
+  `gender_model_female_class` combos are cached on disk
+  (`models/ultralytics/.class_cache.json`) and in memory, keyed by model file mtime/size.
+  Each model is inspected only once (or when the file changes), so restarting ComfyUI or
+  refreshing the widget is instant; dropping a new `.pt` into `models/ultralytics/*`
+  augments the cache automatically. The cache file is git-ignored.
+- **Face Detailer: post-inpaint brightness match.** The refined face is now
+  matched in brightness/contrast to its surroundings within the feathered mask
+  (`match_luminance`), removing the "face brighter than the rest of the frame" seam.
+- **Face Detailer: gender filter.** New `gender_filter` widget (`any` / `female` /
+  `male`, default `any`) restricts refinement to one gender. A lightweight ultralytics
+  gender-classification model (selected in `gender_model_name`, dropped into
+  `models/ultralytics/gender/`) is run on each detected face crop; faces whose predicted
+  class does not match `gender_filter` are skipped. The female class is now chosen via
+  the `gender_model_female_class` **combo**, which is populated automatically from the
+  selected `gender_model_name` (real class names, e.g. `female`, `male`) instead of a raw
+  index; with no model selected the filter logs a warning and processes all faces. Gender
+  detection runs for **all** detection methods (haar, yolo bbox, yolo seg, yolo_bbox_seg),
+  and the refined-face brightness match (`match_luminance`) is likewise applied on every
+   method's mask.
+- **Face Detailer: `match_color` for inpaint compositing.** New `match_color` widget
+  (`luminance` / `lab` / `histogram` / `none`, default `luminance`) controls how the refined
+  face is blended back into the frame. `luminance` (the former always-on behaviour) matches only
+  brightness/contrast; `lab` runs the same affine transfer in LAB space so hue/chroma seams are
+  removed too; `histogram` does per-channel CDF matching against the surrounding original; `none`
+  disables matching. OpenCV is imported lazily so the node still loads without it, falling back
+  to `luminance`.
+- **Critic & Writer: CV scene pre-analysis hint.** New `cv_scene_hint` toggle (default on)
+  runs a cheap OpenCV pre-analysis (scene type, lighting, face count — no extra vision call) and
+  feeds it to the LLM as context. The Critic injects it into the eval prompt (and shows it in the
+  node's `scene_hint` output); the Writer accepts an optional `image` input and appends the hint
+  to the brief so generated prompts fit the content (anime/illustration vs photo, natural skin for
+  portraits). Classification needs only OpenCV/numpy (no scikit-learn/skimage).
+- **Face Detailer: gender-confidence threshold (`gender_threshold`).** New FLOAT widget
+  (default `0.5`) sets the minimum confidence of the gender classifier. Faces whose predicted
+  gender confidence is below the threshold are treated as `unknown` and are **kept** (not dropped
+  by the gender filter) regardless of `gender_filter`. Applies only when `gender_filter != any`.
+
+### Changed
+- **Style `system_prompt` blocks fully centralized (DRY).** Per-preset `system_prompt` now holds only the
+  genre persona plus genre-specific guidance (photography "Capture-EXIF rule", anime booru-tag vocabulary,
+  etc.). All generic craft rules that were duplicated across presets have been stripped and are now sourced
+  from `Styles/system_prompts.json` at assembly time: `writer_system` (write-in-English + JSON envelope),
+  `engineering_rules` (composition, concrete descriptors, spatial relationships, sparing weighting).
+  Concretely removed from every preset: the literal "Engineering rules (apply to every prompt)" block,
+  "Write in English only (never mirror the user's language)", "Avoid empty booster tags…",
+  "Concise (60-140 words)", the "Respond STRICTLY in JSON…" boilerplate, and inline
+  "Explicit/NSFW fully authorized" text.
+- **NSFW authorization centralized.** Per-style "fully authorized" NSFW text was removed from all presets;
+  explicit content is now governed solely by the Writer's `nsfw` toggle (`nsfw_policy` in
+  `system_prompts.json`). Anime and other styles no longer auto-authorize explicit content regardless of
+  the toggle state.
+- **`system_prompt_no_negative` regenerated for every preset.** All presets now carry a consistent
+  `system_prompt_no_negative = canonical NO-NEGATIVE prefix + cleaned style text`. This fixes a latent bug
+  where several presets (e.g. Shojo / Shonen / Western Animated Film) stored only the NO-NEGATIVE prefix and
+  therefore lost their style entirely in no-negative mode (`build_system_prompt` uses
+  `system_prompt_no_negative` verbatim). The same normalization was applied to `presets_default.json` so the
+  `tools/build_styles.py` generator will not reintroduce the duplication.
+- **Duplicate display names disambiguated.** `Documentary` -> `Documentary Film` (cinema) /
+  `Documentary Photography` (photography); `Landscape Photography` -> `Landscape Scene` (nature preset).
+- **Face Detailer: `detection_threshold`** now ships with an explanatory tooltip
+  and is recommended around 0.5 once the class filter is enabled.
+- **Face Detailer: console logging (English + diagnostics).** All `[FaceDetailer]`
+  log messages are now in English. Detection logs the reason faces are dropped:
+  bbox logs `dropped N below confidence threshold`; seg additionally splits into
+  `wrong class != <yolo_seg_class>` vs `below confidence threshold`. The gender step
+  logs a per-image summary of **detected genders and their counts** (`N female,
+  M male, K unknown`), and when `gender_filter` is active also logs each dropped face
+  (`predicted class X (female/male), wanted <gender>`) plus the dropped count. On
+  start and per frame/face it still logs: start params (method, guide_size, max_size,
+  drop_size, yolo_seg_class), each detected face's size in px, the upscale ratio to
+  guide_size, the max_size crop clamp, skips (already >= guide_size, smaller than
+  drop_size) and a final count of processed faces.
+- **Face Detailer: `drop_size` widget.** Faces whose shorter side is below the
+  given px size are skipped and not processed (default `0` = process all faces).
+- **Writer: styles no longer inject photographic tags where inappropriate (Q4).**
+  The shared `camera/lens` layer was removed from every preset's "Engineering rules"
+  (it forced "85 mm lens"-style tags into anime/illustration/painting). Photographic
+  presets still describe camera/lens in their own text, so their behavior is unchanged.
+- **Writer: the chosen style now also shapes `face_positive`/`face_negative` (Q4).**
+  A preset's style tags are appended to the face prompts too, so a FaceDetailer-refined
+  face matches the selected style.
+- **Writer: `generate_face_prompts = off` no longer emits face prompts (Q5).**
+  `face_positive`/`face_negative` are forcibly cleared even if the model returns them,
+  so FaceDetailer correctly falls back to the main prompts.
+- **Writer / Scene Builder: standardized `scene_name` (Q6).** Any non-empty model
+  value (quotes, "Scene: …", mixed case, markdown) is normalized to a consistent
+  lowercase slug via `slugify`; an empty value still falls back to `slugify(positive)`.
+- **Writer: `structured` prompt format hardened for small local models.** The
+  `prompt_format.structured` fragment in `Styles/system_prompts.json` now shows a
+  concrete labeled-block example and explicitly forbids reusing the example's subject
+  or wording, so compact models (e.g. qwen3-4b, CPU) emit literal `[Subject]` /
+  `[Lighting]` / `[Style]` / `[Camera]` / `[Composition]` headers without copying the
+  sample content into the answer.
+- **Writer: `blend_styles` strictly fuses every referenced style.** `styles.build_system_prompt`
+  now unions each style's `blend_note` (falling back to the first line of its
+  `system_prompt`, truncated to ≤200 chars when `blend_note` is empty or equals the name)
+  into a strict "fuse ALL … every listed style MUST be clearly and visibly present …
+  never drop any" header. `oil_painting` and `cyberpunk` presets received explicit,
+  descriptive `blend_note` values so both styles appear in the blended prompt.
+
+### Fixed
+- **Face Detailer `match_color` crash (`TypeError: 'str' object is not callable`).** The node's
+  `match_color` widget parameter shadowed the imported `match_color` function, so the compositing
+  call tried to invoke the string value (e.g. `"luminance"`) as a callable. The function is now
+  imported as `_match_color` and called with `mode=match_color`, so the widget value still selects
+  the color-match mode without name collision.
+
+- **Style tag duplication (Audit7/1.2).** `apply_preset_style` now deduplicates positive
+  (and face-positive) style tags against what is already in the prompt, matching the
+  long-standing negative-tag behavior (previously repeated style tags could be appended
+  more than once).
+- **Field-retry crash on network error (Audit7/1.3).** The writer's missing-field retry
+  loop now wraps each `chat_completion` call in `try/except`; a transient transport error
+  counts as a retry attempt and is retried up to `max_field_retries` instead of aborting
+  the whole node.
+- **YOLO model re-initialized per image (Audit7/2.1).** The ultralytics `YOLO` instance is
+  now cached per model path (`_get_yolo_model`) and reused across every image in a batch
+  (and across runs), instead of being reconstructed on each detection call.
+- **SSRF guard rejected local hostnames (Audit7/3).** `validate_server_url` now resolves a
+  non-literal host via `socket.getaddrinfo` and accepts it only when *every* resolved
+  address is loopback/private/link-local. Bare LAN names (e.g. `nas.home`) now work
+  without disabling SSRF protection (`ALLOW_PUBLIC_SERVER_URLS`).
+- **Internal error details leaked via API (Audit7/4.1).** `server_routes.py` no longer
+  returns raw exception strings to the client; routes log the real error and return a
+  generic message instead.
+
+### Fixed (Audit4)
+- **Checkpoint-family detection ignored the parent folder (`#1.1`).** `detect_checkpoint_family_info`
+  only scanned the filename + safetensors metadata, so a generically-named file inside a
+  `Lightning/` (etc.) folder was mis-detected as `base`. Both `detect_checkpoint_family` and
+  `detect_checkpoint_family_info` now scan the parent folder name as well (via the shared
+  `_scan_checkpoint_text` helper); `detect_checkpoint_family_info` reports
+  `source: <filename | metadata | base | override>`.
+- **Scene Builder `vision_check` blocked stage 2 (`#1.2`).** The vision capability check ran
+  before the stage was parsed, so a non-vision model could not run the compose (stage 2) pass.
+  The check is now gated to stage 1 only (`_has_image` / `_stage_is_describe`), so stage 2
+  composes from the saved description without requiring a vision model.
+- **Writer face-prompt instruction wiped by preset override (`#2.1`).** The face instruction was
+  added to the system prompt and then overwritten by the preset's `system_prompt`. It is now
+  appended **after** the preset override, so face prompts are emitted even with a style preset.
+- **Smart Loader dropped the CLIP side of the LoRA (`#2.2`).** `load_lora_for_models` was called
+  with `strength_model, 0`, leaving the CLIP weights unchanged. It now uses `strength_model` for
+  both the model and the CLIP, so a CLIP-aware LoRA (e.g. a style LoRA) actually conditions the
+  text encoder.
+- **`auto` profile for ≥7B models returned the wrong sampling profile (`#2.3`).** `recommend_for`
+  returned `baseline` for ≥7B, contradicting its docstring (near-greedy `structured`). It now
+  returns `{"profile": "structured", "structured": True}` (≈0.1 temperature + JSON schema) so
+  large models get the highest schema-parse rate. Updated the golden tests accordingly.
+- **Smart Save EXIF crash outside the try/except (`#2.4`).** `img.save(..., exif=exif.tobytes())`
+  ran outside the guarded block, so a malformed EXIF aborted the whole save. The EXIF
+  serialization and save are now wrapped in try/except with a fallback to saving without metadata;
+  failures are logged instead of raised.
+- **KSampler Hires Fix `_pixel_stage` crashed without a VAE (`#2.5`).** The pixel-model hires path
+  dereferenced `optional_vae` with no guard; when no VAE was wired it raised a raw `AttributeError`.
+  It now raises a clear `RuntimeError` instructing the user to connect `optional_vae`.
+- **Tests:** added `test_detect_family_info_from_parent_folder` (folder detection), removed the
+  duplicate `test_detect_family_from_parent_folder`, and dropped a no-op `assert True` from
+  `tests/test_vram.py`.
+
+### Changed
+- **Writer `negative_prompt` toggle removed.** The `BOOLEAN` `negative_prompt` input was redundant:
+  `prompt_mode` already controlled the negative prompt (`auto` / `standard` / `no_negative`). The
+  toggle is gone from `INPUT_TYPES`, `execute` and `_run`; `prompt_mode` is now the sole controller.
+  `auto` switches to no-negative when the detected `family` is a distilled one (DMD/LCM/Turbo/Hyper/
+  Lightning/Flash — including a distilled LoRA folded into `detected_family` by the Smart Loader) or
+  the `architecture` is Flux/SD3; `standard` always emits a negative; `no_negative` never does.
+
+## [1.2.3] — 2026-08-24
+
+### Added
+- **Face Detailer segmentation & refinement options.** `detection_method` now
+  offers `yolo_seg` (YOLO segmentation mask instead of a bounding box) with a
+  `yolo_seg_model_name` selector; `mask_shape` (`square` / `oval`) sets the inpaint mask
+  shape, `bbox_scale` (0.1–3.0) expands/contracts the crop, and `iterations` (1–10) re-refines
+  each face multiple times.
+- **LM Studio API auto-profile (B4).** Writer / Scene Builder / Critic now read the loaded
+  model's real `architecture` and `params_string` from LM Studio's native `/api/v1/models`
+  (best-effort, cached, never raises) and feed them into `resolve_profile`. Per-architecture
+  sampler overrides (e.g. Gemma → `top_k=64`, via `ARCH_SAMPLER_OVERRIDES`) are applied on top
+  of the profile, and the strict/baseline split uses the model's real parameter count instead of
+  guessing from the filename. Non-LM-Studio / OpenAI-compatible servers fall back to the name
+  heuristic unchanged.
+- **Distilled-preset AYS per architecture (A6).** `recommend()` now picks the AYS variant by
+  checkpoint architecture: `AYS SD1` for SD1.5, `AYS SDXL` for SDXL/Pony/Illustrious/unknown,
+  and the family's own scheduler (e.g. `simple`) for Flux/SD3 where AYS does not apply. Removed
+  the redundant TCDScheduler hint text from the TCD presets.
+- **Face Detailer: per-image batch detection + tiled VAE.** Detection now runs per frame inside a
+  batch (segmentation masks stay aligned to each image) and the refined crop is decoded with
+  `vae_tile_size` (tiled VAE) to cap VRAM; added the `vae_tile_size` widget.
+- **Writer: `use_preset_system_prompt` toggle.** New checkbox (default on) controls whether a
+  selected style preset overrides the system prompt, replacing the old "only when left at
+  default" heuristic so a customized system prompt is preserved even with a preset loaded.
+
+### Fixed
+- **Basic-auth middleware loop on the project's own API.** The `research/comfyui-basic-auth`
+  node rejected every `/llm_prompt_studio/*` request with `401 parse_error=ValueError` because
+  the project's JS sends `Authorization: Bearer <api_key>` (status route) while the middleware
+  only accepts `Basic`. The middleware now exempts the `/llm_prompt_studio/` namespace (those
+  routes have their own Bearer/key auth) and `.strip()`s the configured credentials so `.bat`-set
+  env values with stray whitespace no longer mismatch. (#25)
+- **Smart Save EXIF crash (A1).** `img.save(..., exif=exif.tobytes())` no longer passes
+  `exif=None` (Pillow rejects it); EXIF is attached only when present.
+- **Family detection word boundaries (`model_meta`).** A lowercase letter immediately following a
+  capitalized marker (e.g. `Flash` in `Flashback`, `Hyper` in `Hyperion`) no longer false-matches
+  the Flash/Hyper families.
+- **Preset migration.** `load_presets_raw` now normalizes stale preset shapes in memory via
+  `_migrate` (backfilled fields) so callers never hit an old schema; the migration is not written
+  to disk on read.
+- **Critic sentinel score.** A model that returns no usable JSON score (sentinel `<0`) now logs a
+  warning instead of silently looping as "always rejected".
+- **Field-retry token budget.** Writer / Scene Builder now grow `max_tokens` (×1.25, capped at
+  the 8192 widget max) on each field-retry so a truncated prompt gets room to complete instead of
+  retrying at the same too-small budget.
+
+### Notes
+- Commits `dd57b5b` (status-route Bearer auth move) and `fd66f13` (min_p sampler retune)
+  landed after `[1.2.2]` and are already summarized in the 1.2.2 audit / retune sections.
+
+---
+
+## [1.2.2] — 2026-08-21
+
+Audit fixes (from `plans/Audit1.md`): P0 logic bugs, P1 reliability, and P2 docs / tech-debt.
+VRAM-eviction findings in the audit were obsolete (superseded by the earlier VRAM-release work).
+
+### Fixed
+- **Writer reuse cache ignored `architecture`.** Two different base architectures (e.g. `sdxl` vs
+  `flux`) could share a cached prompt, so architecture-specific token style / negatives / no-negative
+  handling were lost on reuse. `architecture` is now part of the cache key (`family` stays excluded,
+  by design). (#1)
+- **Auto-revision loop picked the wrong Writer.** When a Critic had no `upstreamWriter`, the loop fell
+  back to the *first* Writer in the graph and fed it revision notes. It now stops with a clear warning
+  instead of hijacking an unrelated Writer. (#2)
+- **Approval cleared revision notes on every Writer.** On approval, `revision_notes` is now cleared
+  only on the Writer linked to that Critic (via the prompt connection), not on all Writers. (#3)
+- **Silent failure when the LLM model failed to load.** `ensure_model_loaded` now returns `True`/`False`
+  and the Writer / Critic / Scene Builder raise a clear "model could not be loaded" error instead of
+  proceeding into a confusing streaming/JSON failure. (#20)
+- **Structured output (JSON schema) hard-failed on small models.** LM Studio only enables structured
+  output for models ≳7B and exposes no capability flag. `chat_completion` now retries **once without**
+  `response_format` when the server rejects it, so a small model still returns plain text the node can
+  parse. (#7)
+- **`api_key` leaked into the status URL.** The server-status route now reads the key from the
+  `Authorization: Bearer` header (sent by the JS widget) instead of the query string, keeping it out of
+  browser history / server logs. (#16)
+
+### Changed
+- **Smart Loader `apply_lora="auto"` docstring + tooltip.** Clarified that auto mode applies the
+  *chosen* LoRA to a base (non-distilled) checkpoint (the LoRA may be any LoRA, not only a distillation
+  one). Behavior is unchanged. (#11)
+- **Retuned the four sampler profiles from 2023-era presets to the 2024–2026 local-inference
+  consensus** (`nodes/model_recommendations.py`, based on published llama.cpp / vLLM / HF sampling
+  research and vendor cards for Qwen3 / Gemma / Llama 4 / Mistral):
+  - `min_p` (0.05) is now the primary truncation sampler; `top_k` is disabled (0) for general use,
+    and `top_p` is kept only as a generous fallback cap (0.9–0.95) for servers that don't expose
+    `min_p` (the transport layer already strips `min_p` if the server rejects it).
+  - Penalties stay near neutral (repeat_penalty 1.05, presence_penalty 0.0) — the old `creative`
+    profile stacked repeat_penalty 1.15 *and* presence_penalty 0.3, which the research shows pushes
+    weak models into incoherent token-avoidance loops.
+  - `structured` (JSON writer/critic) is now near-greedy (temperature 0.1 instead of 0.7) for the
+    highest schema parse rate, with `min_p` only guarding against degenerate tokens.
+  - `strict` (small <7B models) uses temperature 0.3 + a small `min_p` floor (0.02) to keep weak
+    models coherent. `baseline` / `creative` temperatures are unchanged (0.7 / 1.1).
+
+### Docs
+- Added an **Intended Usage** section to the README / readme_ru (single user / machine / ComfyUI
+  instance / workflow; local LLM required). (#22)
+- Reworded the intro and `pyproject.toml` description from "SDXL prompt engineering" to
+  **architecture-aware** (SDXL / SD1.5 / Pony / Illustrious / Flux / SD3). (#23)
+- Renamed `tests/test_lm_http_stream.py` → `tests/test_lm_http_chat.py`. (#24)
+- Added mock-based unit tests for the cache-key architecture scoping (A1), the
+  `ensure_model_loaded` return contract (A4), and the structured-output fallback (B1).
+
+---
+
+## [1.2.1] — 2026-08-21
+
+### Added
+- **Seed `control_after_generate` on the sampling nodes.** `LLM Prompt Studio KSampler (Hires Fix)`
+  and `LLM Prompt Studio Face Detailer` now expose the ComfyUI seed control (randomize /
+  increment / decrement / fixed) on their `seed` — and the KSampler's `hires_seed` — matching the
+  Writer's `seed`. After each Generate the widget auto-updates per the chosen mode. The KSampler's
+  `hires_seed` only takes effect when `hires_use_same_seed` is off (otherwise the base `seed`
+  drives the hires pass).
+
+### Fixed
+- **Seed actually reaches LM Studio now.** The native `/api/v1/chat` endpoint rejects `seed`
+  (`unrecognized_keys`), and the client's resilient retry *silently dropped* it — so seed control
+  looked broken while the model ignored the seed entirely. `seed` is now a protected key: when the
+  native endpoint rejects it, the request falls back to the OpenAI-compatible `/v1/chat/completions`
+  endpoint, which **does** honor `seed` (verified: same seed → identical output, different seed →
+  different output). Verified end-to-end against LM Studio with `qwen2.5-coder-1.5b-instruct`.
+
+### Changed
+- **Verified `denoise` / `hires_denoise` propagation.** Both values are forwarded to
+  `KSampler().sample(...)` (base pass and hires pass respectively), so lowering them genuinely
+  reduces how much the latent is re-noised — confirmed by new headless passthrough tests. The
+  base-pass default stays `1.0` (full generation from an empty latent); `hires_denoise` defaults
+  to `0.5`.
+- **Stopped evicting the ComfyUI checkpoint from VRAM.** The `prepare_for_llm` pre-LLM
+  `unload_all_models()` + `soft_empty_cache()` eviction broke subsequent image generation, so it
+  was removed entirely (along with `vram.is_local_server` / `unload_comfy_models`). The plugin now
+  only releases the **LM Studio** model (via `release_after_llm` after each LLM node, and
+  `release_before_sample` before sampling) — the diffusion checkpoint is left untouched.
+
+---
+
+## [1.2.0] — 2026-08-20
+
+Added **automatic VRAM release** so an LLM node no longer holds the GPU while ComfyUI runs the
+diffusion pipeline — this prevents `CUDA out of memory` on small GPUs (e.g. 11 GB) during a full
+Writer → Smart Loader → KSampler Hires Fix → Face Detailer → Smart Save run.
+
+### Added
+- **`release_vram_after_run` boolean widget (default `true`)** on Writer, Image Critic and Scene
+  Builder (in ⚙ Advanced settings). When `true`, the node unloads its LM Studio model in a `finally`
+  block after the run so the diffusion nodes get the VRAM back; the next LLM use reloads it.
+- **ComfyUI-side eviction before the LLM loads** (`unload_all_models()` + `soft_empty_cache()`),
+  gated to loopback LM Studio hosts only, so the Critic's vision model can load after a sampling
+  pass without spilling to CPU.
+- **Defensive release in the sampler nodes** — `KSampler Hires Fix` and `Face Detailer` now release
+  any seen LM Studio server (skipping servers pinned keep-loaded) before sampling, catching models
+  loaded manually in the LM Studio UI. Does zero network I/O when no LLM server was seen.
+- **Global kill switch `LLM_PROMPT_STUDIO_KEEP_MODEL_LOADED=1`** — disables all release without
+  editing any node.
+- `lm_http.release_model()` / `wait_until_unloaded()` / `seen_servers()` / `keep_loaded_servers()` /
+  `mark_keep_loaded()` for precise, poll-confirmed unload and state invalidation.
+- New `vram.py` module (ComfyUI-optional, never raises) bridging ComfyUI model management and the
+  LM Studio client, plus `coerce_bool_widget()` to defang stray empty-string widget values from
+  saved workflows.
+
+### Fixed
+- **Stray saved `widgets_values` no longer disable the release.** The new widget is the last
+  `optional` key and both the Python coercion and the JS `configure` wrap treat a non-boolean
+  positional value as the `true` default.
+- **`⚙ Advanced settings` button label** now matches the string the toggle looks for
+  (`⚙ Advanced settings`), so the ▸/▾ label updates correctly.
+
+---
+
+## [1.1.9] — 2026-08-19
+
+Fixed a fatal crash in the **KSampler Hires Fix** node when the hires pass used a fractional
+latent upscale, and hardened the latent/pixel upscale paths.
+
+### Fixed
+- **`Fatal Python error: Aborted` on `hires_upscale_type = latent` with a fractional factor
+  (e.g. `hires_latent_upscale_factor = 1.25`, `bislerp` / `nearest-exact` / …).** `_latent_interp`
+  passed **latent cell** dimensions straight into `LatentUpscale`, which treats its `width`/`height`
+  as **pixel** dimensions and divides by 8 internally — so a 64×64 latent was shrunk to ~10×10
+  (1/64 of the intended area), and the UNet forward aborted on the degenerate tensor. The call now
+  converts the target back to pixel dimensions (`w * 8`, `h * 8`), yielding the correct upscaled
+  latent (verified at 1.25×, 1.5×, 2.0×).
+- **`pixel (model)` hires pass produced wrong-size / garbled latents.** The decoded pixel tensor
+  (BHWC) was fed directly into `tiled_scale`, which expects NCHW. It is now permuted BHWC → NCHW
+  before upscaling and back to BHWC before re-encoding.
+- **`latent (model)` dropdown listed invalid models.** It combined the folder `upscale_models`
+  list (pixel ESRGAN `.safetensors`) with the project's latent resizers, so pixel models could be
+  picked as a `LatentUpscaleModel` and fail. The input now lists **only the project's latent
+  resizers** (`models/upscale_models` — ttl-nn `sd15_resizer.pt` / `sdxl_resizer.pt`); the tooltip
+  says so. The broken City96 `latent-upscaler-v2.1_*.safetensors` were removed from
+  `models/upscale_models`.
+
+### Changed
+- Test `test_project_local_helpers` now asserts the shipped latent resizers are `.pt` (the City96
+  `.safetensors` were removed), not `.safetensors`.
+
+## [1.1.8] — 2026-08-18
+
+Family-aware distilled sampler presets for the Smart Parameters node, plus checkpoint
+family auto-detection and clearer node UI hints.
+
+### Added
+- **Distilled sampler presets.** The Smart Parameters node now recommends steps/cfg/sampler
+  per checkpoint family (lightning, hyper, dmd, turbo, lcm, tcd, pcm, flash, schnell) and
+  switches distilled families to the **AYS SDXL** scheduler at the `balanced`/`speed`
+  presets (the studio KSampler supports AYS natively). The `target`/"Efficient" bifurcation
+  was removed — one full scheduler list (standard + AYS SD1/SDXL/SVD + GITS) is used
+  everywhere.
+- **Generic distilled fallback.** Any family present in `model_meta.FAMILY_MARKERS` gets sane
+  distilled defaults automatically, even without a hand-written preset row.
+- **Family auto-detection by path.** `detect_checkpoint_family()` now also scans the
+  checkpoint's parent folder name, so generically-named files inside a family-named folder
+  are still recognized.
+- **Node self-detection.** When no `detected_family`/`family_override` is given, the node
+  auto-detects the family from the checkpoint filename, metadata, and folder.
+- **Node UI hints.** Added a node `DESCRIPTION` and tooltips on the family/preset/ckpt_name
+  inputs.
+
+### Changed
+- Smart Parameters `sampler_params` route and web autofill updated for the unified
+  scheduler list (no `target`).
+
+## [1.1.7] — 2026-08-18
+
+Made every node behave correctly with non-SDXL checkpoints (SD1.5 / SD3 / Flux / Pony /
+Illustrious), and renamed **Multi-CLIP SDXL** to **Smart Multi-Clip**. All new inputs are
+optional with a `""` default, so existing workflows (keyed by the unchanged registration
+`LLMPromptStudioMultiClipSDXL`) keep loading and show the new title.
+
+### Added
+- **Architecture-aware Smart Parameters.** A new optional `architecture` input (wire the Smart
+  Loader's `detected_architecture`) makes the node recommend that base architecture's own sampler
+  defaults for base checkpoints — e.g. Flux → 24 steps / cfg 1.0 / euler-simple, SD1.5 → cfg 7.0,
+  SD3 → 40 steps / cfg 4.5, Pony / Illustrious → 28 steps / cfg 6.0. Distilled families keep
+  priority and are never overridden. The `sampler_params` route also accepts `arch`.
+- **`resolve_architecture()` in `model_meta.py`.** Resolves the canonical base architecture from
+  the loaded model object (and config), with a refinement that recovers **Pony / Illustrious** from
+  a SDXL checkpoint filename while never overwriting a genuine Flux / SD3 / SD1.5 detection.
+- **`force_no_negative` now live.** `presets_default.json` already carried `force_no_negative`
+  for Flux / SD3; the Writer and Scene Builder now honor it (computed before the no-negative
+  resolution) so those architectures force an empty negative regardless of family.
+
+### Changed
+- **Multi-CLIP SDXL → Smart Multi-Clip.** Now accepts a `detected_architecture` input and branches
+  conditioning per architecture: SDXL / Pony / Illustrious use dual g/l; SD1.5 uses its single
+  encoder; Flux / SD3 emit best-effort conditioning with a warning recommending the core
+  `CLIPTextEncodeFlux` / `CLIPTextEncodeSD3`. A token safety net prevents `KeyError` on
+  single-encoder CLIPs. Left unwired, it behaves exactly as before (driven by the CLIP's encoder
+  shape).
+
+### Fixed
+- Scene Builder now forwards its `architecture` input into the prompt builder (previously declared
+  but never wired through), so architecture adaptation actually applies in stage 2.
+
+---
+
+## [1.1.6] — 2026-08-18
+
+Improvements borrowed from peer projects (pinkpixel-dev/comfyui-llm-prompt-enhancer,
+jideka/ComfyUI-SmartPromptCrafter), all additive and gated so existing behaviour is unchanged.
+
+### Added
+- **Architecture detection in Smart Loader.** Two new outputs `detected_architecture` and
+  `detected_architecture_info` report the base architecture (SDXL / SD1.5 / Pony / Illustrious /
+  Flux / SD3 / unknown), derived from the loaded model object and falling back to a filename
+  heuristic. SDXL stays canonical when no architecture is wired in.
+- **Per-architecture prompt adaptation (Writer / Scene Builder).** A new optional `architecture`
+  input appends an architecture-specific system addendum and (in standard mode) default-negative
+  tokens; Flux / SD3 force no-negative mode. Guidance lives in `presets_default.json`
+  (`architecture_guidance`) and is user-editable.
+- **Categorized style-preset library.** The 14 flat presets are now grouped into ~50 styles with
+  `Category > Name` combobox labels; the original 14 names are preserved so old workflows resolve.
+  Preset matching accepts both the bare name and the categorized label.
+- **Opt-in global LLM-response cache** (`lm_http.py`). Off by default; enable with
+  `LLM_PROMPT_STUDIO_LLM_CACHE=true`. Identical requests (excluding the API key) are served from a
+  bounded LRU (~256 entries) below the per-node `reuse_last_prompt` cache.
+
+### Changed
+- Smart Loader `RETURN_TYPES`/`RETURN_NAMES` gained two appended outputs (`detected_architecture`,
+  `detected_architecture_info`); existing links are unaffected.
+
+## [1.1.5] — 2026-08-18
+
+Added the **LLM Prompt Studio Smart Parameters** nodes that recommend KSampler parameters
+(steps / cfg / sampler / scheduler) from the detected checkpoint family.
+
+### Added
+- **`LLM Prompt Studio Smart Parameters`** node — emits `steps`, `cfg`, `sampler_name`,
+  `scheduler` (COMBO) and `info` connectable directly into a standard `KSampler`. Full
+  backward compatibility: the scheduler list contains no AYS/GITS.
+- **`LLM Prompt Studio Smart Parameters (Efficient)`** node — same outputs but the scheduler
+  COMBO also exposes `AYS SD1 / AYS SDXL / AYS SVD / GITS`, so it links to an Efficient
+  KSampler (jags111). For distilled families it recommends `AYS SDXL` at the balanced/speed
+  presets.
+- Per-family recommended parameters for `base`, `lightning`, `hyper`, `dmd`, `turbo`, `lcm`,
+  `tcd`, `pcm`, `flash`, `schnell` across three presets (`balanced` / `speed` / `quality`),
+  in `nodes/_distilled_presets.py` (pure Python, no `comfy` import — unit-testable headless).
+- **`GET /llm_prompt_studio/sampler_params`** route returning the recommendation for a given
+  `family` / `preset` / `ckpt` / `target`; the web UI calls it to autofill the widgets.
+- Web autofill: on creation and whenever `detected_family` / `family_override` / `preset` /
+  `ckpt_name` change, the node fetches recommendations and fills the editable widgets — unless
+  a widget has been manually edited (dirty-flag), which is preserved. The `auto` sentinel is
+  injected into saved workflows so loading never trips "Value not in list".
+
+### Removed
+- Nothing.
+
+---
+
+## [1.1.4] — 2026-08-17
+
+Correctness review of the `update3`/`update4` assessment (`plans/update3.md`,
+`plans/update4.md`). All claims were verified against the source; this release
+applies the valid fixes and explicitly ignores the non-bug items.
+
+### Fixed
+- **Writer reuse cache key was too narrow (B1).** `nodes/writer.py` cached by
+  `(unique_id, prompt_mode)` only, so changing `style_preset`/`system_prompt`/`idea`/
+  `revision_notes`/`generate_face_prompts`/`face_prompt_instruction` silently returned a
+  stale prompt. The cache key now includes those inputs. `family` stays deliberately
+  excluded so a checkpoint swap still carries the prompts over in reuse mode.
+- **Family detection blanket-skipped every `flash` match when `flash_attention` appeared
+  anywhere (B2).** In `model_meta.py` the `flash` family is now skipped only for the exact
+  `flash_attention` substring occurrence, so a real Flash checkpoint (e.g. `FlashSDXL`,
+  `SDXLFlash`) is still detected correctly.
+- **Native v1 HTTP error ignored image context (B3).** `lm_http.py` hardcoded
+  `has_images=False` into `_enrich_http_error`; `_chat_v1` now derives `has_images` from the
+  request messages so the "model does not support image inputs" hint fires for vision
+  rejections.
+- **Field-retry silently fell back to plain text (B4).** The retry `parse_prompt_json` calls
+  in `nodes/writer.py` and `nodes/scene_builder.py` now pass `allow_plain_text_fallback=False`
+  to match the initial call (a malformed retry answer must not be treated as a valid prompt).
+- **Scene Builder stage-1 `prompt_view` output was empty (D1).** Stage 1 now returns the
+  description in the `prompt_view` slot (`("", "", "", description, description)`).
+- **Duplicated NSFW sentence in the Anime preset (C1).** `presets_default.json` had the
+  "Explicit and intimate content is fully authorized…" sentence twice in both the standard
+  and no-negative Anime variants; the duplicate is removed.
+
+### Changed
+- **`_is_reasoning_rejection` clarified (B5).** Parentheses make the operator precedence of
+  the `and`/`or` vision-rejection checks explicit (no behaviour change).
+
+### Removed
+- **Unused `require_face_negative` parameter (D2).** `parsing.find_missing_fields` no longer
+  accepts the dead parameter; it had no real callers and face fields are intentionally not
+  treated as missing.
+
+### Docs
+- **`combos.combo_models` comment corrected (D3).** The "scoped to its own server_url" claim
+  was inaccurate: `INPUT_TYPES` can only express the default `DEFAULT_SERVER`, so the per-URL
+  cache is reached with that default at build time and the node's real `server_url` is applied
+  via the widget at runtime.
+- **`update4` items #1–#8 were reviewed and ignored.** #3 (unconditional LoRA detection in
+  Smart Loader) is FALSE — detection is already guarded by
+  `if should_apply and lora_name and lora_name != "[none]"`; #1, #2, #4, #5, #6, #7, #8 are
+  intentional/by-design and require no change.
+
+## [1.1.3] — 2026-08-17
+
+### Fixed
+- **`WRITER_RESPONSE_SCHEMA` required a non-empty `negative` even in no-negative (distilled)
+  mode.** The strict JSON schema at `nodes/model_recommendations.py` no longer lists `negative`
+  as required, so a structured-output (≥7B `auto` / `structured`) request does not push the
+  model to fabricate a negative at CFG~1. The Writer still force-blanks `negative` in
+  no-negative mode, and standard mode keeps re-asking for it via field-retry
+  (`require_negative=True`).
+- **`load_model_profile` tooltip was misleading.** It claimed the `auto` profile came "from the
+  benchmark for this model", but the recommendation is a universal size heuristic with no
+  hard-coded model list. The tooltip now says so on Writer / Image Critic / Scene Builder.
+
+### Changed
+- **README now lists every Writer input and documents the full Advanced-settings collapse.**
+  `load_model_profile` and `server_status` were added to the Writer's Inputs list, and the
+  Advanced-settings description now states that the sampling widgets (`temperature`, `max_tokens`,
+  `repeat_penalty`, `top_k`, `top_p`, `min_p`) collapse along with the load knobs (this already
+  matched `web/js/llm_prompt_studio_actions.js` `ADVANCED_WIDGETS`).
+- **`reasoning` is now part of the collapsed Advanced-settings block** (`ADVANCED_WIDGETS` in
+  `web/js/llm_prompt_studio_actions.js`), so it hides with the other sampling knobs.
+
+### Added
+- **Explicit logging of the resolved sampling profile.** The Writer logs the effective profile
+  name and final sampling parameters (temperature / top_p / top_k / min_p / repeat_penalty /
+  presence_penalty / reasoning / structured flag) after `load_model_profile` resolution.
+
+## [1.1.2] — 2026-08-17
+
+### Changed
+- **`detected_family` now folds a distilled LoRA into the effective family.** When Smart Loader
+  applies a distillation LoRA (DMD / LCM / Turbo / Hyper / Lightning / Flash, or `schnell`/`tcd`/`pcm`)
+  on top of a base checkpoint, `detected_family` reports the LoRA's family (the effective distilled
+  family) so Writer / Scene Builder enable no-negative mode automatically. The checkpoint's own family
+  no longer overrides an applied distilled LoRA.
+
+### Added
+- **Smart Loader widget shows the original checkpoint family + a distilled-LoRA notification.**
+  `detected_family_info` displays the checkpoint's true family and detection source
+  (`family: base | source: filename`), and appends ` | LoRA applied: <name> (distilled: <family>)`
+  when a distillation LoRA was applied. The user always sees the real checkpoint family while the
+  downstream `detected_family` value already carries the effective (LoRA-folded) family — no extra
+  `distilled` output/input is needed; wire `detected_family` into the Writer / Scene Builder `family`
+  input as before.
+
+---
+
+## [1.1.1] — 2026-08-17
+
+### Fixed
+- **`face_negative` was non-empty in no-negative (distilled) mode.** When `prompt_mode` was
+  `auto`/`no_negative`, the Writer (`nodes/writer.py`) force-resets both `face_negative` and
+  `negative` to empty once the no-negative composer is chosen (the negative is inert at CFG~1 and
+  must stay consistent). Previously a stale `face_negative` leaked into the prompt even though
+  `negative` was empty, contradicting CFG~1 (negative-ignored) sampling. Scene Builder
+  (`nodes/scene_builder.py`) only exposes `positive`/`negative` outputs — its face fields are parsed
+  but not surfaced — so it resets `negative` to empty in no-negative mode, but has no `face_negative`
+  output that could leak.
+- **Checkpoint family detection missed several distilled families.** `model_meta.py` now maps
+  `schnell`, `tcd` and `pcm` to their base distilled families (SD1.5 `schnell`/`tcd` → `turbo`;
+  `pcm` → `lcm`), and the free-text metadata hint key is corrected from `"tags"` to `"tag"`. An
+  uppercase family token at/after the boundary is unconditionally accepted, and the `flash_attention`
+  guard no longer suppresses a real family match.
+
+### Added
+- **Smart Loader `detected_family_info` output.** `nodes/smart_loader.py` now also returns
+  `detected_family_info` (STRING) describing the provenance of the detected family, e.g.
+  `family: turbo | source: filename` / `source: metadata` / `source: base` / `source: override`.
+  `detected_family` reports the checkpoint's own family only (a distillation LoRA loaded on a
+  base checkpoint does not change it). The `model_meta.detect_checkpoint_family_info()` helper
+  returns `(family, source)` and is exported in `model_meta.__all__`.
+- **LM Studio server-status indicator.** Writer / Image Critic / Scene Builder gained an optional
+  `server_status` STRING widget that polls `GET /llm_prompt_studio/status` every 3 s (via
+  `lm_http.server_status()` and the new `pollServerStatus` action) and shows `● Connected — <loaded
+  model names>`, `● Connected (no model loaded)`, or `● Server down`. The route is added to
+  `server_routes.py`; `refreshModels` no longer clobbers the user's current model selection.
+- **Embedding models are filtered out of the model combo.** `lm_http.fetch_models` /
+  `_parse_native_models` now skip any entry whose `"type": "embedding"` (on both the native
+  `/api/v1/models` path and the OpenAI `/v1/models` fallback), so text/embedding models from LM
+  Studio no longer appear as chat models.
+
+### Changed
+- **`model_recommendations._parse_size` takes the last size match.** The universal size heuristic
+  now reads the trailing `(\d+(?:\.\d+)?)b` capture (e.g. `nvidia/nemotron-3-nano-4b` → 4B) instead
+  of the first, so a misleading leading number in the model id no longer mis-sizes the profile.
+- **`WEB_DIRECTORY` is set before the node modules are imported** in `__init__.py`, so the JS assets
+  are registered even if an early node import touches web-loading code.
+- **CI / requirements cleanup.** `.github/workflows/python-tests.yml` now runs on Python 3.10 and
+  3.11 (was a malformed `3.1` float); `requirements.txt` no longer pins `hypothesis` (tests don't
+  use it).
+
+---
+
 ## [1.1.0] — 2026-08-16
 
 ### Removed
@@ -312,8 +1013,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   selecting one appends the preset's `style_tags_positive`/`style_tags_negative` to the generated
   prompt and (when the system prompt is left at default) applies the preset's `system_prompt`.
   Presets are copied to an editable user file (`llm_prompt_studio_presets.json` in the ComfyUI
-  output dir) on first run; "Reload presets" refreshes the combo and "Reset to defaults" restores
-  the shipped set. Presets that opt out of no-negative mode are skipped automatically there.
+   output dir) on first run; "Reload Styles" refreshes the combo and "Reset Styles" restores
+   the shipped set. Presets that opt out of no-negative mode are skipped automatically there.
 - **Debug logging** (`debug.py`) — opt-in, OFF by default. `DEBUG_LEVEL` = `MINIMAL` logs node
   enter/exit/error; `FULL` adds HTTP request/response and JSON-parse attempts. API keys and
   base64 blobs are masked/truncated; the rotating log file is only created when logging is active.

@@ -1,0 +1,126 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Street Art & Tattoo",
+  "presets": [
+    {
+      "id": "banksy_stencil",
+      "name": "Banksy Stencil",
+      "description": "Street stencil art",
+      "system_prompt": "Style focus: Banksy-style stencil graffiti. High-contrast black silhouette on wall texture, concise satirical scene, spray-paint edge, urban location.",
+      "style_tags_positive": [
+        "banksy",
+        "stencil",
+        "street art",
+        "silhouette"
+      ],
+      "style_tags_negative": [
+        "colorful tags",
+        "messy"
+      ],
+      "blend_note": "stencil satire",
+      "category": "Street Art & Tattoo",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Banksy-style stencil graffiti. High-contrast black silhouette on wall texture, concise satirical scene, spray-paint edge, urban location."
+    },
+    {
+      "id": "blackwork_tattoo",
+      "name": "Blackwork Tattoo",
+      "description": "Solid-black tattoo style",
+      "system_prompt": "Style focus: blackwork tattoo. Heavy solid black, negative-space line, occult or geometric motifs, high contrast, ritualistic symmetry.",
+      "style_tags_positive": [
+        "blackwork tattoo",
+        "solid black",
+        "negative space",
+        "geometric"
+      ],
+      "style_tags_negative": [
+        "color",
+        "soft"
+      ],
+      "blend_note": "solid black",
+      "category": "Street Art & Tattoo",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: blackwork tattoo. Heavy solid black, negative-space line, occult or geometric motifs, high contrast, ritualistic symmetry."
+    },
+    {
+      "id": "graffiti",
+      "name": "Graffiti",
+      "description": "urban graffiti / street-art style",
+      "system_prompt": "You are an expert SDXL prompt engineer for urban graffiti / street-art style. Write as connected art-direction prose with spray-can texture and tags.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for urban graffiti / street-art style. Write as connected art-direction prose with spray-can texture and tags.",
+      "style_tags_positive": [
+        "graffiti",
+        "street art",
+        "spray paint",
+        "urban"
+      ],
+      "style_tags_negative": [
+        "polished",
+        "photorealistic",
+        "studio"
+      ],
+      "blend_note": "Graffiti",
+      "category": "Street Art & Tattoo",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "irezumi",
+      "name": "Irezumi",
+      "description": "Japanese full-body tattoo",
+      "system_prompt": "Style focus: Irezumi. Japanese tattoo, flowing muscular integration of dragons/kinshi with waves and clouds, tebori texture, restricted traditional palette.",
+      "style_tags_positive": [
+        "irezumi",
+        "japanese tattoo",
+        "dragon",
+        "waves"
+      ],
+      "style_tags_negative": [
+        "western",
+        "neotrad"
+      ],
+      "blend_note": "japanese flow",
+      "category": "Street Art & Tattoo",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Irezumi. Japanese tattoo, flowing muscular integration of dragons/kinshi with waves and clouds, tebori texture, restricted traditional palette."
+    },
+    {
+      "id": "neo_traditional_tattoo",
+      "name": "Neo-Traditional",
+      "description": "Modern tattoo style",
+      "system_prompt": "Style focus: neo-traditional tattoo. Traditional boldness with richer gradient shading, expanded palette, dimensional forms, illustrative depth.",
+      "style_tags_positive": [
+        "neo traditional tattoo",
+        "bold outline",
+        "gradient shading",
+        "illustrative"
+      ],
+      "style_tags_negative": [
+        "flat old school"
+      ],
+      "blend_note": "bold + depth",
+      "category": "Street Art & Tattoo",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: neo-traditional tattoo. Traditional boldness with richer gradient shading, expanded palette, dimensional forms, illustrative depth."
+    },
+    {
+      "id": "traditional_tattoo",
+      "name": "Traditional Tattoo",
+      "description": "Old-school tattoo flash",
+      "system_prompt": "Style focus: traditional (old-school) tattoo. Bold black outlines, limited saturated palette, iconic subject (anchor, rose, eagle), flat shading, clean flash composition.",
+      "style_tags_positive": [
+        "traditional tattoo",
+        "bold outline",
+        "old school",
+        "flash"
+      ],
+      "style_tags_negative": [
+        "realism",
+        "watercolor"
+      ],
+      "blend_note": "bold old-school",
+      "category": "Street Art & Tattoo",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: traditional (old-school) tattoo. Bold black outlines, limited saturated palette, iconic subject (anchor, rose, eagle), flat shading, clean flash composition."
+    }
+  ]
+}

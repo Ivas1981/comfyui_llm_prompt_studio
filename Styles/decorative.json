@@ -1,0 +1,126 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Decorative & Pattern",
+  "presets": [
+    {
+      "id": "batik",
+      "name": "Batik",
+      "description": "Wax-resist textile",
+      "system_prompt": "Style focus: batik. Wax-resist dye cracks, flowing organic motifs, layered earthy palette, textile repetition.",
+      "style_tags_positive": [
+        "batik",
+        "wax resist",
+        "organic motif",
+        "earthy"
+      ],
+      "style_tags_negative": [
+        "rigid",
+        "neon"
+      ],
+      "blend_note": "crackle motifs",
+      "category": "Decorative & Pattern",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: batik. Wax-resist dye cracks, flowing organic motifs, layered earthy palette, textile repetition."
+    },
+    {
+      "id": "celtic_knot",
+      "name": "Celtic Knot",
+      "description": "Celtic knotwork",
+      "system_prompt": "Style focus: Celtic knotwork. Unbroken interwoven ribbons, symmetric loops, stone-and-metal palette, ritual ornament.",
+      "style_tags_positive": [
+        "celtic knot",
+        "interwoven",
+        "ribbon",
+        "symmetric"
+      ],
+      "style_tags_negative": [
+        "asymmetry",
+        "modern"
+      ],
+      "blend_note": "interwoven ribbons",
+      "category": "Decorative & Pattern",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Celtic knotwork. Unbroken interwoven ribbons, symmetric loops, stone-and-metal palette, ritual ornament."
+    },
+    {
+      "id": "folk_art",
+      "name": "Folk Art",
+      "description": "Naive decorative craft",
+      "system_prompt": "Style focus: folk art. Naive charming forms, bright flat local palette, traditional motifs, hand-made imperfect delight.",
+      "style_tags_positive": [
+        "folk art",
+        "naive",
+        "bright flat",
+        "traditional"
+      ],
+      "style_tags_negative": [
+        "sophisticated",
+        "photoreal"
+      ],
+      "blend_note": "naive charm",
+      "category": "Decorative & Pattern",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: folk art. Naive charming forms, bright flat local palette, traditional motifs, hand-made imperfect delight."
+    },
+    {
+      "id": "islamic_geometric",
+      "name": "Islamic Geometric",
+      "description": "Tessellated geometry",
+      "system_prompt": "Style focus: Islamic geometric tilework. Precise star-and-polygon tessellation, mathematical symmetry, glazed tile palette.",
+      "style_tags_positive": [
+        "islamic geometric",
+        "tessellation",
+        "star polygon",
+        "symmetry"
+      ],
+      "style_tags_negative": [
+        "organic",
+        "random"
+      ],
+      "blend_note": "mathematical symmetry",
+      "category": "Decorative & Pattern",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Islamic geometric tilework. Precise star-and-polygon tessellation, mathematical symmetry, glazed tile palette."
+    },
+    {
+      "id": "persian_miniature_pat",
+      "name": "Persian Pattern",
+      "description": "Islamic miniature pattern",
+      "system_prompt": "Style focus: Persian/Islamic pattern. Interlacing arabesque, geometric tessellation, jewel palette, infinitely repeating ornamental logic.",
+      "style_tags_positive": [
+        "persian pattern",
+        "arabesque",
+        "tessellation",
+        "geometric"
+      ],
+      "style_tags_negative": [
+        "random",
+        "figurative"
+      ],
+      "blend_note": "interlacing geometry",
+      "category": "Decorative & Pattern",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Persian/Islamic pattern. Interlacing arabesque, geometric tessellation, jewel palette, infinitely repeating ornamental logic."
+    },
+    {
+      "id": "william_morris",
+      "name": "William Morris",
+      "description": "Arts-and-Crafts pattern",
+      "system_prompt": "Style focus: William Morris pattern. Dense symmetrical foliage, flowering vines, muted natural palette, intricate repeating wallpaper design.",
+      "style_tags_positive": [
+        "william morris",
+        "foliage pattern",
+        "symmetrical",
+        "intricate"
+      ],
+      "style_tags_negative": [
+        "minimal",
+        "modern"
+      ],
+      "blend_note": "dense foliage",
+      "category": "Decorative & Pattern",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: William Morris pattern. Dense symmetrical foliage, flowering vines, muted natural palette, intricate repeating wallpaper design."
+    }
+  ]
+}

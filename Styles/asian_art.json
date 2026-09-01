@@ -1,0 +1,110 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Asian Art",
+  "presets": [
+    {
+      "id": "chinese_ink_painting",
+      "name": "Chinese Ink Painting",
+      "description": "traditional Chinese ink wash painting",
+      "system_prompt": "You are an expert SDXL prompt engineer for traditional Chinese ink wash painting. Write as connected prose or concise tags: monochrome ink, negative space, expressive brush.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for traditional Chinese ink wash painting. Write as connected prose or concise tags: monochrome ink, negative space, expressive brush.",
+      "style_tags_positive": [
+        "ink wash painting",
+        "sumi",
+        "negative space",
+        "monochrome"
+      ],
+      "style_tags_negative": [
+        "photorealistic",
+        "color",
+        "busy"
+      ],
+      "blend_note": "Chinese Ink Painting",
+      "category": "Asian Art",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "persian_miniature_art",
+      "name": "Persian Miniature",
+      "description": "Persian manuscript painting",
+      "system_prompt": "Style focus: Persian miniature. Fine detailed flat perspective, jewel-like palette, dense ornamental flora, gold skies, narrative intimacy, precise outline.",
+      "style_tags_positive": [
+        "persian miniature",
+        "flat perspective",
+        "ornamental",
+        "gold sky"
+      ],
+      "style_tags_negative": [
+        "western depth",
+        "photoreal"
+      ],
+      "blend_note": "jewel-like flat",
+      "category": "Asian Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Persian miniature. Fine detailed flat perspective, jewel-like palette, dense ornamental flora, gold skies, narrative intimacy, precise outline."
+    },
+    {
+      "id": "sumi_e",
+      "name": "Sumi-e",
+      "description": "Japanese sumi-e brush painting",
+      "system_prompt": "You are an expert SDXL prompt engineer for Japanese sumi-e brush painting. Write as connected prose or concise tags: minimal ink, gesture, emptiness.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for Japanese sumi-e brush painting. Write as connected prose or concise tags: minimal ink, gesture, emptiness.",
+      "style_tags_positive": [
+        "sumi-e",
+        "minimal ink",
+        "gestural brush",
+        "white space"
+      ],
+      "style_tags_negative": [
+        "photorealistic",
+        "color",
+        "detailed"
+      ],
+      "blend_note": "Sumi-e",
+      "category": "Asian Art",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "tang_figurative",
+      "name": "Tang Figurative",
+      "description": "Tang-dynasty painting look",
+      "system_prompt": "Style focus: Tang-dynasty figure painting. Elegant flowing robes, confident outline with light color wash, courtly posture, decorative patterning, warm mineral pigments.",
+      "style_tags_positive": [
+        "tang dynasty",
+        "flowing robe",
+        "outline wash",
+        "mineral pigment"
+      ],
+      "style_tags_negative": [
+        "western",
+        "photoreal"
+      ],
+      "blend_note": "elegant outline wash",
+      "category": "Asian Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Tang-dynasty figure painting. Elegant flowing robes, confident outline with light color wash, courtly posture, decorative patterning, warm mineral pigments."
+    },
+    {
+      "id": "ukiyoe",
+      "name": "Ukiyo-e",
+      "description": "Japanese woodblock print style",
+      "system_prompt": "You are an expert SDXL prompt engineer for Japanese ukiyo-e woodblock prints. Write as connected prose or concise tags: flat color areas, bold outlines, traditional composition and Japanese art aesthetics.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for Japanese ukiyo-e woodblock prints. Write as connected prose or concise tags: flat color areas, bold outlines, traditional composition and Japanese art aesthetics.",
+      "style_tags_positive": [
+        "ukiyo-e",
+        "woodblock print",
+        "flat colors",
+        "bold outline",
+        "japanese art"
+      ],
+      "style_tags_negative": [
+        "photorealistic",
+        "3d render",
+        "smooth gradient"
+      ],
+      "blend_note": "Ukiyo-e",
+      "category": "Asian Art",
+      "disabled_in_no_negative_mode": false
+    }
+  ]
+}

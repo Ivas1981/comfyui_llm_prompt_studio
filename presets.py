@@ -41,15 +41,23 @@ def load_presets_raw() -> Dict:
 
     Prefers the user-editable copy in the ComfyUI output directory, falling back to the
     shipped ``presets_default.json``. Does NOT create or overwrite the user file.
+
+    The returned data is normalized in memory via :func:`_migrate` (missing top-level
+    and per-preset fields backfilled, schema version bumped) so callers never have to
+    handle a stale shape. The migration is NOT written to disk — :func:`load_presets`
+    is what persists it on first run.
     """
     user_path = get_user_presets_path()
+    data = None
     if os.path.exists(user_path):
         try:
             with open(user_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
         except (OSError, json.JSONDecodeError):
-            pass
-    return _load_defaults()
+            data = None
+    if not isinstance(data, dict):
+        data = _load_defaults()
+    return _migrate(data)
 
 
 def get_defaults() -> Dict:
@@ -94,6 +102,7 @@ def _migrate(data: Dict) -> Dict:
         p.setdefault("style_tags_positive", [])
         p.setdefault("style_tags_negative", [])
         p.setdefault("disabled_in_no_negative_mode", False)
+        p.setdefault("category", "")
         # Normalize types: a hand-edited JSON may carry a wrong type (e.g. a string
         # where a list is expected). setdefault only fills missing keys, so coerce
         # explicitly to avoid a crash later in apply_preset_to_prompts.
@@ -122,18 +131,87 @@ def load_presets() -> Dict:
 
 
 def get_preset_names() -> List[str]:
-    """Names for the Writer's style_preset combobox."""
-    return [p["name"] for p in load_presets().get("presets", [])]
+    """Labels for the Writer's style_preset combobox.
+
+    Each preset is shown as ``"<category> > <name>"`` when it carries a category, so the
+    (now ~50) presets are grouped in the dropdown. Presets without a category keep their
+    bare ``name``. The bare name remains the stored identity (see :func:`get_preset_by_name`)."""
+    out = []
+    for p in load_presets().get("presets", []):
+        cat = p.get("category") or ""
+        name = p.get("name", "")
+        out.append(f"{cat} > {name}" if cat else name)
+    return out
 
 
 def get_preset_by_name(name: str) -> Optional[Dict]:
-    """Return a preset dict by its display name (the combobox stores names, not ids)."""
+    """Return a preset dict by its display name (the combobox stores labels/names, not ids).
+
+    Matches both the bare preset ``name`` (old saved workflows) and the categorized
+    ``"<category> > <name>"`` label produced by :func:`get_preset_names`, so a workflow
+    saved before categorization still resolves after "Reload presets"."""
     if not name:
         return None
-    for p in load_presets().get("presets", []):
+    presets = load_presets().get("presets", [])
+    for p in presets:
         if p.get("name") == name:
             return p
+    bare = name.split("> ")[-1].strip() if "> " in name else name
+    for p in presets:
+        if p.get("name") == bare:
+            return p
     return None
+
+
+def get_architecture_guidance() -> Dict:
+    """Architecture-specific prompt guidance from ``presets_default.json``.
+
+    Keyed by canonical architecture (``sdxl``, ``sd15``, ``pony``, ``illustrious``,
+    ``flux``, ``sd3``, ``unknown``). Each entry may carry ``system_addendum`` (appended to
+    the system prompt), ``default_negative`` (appended to the negative in standard mode) and
+    ``force_no_negative`` (bool). User-editable via the presets file."""
+    data = load_presets_raw()
+    return data.get("architecture_guidance", {})
+
+
+def append_positive_tags(positive: str, additions: str) -> str:
+    """Append style tokens to a positive prompt, deduplicated against what is already there.
+
+    Mirrors :func:`append_negative_tags`: tokens are split on commas, trimmed, deduplicated
+    against the existing positive (and within the additions), and joined back. Empty input is
+    returned unchanged."""
+    if not additions:
+        return positive
+    existing = {t.strip().lower() for t in positive.split(",") if t.strip()}
+    new = []
+    for tok in additions.split(","):
+        tok = tok.strip()
+        if tok and tok.lower() not in existing:
+            existing.add(tok.lower())
+            new.append(tok)
+    if not new:
+        return positive
+    return (positive + ", " + ", ".join(new)) if positive.strip() else ", ".join(new)
+
+
+def append_negative_tags(negative: str, additions: str) -> str:
+    """Append architecture ``default_negative`` tokens to an existing negative prompt.
+
+    Mirrors :func:`apply_preset_to_prompts` for negatives: tokens are split on commas,
+    trimmed, deduplicated against the existing negative (and within the additions), and
+    joined back. Empty input is returned unchanged."""
+    if not additions:
+        return negative
+    existing = {t.strip().lower() for t in negative.split(",") if t.strip()}
+    new = []
+    for tok in additions.split(","):
+        tok = tok.strip()
+        if tok and tok.lower() not in existing:
+            existing.add(tok.lower())
+            new.append(tok)
+    if not new:
+        return negative
+    return (negative + ", " + ", ".join(new)) if negative.strip() else ", ".join(new)
 
 
 def apply_preset_to_prompts(preset: Dict, positive: str, negative: str,
@@ -151,6 +229,35 @@ def apply_preset_to_prompts(preset: Dict, positive: str, negative: str,
         if neg_tags:
             negative = f"{negative}, {', '.join(neg_tags)}" if negative else ", ".join(neg_tags)
     return positive, negative
+
+
+def apply_preset_style(preset: Dict, positive: str, negative: str,
+                       face_positive: str = "", face_negative: str = "",
+                       no_negative: bool = False):
+    """Apply a style preset's tags to the main prompts AND the face prompts.
+
+    The selected style should influence ``face_positive``/``face_negative`` too (Q4): the
+    same style tokens that shape the scene are appended to the per-face prompts so a face
+    inpainted by FaceDetailer matches the chosen style. Empty face strings are left empty
+    (e.g. when face prompts are disabled), so no tags are injected into a blank prompt."""
+    pos_tags = preset.get("style_tags_positive") or []
+    if not isinstance(pos_tags, list):
+        pos_tags = [pos_tags] if pos_tags else []
+    if pos_tags:
+        joined = ", ".join(pos_tags)
+        positive = append_positive_tags(positive, joined)
+        if face_positive:
+            face_positive = append_positive_tags(face_positive, joined)
+    if not no_negative:
+        neg_tags = preset.get("style_tags_negative") or []
+        if not isinstance(neg_tags, list):
+            neg_tags = [neg_tags] if neg_tags else []
+        if neg_tags:
+            joined = ", ".join(neg_tags)
+            negative = append_negative_tags(negative, joined)
+            if face_negative:
+                face_negative = append_negative_tags(face_negative, joined)
+    return positive, negative, face_positive, face_negative
 
 
 def reset_to_defaults():

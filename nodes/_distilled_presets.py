@@ -1,0 +1,265 @@
+"""Distilled-checkpoint sampler-parameter presets (pure Python, NO comfy import).
+
+This module is intentionally free of any ``import comfy`` so it can be unit-tested
+headless (``python -m pytest comfyui_llm_prompt_studio/tests/``) and reused both by
+the ``smart_parameters`` nodes and by the ``/llm_prompt_studio/sampler_params`` route.
+
+``FAMILIES`` mirrors ``model_meta.FAMILY_MARKERS`` (dmd, lcm, turbo, hyper, lightning,
+flash, schnell, tcd, pcm) plus ``"base"``. If ``model_meta.FAMILY_MARKERS`` ever gains
+a key, add it here too - the two definitions must stay in sync.
+"""
+
+import re
+
+__all__ = [
+    "PRESETS",
+    "FAMILIES",
+    "DISTILLED_FAMILIES",
+    "GENERIC_DISTILLED",
+    "RECOMMENDATIONS",
+    "ARCHITECTURE_RECOMMENDATIONS",
+    "recommend",
+]
+
+PRESETS = ("user", "balanced", "speed", "quality")
+
+# Keep in sync with model_meta.FAMILY_MARKERS (plus the synthetic "base").
+FAMILIES = (
+    "base",
+    "lightning",
+    "hyper",
+    "dmd",
+    "turbo",
+    "lcm",
+    "tcd",
+    "pcm",
+    "flash",
+    "schnell",
+)
+
+DISTILLED_FAMILIES = frozenset(FAMILIES) - {"base"}
+
+# Template row for a distilled family that has no hand-written ``RECOMMENDATIONS`` row
+# (e.g. a family present in ``model_meta.FAMILY_MARKERS`` but not yet mirrored here). Keeps
+# sane low-step distilled defaults so detection of any known family always yields usable
+# params. ``(steps, cfg, sampler, scheduler, note)``.
+GENERIC_DISTILLED = (4, 1.0, "euler", "sgm_uniform", "")
+
+# (steps, cfg, sampler, scheduler, note) per family per preset.
+# Samplers belong to comfy.samplers.KSampler.SAMPLERS; schedulers use the FULL list
+# (standard ComfyUI schedulers plus AYS SD1/SDXL/SVD and GITS) because the studio's
+# own KSampler node supports the whole list. For distilled families the recommendation
+# switches to "AYS SDXL" at the low-step presets (see recommend()).
+RECOMMENDATIONS = {
+    "base": {
+        "balanced": (30, 6.0, "dpmpp_2m", "karras", ""),
+        "speed":    (15, 5.0, "dpmpp_2m", "karras", ""),
+        "quality":  (40, 7.0, "dpmpp_2m_sde", "karras", ""),
+    },
+    "lightning": {
+        "balanced": (4, 1.0, "euler", "sgm_uniform", ""),
+        "speed":    (1, 1.0, "euler", "normal", ""),
+        "quality":  (8, 2.0, "dpmpp_sde", "karras", ""),
+    },
+    "hyper": {
+        "balanced": (4, 1.5, "euler", "sgm_uniform", ""),
+        "speed":    (1, 1.0, "euler", "normal", ""),
+        "quality":  (8, 2.0, "dpmpp_sde", "sgm_uniform", ""),
+    },
+    "dmd": {
+        "balanced": (6, 1.4, "lcm", "normal", ""),
+        "speed":    (4, 1.0, "lcm", "simple", ""),
+        "quality":  (8, 1.8, "lcm", "normal", ""),
+    },
+    "turbo": {
+        "balanced": (4, 1.0, "euler", "sgm_uniform", ""),
+        "speed":    (1, 1.0, "euler", "normal", ""),
+        "quality":  (4, 2.0, "dpmpp_sde", "karras", ""),
+    },
+    "lcm": {
+        "balanced": (4, 1.5, "lcm", "sgm_uniform", ""),
+        "speed":    (2, 1.0, "lcm", "sgm_uniform", ""),
+        "quality":  (8, 2.0, "lcm", "sgm_uniform", ""),
+    },
+    "tcd": {
+        "balanced": (8, 1.0, "euler_ancestral", "sgm_uniform", ""),
+        "speed":    (4, 0.7, "euler_ancestral", "sgm_uniform", ""),
+        "quality":  (12, 1.5, "dpmpp_sde", "sgm_uniform", ""),
+    },
+    "pcm": {
+        "balanced": (4, 1.5, "euler", "sgm_uniform", "Do NOT use the lcm sampler."),
+        "speed":    (2, 1.0, "euler", "normal", "Do NOT use the lcm sampler."),
+        "quality":  (8, 4.0, "euler", "karras", "Do NOT use the lcm sampler."),
+    },
+    "flash": {
+        "balanced": (4, 1.0, "euler", "sgm_uniform", ""),
+        "speed":    (1, 1.0, "euler", "normal", ""),
+        "quality":  (4, 2.0, "dpmpp_2m", "karras", ""),
+    },
+    "schnell": {
+        "balanced": (4, 1.0, "euler", "sgm_uniform", ""),
+        "speed":    (1, 1.0, "euler", "normal", ""),
+        "quality":  (4, 2.0, "dpmpp_2m", "karras", ""),
+    },
+}
+
+# Architecture-aware recommendations, keyed by canonical base architecture. Used when the
+# resolved family is "base" (a non-distilled checkpoint) so a base Flux/SD3/SD1.5 does not
+# silently receive SDXL defaults (which wash out those architectures). Distilled families
+# keep priority and are never overridden by this table. Each sub-row is (steps, cfg, sampler,
+# scheduler) per preset; the scheduler values belong to the FULL scheduler list (no AYS/GITS
+# for these base presets), mirroring RECOMMENDATIONS.
+ARCHITECTURE_RECOMMENDATIONS = {
+    "sdxl": {
+        "balanced": (30, 6.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 5.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 7.0, "dpmpp_2m_sde", "karras"),
+    },
+    "sd15": {
+        "balanced": (28, 7.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 6.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 9.0, "dpmpp_2m_sde", "karras"),
+    },
+    "pony": {
+        "balanced": (28, 6.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 5.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 7.0, "dpmpp_2m_sde", "karras"),
+    },
+    "illustrious": {
+        "balanced": (28, 6.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 5.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 7.0, "dpmpp_2m_sde", "karras"),
+    },
+    "flux": {
+        "balanced": (24, 1.0, "euler", "simple"),
+        "speed":    (12, 1.0, "euler", "simple"),
+        "quality":  (30, 1.0, "euler", "simple"),
+    },
+    "sd3": {
+        "balanced": (40, 4.5, "euler", "simple"),
+        "speed":    (20, 3.0, "euler", "simple"),
+        "quality":  (50, 5.0, "euler", "simple"),
+    },
+    "unknown": {
+        "balanced": (30, 6.0, "dpmpp_2m", "karras"),
+        "speed":    (15, 5.0, "dpmpp_2m", "karras"),
+        "quality":  (40, 7.0, "dpmpp_2m_sde", "karras"),
+    },
+}
+
+# Matches "4step" / "4 steps" / "8-Step" in a checkpoint filename.
+_STEP_RE = re.compile(r"(\d+)\s*step", re.IGNORECASE)
+
+
+def _family_key(family: str):
+    """Return ``(resolved_family, is_known)``.
+
+    ``resolved_family`` is ``"base"`` for empty/unknown input; ``is_known`` is False
+    when the input was not one of :data:`FAMILIES` (so the caller can apply the
+    "unknown family -> fallback 6 steps" rule without colliding with the real ``base``).
+    """
+    fam = (family or "").strip().lower()
+    if not fam or fam not in FAMILIES:
+        return "base", False
+    return fam, True
+
+
+def _steps_from_ckpt(ckpt_name: str, distilled: bool) -> int:
+    """Extract the step count from a filename like ``SDXL-Lightning_4step``.
+
+    Returns 0 when no ``Nstep`` token is present. The caller decides whether to use it.
+    """
+    if not ckpt_name:
+        return 0
+    name = ckpt_name
+    if "." in name:
+        name = name.rsplit(".", 1)[0]
+    m = _STEP_RE.search(name)
+    if not m:
+        return 0
+    n = int(m.group(1))
+    if distilled:
+        return max(1, min(12, n))
+    return max(1, min(100, n))
+
+
+def recommend(family="", preset="balanced", ckpt_name="", architecture="") -> dict:
+    """Return recommended sampler params for a checkpoint family.
+
+    Returns ``{"family", "preset", "steps", "cfg", "sampler", "scheduler", "note"}``.
+
+    The studio uses a single full scheduler list everywhere (standard schedulers plus
+    AYS SD1/SDXL/SVD and GITS), so there is no ``target`` parameter. For distilled
+    families at the ``balanced`` / ``speed`` presets the scheduler is "AYS SDXL" (which
+    the studio KSampler supports natively).
+
+    When the resolved family is ``"base"`` and a source checkpoint architecture is
+    supplied, the architecture's own recommended steps/cfg/sampler/scheduler override
+    the base defaults (the preset still selects the sub-row), so a base Flux/SD3/SD1.5
+    does not receive SDXL defaults. Distilled families keep priority - a non-base family
+    is never overridden.
+    """
+    if preset == "user":
+        preset = "balanced"
+    if preset not in PRESETS:
+        preset = "balanced"
+    fam, is_known = _family_key(family)
+    distilled = fam in DISTILLED_FAMILIES
+
+    table = RECOMMENDATIONS.get(fam)
+    if table is None:
+        # A family in FAMILIES but without a hand-written row. Distilled families get the
+        # generic low-step distilled template; otherwise fall back to the base row. This
+        # keeps any family present in model_meta.FAMILY_MARKERS backed by sane params.
+        if distilled:
+            table = dict.fromkeys(("balanced", "speed", "quality"), GENERIC_DISTILLED)
+        else:
+            table = RECOMMENDATIONS["base"]
+    steps_t, cfg, sampler, scheduler, note = table.get(
+        preset, RECOMMENDATIONS["base"][preset]
+    )
+
+    # Architecture override for base checkpoints: a base Flux/SD3/SD1.5 (or Pony/Illustrious)
+    # gets its own sane sampler defaults instead of the SDXL base row. Distilled families are
+    # unaffected because the gate below requires fam == "base".
+    arch = (architecture or "").strip().lower()
+    if fam == "base" and arch in ARCHITECTURE_RECOMMENDATIONS:
+        a_steps, a_cfg, a_sampler, a_scheduler = \
+            ARCHITECTURE_RECOMMENDATIONS[arch][preset]
+        steps_t = a_steps
+        cfg = a_cfg
+        sampler = a_sampler
+        scheduler = a_scheduler
+
+    # Unknown family falls back to base params but reports a safe step count.
+    if not is_known:
+        steps_t = 6
+
+    # Checkpoint filename Nstep override (matches the official Lightning/Hyper naming).
+    name_steps = _steps_from_ckpt(ckpt_name, distilled)
+    steps = name_steps if name_steps else steps_t
+
+    # The studio KSampler supports AYS, so distilled families use AYS at the
+    # low-step presets (balancing speed). quality keeps karras/sgm_uniform, which
+    # exist in the standard scheduler list. The AYS *variant* is gated by the
+    # checkpoint architecture: SDXL-family checkpoints use "AYS SDXL", SD1.5 uses
+    # "AYS SD1", and Flux/SD3 keep their own scheduler (e.g. "simple") since AYS
+    # is an SDXL/SD1 scheduler that does not apply to them.
+    if distilled and preset in ("balanced", "speed"):
+        if arch == "sd15":
+            scheduler = "AYS SD1"
+        elif arch in ("flux", "sd3"):
+            pass  # leave the distilled family's own scheduler (e.g. "simple")
+        else:
+            # sdxl / pony / illustrious / unknown / empty -> the SDXL-family AYS scheduler
+            scheduler = "AYS SDXL"
+
+    return {
+        "family": fam,
+        "preset": preset,
+        "steps": steps,
+        "cfg": cfg,
+        "sampler": sampler,
+        "scheduler": scheduler,
+        "note": note or "",
+    }

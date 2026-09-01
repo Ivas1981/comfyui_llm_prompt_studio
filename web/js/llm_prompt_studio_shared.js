@@ -1,6 +1,6 @@
 import { api } from "/scripts/api.js";
 
-// Placeholders — MUST match the values in constants.py
+// Placeholders - MUST match the values in constants.py
 export const PH_DOWN   = "— server unavailable —";
 export const PH_EMPTY  = "— no models on server —";
 export const LIB_EMPTY = "— library is empty —";
@@ -53,6 +53,18 @@ export function isSmartLoader(node) {
               getW(node, "ckpt_name"));
 }
 
+export function isSmartParams(node) {
+    if (cls(node) === "LLMPromptStudioSmartParameters") return true;
+    return !!(getW(node, "preset") && getW(node, "family_override") &&
+              getW(node, "sampler_name") && getW(node, "scheduler"));
+}
+
+export function isKSampler(node) {
+    if (cls(node) === "LLMPromptStudioKSamplerHiresFix") return true;
+    return !!(getW(node, "latent_image") && getW(node, "hires_enabled") &&
+              getW(node, "hires_upscale_type"));
+}
+
 // ---------------------------------------------------------------------------
 // API wrappers
 // ---------------------------------------------------------------------------
@@ -78,8 +90,10 @@ export async function postJSON(route, body) {
     return res.json();
 }
 
-export async function getJSON(route) {
-    const res = await api.fetchApi(route, { method: "GET" });
+export async function getJSON(route, headers) {
+    const opts = { method: "GET" };
+    if (headers) opts.headers = headers;
+    const res = await api.fetchApi(route, opts);
     if (!res.ok) {
         const text = await res.text();
         let parsed = null;
