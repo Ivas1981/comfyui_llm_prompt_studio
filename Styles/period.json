@@ -1,0 +1,197 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Period & Style",
+  "presets": [
+    {
+      "id": "cyberpunk",
+      "name": "Cyberpunk",
+      "description": "Neon cyberpunk city style",
+      "system_prompt": "You are an expert SDXL prompt engineer for neon cyberpunk scenes. Write as connected art-direction prose: subject first, then rain-soaked neon city, holograms, chrome and moody futuristic atmosphere with volumetric lighting.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for neon cyberpunk scenes. Write as connected art-direction prose: subject first, then rain-soaked neon city, holograms, chrome and moody futuristic atmosphere with volumetric lighting.",
+      "style_tags_positive": [
+        "cyberpunk",
+        "neon lighting",
+        "rain-soaked city",
+        "holograms",
+        "chrome"
+      ],
+      "style_tags_negative": [
+        "pastoral",
+        "medieval",
+        "bright daytime",
+        "organic"
+      ],
+      "blend_note": "Cyberpunk — neon signage, wet reflective streets, dystopian tech, high-contrast magenta/cyan, holographic UI",
+      "category": "Period & Style",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "mid_century_modern",
+      "name": "Mid-Century Modern",
+      "description": "50s-60s design aesthetic",
+      "system_prompt": "Style focus: mid-century modern. Clean organic-meets-geometric forms, warm wood and mustard/teal palette, optimistic retro-futurism, simple elegant styling.",
+      "style_tags_positive": [
+        "mid century modern",
+        "retro",
+        "warm wood",
+        "mustard teal"
+      ],
+      "style_tags_negative": [
+        "gritty",
+        "ornate"
+      ],
+      "blend_note": "warm retro",
+      "category": "Period & Style",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: mid-century modern. Clean organic-meets-geometric forms, warm wood and mustard/teal palette, optimistic retro-futurism, simple elegant styling."
+    },
+    {
+      "id": "retro_80s",
+      "name": "Retro 80s",
+      "description": "1980s retro illustration",
+      "system_prompt": "You are an expert SDXL prompt engineer for 1980s retro illustration. Write as connected art-direction prose with bold gradients and chrome.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for 1980s retro illustration. Write as connected art-direction prose with bold gradients and chrome.",
+      "style_tags_positive": [
+        "80s retro",
+        "chrome",
+        "bold gradient",
+        "memphis style"
+      ],
+      "style_tags_negative": [
+        "modern",
+        "muted",
+        "photorealistic"
+      ],
+      "blend_note": "Retro 80s",
+      "category": "Period & Style",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "roaring_twenties",
+      "name": "Roaring Twenties",
+      "description": "1920s art-deco glamour",
+      "system_prompt": "Style focus: Roaring Twenties. Art-Deco glamour, flappers, jazz-age gold and black, geometric luxe, confident optimistic deco line.",
+      "style_tags_positive": [
+        "roaring twenties",
+        "art deco",
+        "gold black",
+        "flapper"
+      ],
+      "style_tags_negative": [
+        "modern",
+        "drab"
+      ],
+      "blend_note": "deco glamour",
+      "category": "Period & Style",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Roaring Twenties. Art-Deco glamour, flappers, jazz-age gold and black, geometric luxe, confident optimistic deco line."
+    },
+    {
+      "id": "steampunk",
+      "name": "Steampunk",
+      "description": "Victorian steampunk style",
+      "system_prompt": "You are an expert SDXL prompt engineer for Victorian steampunk art. Write as connected art-direction prose: subject first, then brass-and-copper machinery, airships, steam, clockwork and ornate Victorian composition with warm industrial lighting.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for Victorian steampunk art. Write as connected art-direction prose: subject first, then brass-and-copper machinery, airships, steam, clockwork and ornate Victorian composition with warm industrial lighting.",
+      "style_tags_positive": [
+        "steampunk",
+        "brass",
+        "copper",
+        "clockwork",
+        "airship",
+        "Victorian"
+      ],
+      "style_tags_negative": [
+        "digital",
+        "neon",
+        "modern",
+        "sleek"
+      ],
+      "blend_note": "Steampunk",
+      "category": "Period & Style",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "synthwave",
+      "name": "Synthwave",
+      "description": "synthwave neon scene art",
+      "system_prompt": "You are an expert SDXL prompt engineer for synthwave neon scene art. Write as connected art-direction prose with sunset grids and neon.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for synthwave neon scene art. Write as connected art-direction prose with sunset grids and neon.",
+      "style_tags_positive": [
+        "synthwave",
+        "neon sunset",
+        "grid horizon",
+        "retro futurism"
+      ],
+      "style_tags_negative": [
+        "realistic",
+        "muted",
+        "photorealistic"
+      ],
+      "blend_note": "Synthwave",
+      "category": "Period & Style",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "vaporwave",
+      "name": "Vaporwave",
+      "description": "vaporwave aesthetic art",
+      "system_prompt": "You are an expert SDXL prompt engineer for vaporwave aesthetic art. Write as connected art-direction prose with pink/cyan grids and nostalgia.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for vaporwave aesthetic art. Write as connected art-direction prose with pink/cyan grids and nostalgia.",
+      "style_tags_positive": [
+        "vaporwave",
+        "neon grid",
+        "pink and cyan",
+        "retro nostalgia"
+      ],
+      "style_tags_negative": [
+        "realistic",
+        "muted",
+        "photorealistic"
+      ],
+      "blend_note": "Vaporwave",
+      "category": "Period & Style",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "victorian",
+      "name": "Victorian",
+      "description": "Victorian-era illustration",
+      "system_prompt": "You are an expert SDXL prompt engineer for Victorian-era illustration. Write as connected art-direction prose with engraving and sepia tone.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for Victorian-era illustration. Write as connected art-direction prose with engraving and sepia tone.",
+      "style_tags_positive": [
+        "victorian",
+        "engraving",
+        "sepia",
+        "ornate frame"
+      ],
+      "style_tags_negative": [
+        "modern",
+        "neon",
+        "photorealistic"
+      ],
+      "blend_note": "Victorian",
+      "category": "Period & Style",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "wild_west",
+      "name": "Wild West",
+      "description": "American frontier look",
+      "system_prompt": "Style focus: Wild West. Dusty frontier towns, leather and denim, sepia sunlight, wide desert horizons, weathered Americana.",
+      "style_tags_positive": [
+        "wild west",
+        "frontier",
+        "dusty",
+        "sepia"
+      ],
+      "style_tags_negative": [
+        "urban",
+        "sci-fi"
+      ],
+      "blend_note": "dusty frontier",
+      "category": "Period & Style",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Wild West. Dusty frontier towns, leather and denim, sepia sunlight, wide desert horizons, weathered Americana."
+    }
+  ]
+}

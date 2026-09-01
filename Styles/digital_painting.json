@@ -1,0 +1,86 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Digital Painting",
+  "presets": [
+    {
+      "id": "concept_art",
+      "name": "Concept Art",
+      "description": "Professional environment concept painting",
+      "system_prompt": "Style focus: production concept art. Bold readable silhouette, atmospheric perspective, loose confident brushwork, cinematic key light, painterly but legible detail.",
+      "style_tags_positive": [
+        "concept art",
+        "atmospheric",
+        "painterly",
+        "cinematic key light"
+      ],
+      "style_tags_negative": [
+        "photographic",
+        "flat"
+      ],
+      "blend_note": "painterly, atmospheric",
+      "category": "Digital Painting",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: production concept art. Bold readable silhouette, atmospheric perspective, loose confident brushwork, cinematic key light, painterly but legible detail."
+    },
+    {
+      "id": "digital_art",
+      "name": "Digital Art / Concept Art",
+      "description": "Digital painting / concept art style",
+      "system_prompt": "You are an expert SDXL prompt engineer for digital concept art and illustration. Write as connected art-direction prose: subject and mood first, then palette and lighting, then technique (matte painting, trending on artstation, highly detailed brushwork).",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for digital concept art and illustration. Write as connected art-direction prose: subject and mood first, then palette and lighting, then technique (matte painting, trending on artstation, highly detailed brushwork).",
+      "style_tags_positive": [
+        "digital painting",
+        "concept art",
+        "matte painting",
+        "trending on artstation",
+        "highly detailed"
+      ],
+      "style_tags_negative": [
+        "photograph",
+        "3d render",
+        "low quality"
+      ],
+      "blend_note": "Digital Art / Concept Art",
+      "category": "Digital Painting",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "digital_illustration",
+      "name": "Digital Illustration",
+      "description": "Modern vector-ish illustration",
+      "system_prompt": "Style focus: modern digital illustration. Clean shapes, controlled palette, crisp edges, stylized but polished, suitable for editorial or game key art.",
+      "style_tags_positive": [
+        "digital illustration",
+        "clean shapes",
+        "stylized"
+      ],
+      "style_tags_negative": [
+        "messy",
+        "photoreal"
+      ],
+      "blend_note": "clean stylized",
+      "category": "Digital Painting",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: modern digital illustration. Clean shapes, controlled palette, crisp edges, stylized but polished, suitable for editorial or game key art."
+    },
+    {
+      "id": "matte_painting",
+      "name": "Matte Painting",
+      "description": "Photoreal digital environment painting",
+      "system_prompt": "Style focus: digital matte painting. Seamless photoreal environments, fine detail at infinity, layered atmosphere, invisible brushwork blending real and painted elements.",
+      "style_tags_positive": [
+        "matte painting",
+        "photoreal environment",
+        "atmospheric depth"
+      ],
+      "style_tags_negative": [
+        "visible brush",
+        "flat"
+      ],
+      "blend_note": "photoreal environment",
+      "category": "Digital Painting",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: digital matte painting. Seamless photoreal environments, fine detail at infinity, layered atmosphere, invisible brushwork blending real and painted elements."
+    }
+  ]
+}

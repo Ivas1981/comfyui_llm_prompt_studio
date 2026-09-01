@@ -1,10 +1,10 @@
 [project]
 name = "comfyui-llm-prompt-studio"
-version = "1.1.0"
-description = "SDXL prompt generation and critique via local LLMs (LM Studio / any local OpenAI-compatible server)"
+version = "1.2.3"
+description = "Architecture-aware prompt generation and critique for SDXL/SD1.5/Pony/Illustrious/Flux/SD3 via local LLMs (LM Studio / any local OpenAI-compatible server)"
 readme = "README.md"
 license = { text = "MIT" }
-dependencies = ["requests", "numpy", "pillow>=9.1.0"]
+dependencies = ["requests", "numpy", "pillow>=9.1.0", "opencv-python-headless>=4.7.0"]
 authors = [{ name = "Ivas1981" }]
 urls = { Repository = "https://github.com/Ivas1981/comfyui_llm_prompt_studio" }
 

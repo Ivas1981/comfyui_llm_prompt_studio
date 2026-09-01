@@ -1,0 +1,145 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Natural Events",
+  "presets": [
+    {
+      "id": "aurora_borealis",
+      "name": "Aurora Borealis",
+      "description": "Northern lights photography",
+      "system_prompt": "Style focus: aurora photography. Shimmering green/violet curtains over dark landscape, long exposure, reflection in water, silent cold majesty.",
+      "style_tags_positive": [
+        "aurora borealis",
+        "northern lights",
+        "long exposure",
+        "reflection"
+      ],
+      "style_tags_negative": [
+        "daylight",
+        "busy"
+      ],
+      "blend_note": "shimmering curtains",
+      "category": "Natural Events",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: aurora photography. Shimmering green/violet curtains over dark landscape, long exposure, reflection in water, silent cold majesty."
+    },
+    {
+      "id": "extreme_weather",
+      "name": "Extreme Weather",
+      "description": "Severe weather photography",
+      "system_prompt": "Style focus: extreme weather. Blizzards, floods, heat haze, monumental atmosphere, human scale against nature's force, raw documentary intensity.",
+      "style_tags_positive": [
+        "extreme weather",
+        "blizzard",
+        "flood",
+        "monumental"
+      ],
+      "style_tags_negative": [
+        "calm",
+        "soft"
+      ],
+      "blend_note": "nature's force",
+      "category": "Natural Events",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: extreme weather. Blizzards, floods, heat haze, monumental atmosphere, human scale against nature's force, raw documentary intensity."
+    },
+    {
+      "id": "landscape_photo",
+      "name": "Landscape Scene",
+      "description": "Scenic landscape photo",
+      "system_prompt": "Style focus: landscape photography. Expansive vistas, layered depth, balanced composition, atmospheric light, fine natural detail.",
+      "style_tags_positive": [
+        "landscape photography",
+        "vista",
+        "atmospheric",
+        "balanced"
+      ],
+      "style_tags_negative": [
+        "cluttered",
+        "flat"
+      ],
+      "blend_note": "expansive vista",
+      "category": "Natural Events",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: landscape photography. Expansive vistas, layered depth, balanced composition, atmospheric light, fine natural detail."
+    },
+    {
+      "id": "nat_geo_doc",
+      "name": "Nat Geo Documentary",
+      "description": "Editorial wildlife photography",
+      "system_prompt": "Style focus: National Geographic documentary. Pristine wildlife in habitat, scientific accuracy, golden-hour light, unobtrusive telephoto realism.",
+      "style_tags_positive": [
+        "national geographic",
+        "wildlife",
+        "golden hour",
+        "realistic"
+      ],
+      "style_tags_negative": [
+        "staged",
+        "cartoon"
+      ],
+      "blend_note": "pristine realism",
+      "category": "Natural Events",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: National Geographic documentary. Pristine wildlife in habitat, scientific accuracy, golden-hour light, unobtrusive telephoto realism."
+    },
+    {
+      "id": "storm",
+      "name": "Storm",
+      "description": "Dramatic tempest photography",
+      "system_prompt": "Style focus: storm photography. Towering thunderheads, rain shafts, lightning, dramatic chiaroscuro sky, sense of awe and scale.",
+      "style_tags_positive": [
+        "storm",
+        "thunderhead",
+        "lightning",
+        "dramatic sky"
+      ],
+      "style_tags_negative": [
+        "calm",
+        "flat light"
+      ],
+      "blend_note": "dramatic sky",
+      "category": "Natural Events",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: storm photography. Towering thunderheads, rain shafts, lightning, dramatic chiaroscuro sky, sense of awe and scale."
+    },
+    {
+      "id": "tornado",
+      "name": "Tornado / Supercell",
+      "description": "Severe storm photography",
+      "system_prompt": "Style focus: supercell/tornado. Rotation, green-tinged sky, funnel to ground, ominous mammatus clouds, vast prairie scale.",
+      "style_tags_positive": [
+        "tornado",
+        "supercell",
+        "funnel",
+        "green sky"
+      ],
+      "style_tags_negative": [
+        "calm"
+      ],
+      "blend_note": "ominous rotation",
+      "category": "Natural Events",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: supercell/tornado. Rotation, green-tinged sky, funnel to ground, ominous mammatus clouds, vast prairie scale."
+    },
+    {
+      "id": "volcanic_eruption",
+      "name": "Volcanic Eruption",
+      "description": "Eruption photography",
+      "system_prompt": "Style focus: volcanic eruption. Glowing lava, ash plume, incandescent flows, stark contrast of fire and dark rock, primordial drama.",
+      "style_tags_positive": [
+        "volcanic eruption",
+        "lava",
+        "ash plume",
+        "glow"
+      ],
+      "style_tags_negative": [
+        "calm",
+        "pastel"
+      ],
+      "blend_note": "fire vs rock",
+      "category": "Natural Events",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: volcanic eruption. Glowing lava, ash plume, incandescent flows, stark contrast of fire and dark rock, primordial drama."
+    }
+  ]
+}

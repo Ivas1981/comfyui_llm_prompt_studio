@@ -1,0 +1,106 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Miniature & Toy",
+  "presets": [
+    {
+      "id": "diorama",
+      "name": "Diorama",
+      "description": "Miniature scene model",
+      "system_prompt": "Style focus: diorama. Tiny detailed modeled environment in a contained scene, careful scale lighting, collectible-craft polish.",
+      "style_tags_positive": [
+        "diorama",
+        "miniature scene",
+        "detailed",
+        "contained"
+      ],
+      "style_tags_negative": [
+        "vast",
+        "realistic"
+      ],
+      "blend_note": "contained detail",
+      "category": "Miniature & Toy",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: diorama. Tiny detailed modeled environment in a contained scene, careful scale lighting, collectible-craft polish."
+    },
+    {
+      "id": "food_miniature",
+      "name": "Food Miniature",
+      "description": "Tiny-food miniature",
+      "system_prompt": "Style focus: tiny-food miniature. Hyper-detailed miniature cuisine, dollhouse scale, cute precise crafting, appetizing mini lighting.",
+      "style_tags_positive": [
+        "tiny food",
+        "miniature cuisine",
+        "dollhouse",
+        "cute"
+      ],
+      "style_tags_negative": [
+        "life size",
+        "messy"
+      ],
+      "blend_note": "cute tiny food",
+      "category": "Miniature & Toy",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: tiny-food miniature. Hyper-detailed miniature cuisine, dollhouse scale, cute precise crafting, appetizing mini lighting."
+    },
+    {
+      "id": "terrarium",
+      "name": "Terrarium",
+      "description": "Glass-dome miniature",
+      "system_prompt": "Style focus: terrarium. Plants/landscape sealed in glass, soft diffuse light, miniature ecosystem, calm green enclosure.",
+      "style_tags_positive": [
+        "terrarium",
+        "glass dome",
+        "mini ecosystem",
+        "soft light"
+      ],
+      "style_tags_negative": [
+        "harsh",
+        "vast"
+      ],
+      "blend_note": "glass enclosure",
+      "category": "Miniature & Toy",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: terrarium. Plants/landscape sealed in glass, soft diffuse light, miniature ecosystem, calm green enclosure."
+    },
+    {
+      "id": "tilt_shift",
+      "name": "Tilt-Shift",
+      "description": "Miniature fake-diorama photo",
+      "system_prompt": "Style focus: tilt-shift miniature. Real scene shot with selective blur so it reads as a tiny model, boosted saturation, toy-like shallow focus band.",
+      "style_tags_positive": [
+        "tilt shift",
+        "miniature effect",
+        "selective blur",
+        "boosted saturation"
+      ],
+      "style_tags_negative": [
+        "deep focus",
+        "realistic scale"
+      ],
+      "blend_note": "fake miniature",
+      "category": "Miniature & Toy",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: tilt-shift miniature. Real scene shot with selective blur so it reads as a tiny model, boosted saturation, toy-like shallow focus band."
+    },
+    {
+      "id": "toy_photography",
+      "name": "Toy Photography",
+      "description": "Action-figure photo",
+      "system_prompt": "Style focus: toy photography. Posed action figures, practical mini lighting, forced perspective, playful cinematic miniature scene.",
+      "style_tags_positive": [
+        "toy photography",
+        "action figure",
+        "mini lighting",
+        "forced perspective"
+      ],
+      "style_tags_negative": [
+        "life size",
+        "flat"
+      ],
+      "blend_note": "mini cinematic",
+      "category": "Miniature & Toy",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: toy photography. Posed action figures, practical mini lighting, forced perspective, playful cinematic miniature scene."
+    }
+  ]
+}

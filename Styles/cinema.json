@@ -1,0 +1,754 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Cinema",
+  "presets": [
+    {
+      "id": "cinematic",
+      "name": "Cinematic",
+      "description": "Cinematic movie frame style",
+      "system_prompt": "You are an expert SDXL prompt engineer for cinematic movie frames. Write one connected cinematographic description: subject and blocking first, then environment, then dramatic lighting and color grading, then lens and film-stock choice (anamorphic, shallow depth of field, visible film grain).",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for cinematic movie frames. Write one connected cinematographic description: subject and blocking first, then environment, then dramatic lighting and color grading, then lens and film-stock choice (anamorphic, shallow depth of field, visible film grain).",
+      "style_tags_positive": [
+        "cinematic lighting",
+        "color grading",
+        "dramatic shadows",
+        "film still",
+        "anamorphic lens"
+      ],
+      "style_tags_negative": [
+        "flat lighting",
+        "cartoon",
+        "anime"
+      ],
+      "blend_note": "Cinematic",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "blockbuster",
+      "name": "Summer Blockbuster",
+      "description": "High-concept Hollywood spectacle framing",
+      "system_prompt": "Style focus: summer-blockbuster spectacle. Emphasize epic scale, dramatic hero lighting, explosive atmosphere, and widescreen composition with foreground hero subject.",
+      "style_tags_positive": [
+        "cinematic",
+        "epic scale",
+        "dramatic hero lighting",
+        "widescreen"
+      ],
+      "style_tags_negative": [
+        "static",
+        "flat"
+      ],
+      "blend_note": "epic scale, hero lighting",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: summer-blockbuster spectacle. Emphasize epic scale, dramatic hero lighting, explosive atmosphere, and widescreen composition with foreground hero subject."
+    },
+    {
+      "id": "wes_anderson",
+      "name": "Wes Anderson",
+      "description": "Symmetric, pastel-palette idiosyncratic film framing",
+      "system_prompt": "Style focus: Wes Anderson cinema. Compose with rigorous central symmetry, flat even lighting, a curated pastel and saturated color palette, and deadpan storybook staging; name specific props and costume colors.",
+      "style_tags_positive": [
+        "wes anderson style",
+        "symmetric composition",
+        "pastel palette",
+        "flat lighting",
+        "storybook staging"
+      ],
+      "style_tags_negative": [
+        "asymmetric",
+        "messy",
+        "dark moody"
+      ],
+      "blend_note": "symmetry, pastel palette, deadpan staging",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Wes Anderson cinema. Compose with rigorous central symmetry, flat even lighting, a curated pastel and saturated color palette, and deadpan storybook staging; name specific props and costume colors."
+    },
+    {
+      "id": "stanley_kubrick",
+      "name": "Stanley Kubrick",
+      "description": "Kubrick symmetric clinical cinema",
+      "system_prompt": "Style focus: Stanley Kubrick. One-point-perspective symmetry, meticulously staged central framing, practical motivated lighting with hard key and deep shadow, cold clinical color, unsettling stillness and the uncanny in the ordinary.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Stanley Kubrick. One-point-perspective symmetry, meticulously staged central framing, practical motivated lighting with hard key and deep shadow, cold clinical color, unsettling stillness and the uncanny in the ordinary.",
+      "style_tags_positive": [
+        "stanley kubrick",
+        "symmetric composition",
+        "practical lighting",
+        "deep shadow",
+        "clinical"
+      ],
+      "style_tags_negative": [
+        "messy",
+        "handheld",
+        "soft focus",
+        "warm nostalgic"
+      ],
+      "blend_note": "Kubrick symmetry, clinical lighting",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "christopher_nolan",
+      "name": "Christopher Nolan",
+      "description": "Nolan IMAX anamorphic spectacle",
+      "system_prompt": "Style focus: Christopher Nolan. Large-format IMAX anamorphic, tactile practical scale and real locations, restrained teal-and-amber grade, temporal ambiguity, vast architectural interiors with motivated hard light.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Christopher Nolan. Large-format IMAX anamorphic, tactile practical scale and real locations, restrained teal-and-amber grade, temporal ambiguity, vast architectural interiors with motivated hard light.",
+      "style_tags_positive": [
+        "christopher nolan",
+        "IMAX anamorphic",
+        "practical scale",
+        "teal amber grade",
+        "temporal"
+      ],
+      "style_tags_negative": [
+        "cartoon",
+        "soft pastel",
+        "handheld shaky"
+      ],
+      "blend_note": "Nolan IMAX scale, teal-amber grade",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "quentin_tarantino",
+      "name": "Quentin Tarantino",
+      "description": "Tarantino retro extreme close-ups",
+      "system_prompt": "Style focus: Quentin Tarantino. Low-angle trunk shots, extreme close-ups of feet and faces, saturated retro 70s palettes, hard southern daylight and neon, stylized graphic-novel framing of violence.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Quentin Tarantino. Low-angle trunk shots, extreme close-ups of feet and faces, saturated retro 70s palettes, hard southern daylight and neon, stylized graphic-novel framing of violence.",
+      "style_tags_positive": [
+        "quentin tarantino",
+        "trunk shot",
+        "extreme close up",
+        "70s palette",
+        "neon"
+      ],
+      "style_tags_negative": [
+        "pastel",
+        "soft",
+        "minimalist"
+      ],
+      "blend_note": "Tarantino retro palette, extreme close-ups",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "david_fincher",
+      "name": "David Fincher",
+      "description": "Fincher cold desaturated digital",
+      "system_prompt": "Style focus: David Fincher. Cold desaturated digital texture, forensic detail, symmetric unsettling calm, overcast grey natural light, precise shallow clinical focus.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: David Fincher. Cold desaturated digital texture, forensic detail, symmetric unsettling calm, overcast grey natural light, precise shallow clinical focus.",
+      "style_tags_positive": [
+        "david fincher",
+        "desaturated",
+        "cold tone",
+        "forensic detail",
+        "overcast"
+      ],
+      "style_tags_negative": [
+        "warm",
+        "cheerful",
+        "saturated",
+        "soft"
+      ],
+      "blend_note": "Fincher cold desaturation, forensic detail",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "ridley_scott",
+      "name": "Ridley Scott",
+      "description": "Scott volumetric chiaroscuro",
+      "system_prompt": "Style focus: Ridley Scott. Hard practical light, volumetric smoke and haze, opulent decay and chiaroscuro, monumental industrial scale, rain-slick reflective surfaces.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Ridley Scott. Hard practical light, volumetric smoke and haze, opulent decay and chiaroscuro, monumental industrial scale, rain-slick reflective surfaces.",
+      "style_tags_positive": [
+        "ridley scott",
+        "volumetric haze",
+        "chiaroscuro",
+        "industrial",
+        "smoke"
+      ],
+      "style_tags_negative": [
+        "bright flat",
+        "pastel",
+        "cheerful"
+      ],
+      "blend_note": "Scott chiaroscuro, volumetric haze",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "denis_villeneuve",
+      "name": "Denis Villeneuve",
+      "description": "Villeneuve minimalist vast landscapes",
+      "system_prompt": "Style focus: Denis Villeneuve. Minimalist vast landscapes, Roger Deakins cold clarity, anamorphic stillness, restrained muted palette, monumental scale and patient framing.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Denis Villeneuve. Minimalist vast landscapes, Roger Deakins cold clarity, anamorphic stillness, restrained muted palette, monumental scale and patient framing.",
+      "style_tags_positive": [
+        "denis villeneuve",
+        "vast landscape",
+        "anamorphic",
+        "cold clarity",
+        "minimalist"
+      ],
+      "style_tags_negative": [
+        "busy",
+        "saturated",
+        "warm nostalgic"
+      ],
+      "blend_note": "Villeneuve vast minimalism, cold clarity",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "guillermo_del_toro",
+      "name": "Guillermo del Toro",
+      "description": "del Toro baroque fairy-tale",
+      "system_prompt": "Style focus: Guillermo del Toro. Baroque fairy-tale, warm candlelight against deep shadow, organic creature detail, gilded decay and ornate texture, childlike awe meeting monstrous tenderness.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Guillermo del Toro. Baroque fairy-tale, warm candlelight against deep shadow, organic creature detail, gilded decay and ornate texture, childlike awe meeting monstrous tenderness.",
+      "style_tags_positive": [
+        "guillermo del toro",
+        "baroque",
+        "candlelight",
+        "gilded decay",
+        "organic creature"
+      ],
+      "style_tags_negative": [
+        "flat",
+        "minimal",
+        "cold sterile"
+      ],
+      "blend_note": "del Toro baroque warmth, gilded decay",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "tim_burton",
+      "name": "Tim Burton",
+      "description": "Burton gothic expressionism",
+      "system_prompt": "Style focus: Tim Burton. High-contrast German-expressionist angles, pale gaunt figures, gothic whimsy, skewed impossible architecture, stark black-and-white with pops of color.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Tim Burton. High-contrast German-expressionist angles, pale gaunt figures, gothic whimsy, skewed impossible architecture, stark black-and-white with pops of color.",
+      "style_tags_positive": [
+        "tim burton",
+        "german expressionism",
+        "gothic whimsy",
+        "high contrast",
+        "pale"
+      ],
+      "style_tags_negative": [
+        "warm realistic",
+        "soft pastel",
+        "photoreal"
+      ],
+      "blend_note": "Burton gothic whimsy, high contrast",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "wong_kar_wai",
+      "name": "Wong Kar-wai",
+      "description": "Wong Kar-wai neon intimacy",
+      "system_prompt": "Style focus: Wong Kar-wai. Lush saturated neon, shallow depth of field, motion blur and trailing light, intimate longing, visible film grain and cigarette-smoke atmosphere.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Wong Kar-wai. Lush saturated neon, shallow depth of field, motion blur and trailing light, intimate longing, visible film grain and cigarette-smoke atmosphere.",
+      "style_tags_positive": [
+        "wong kar wai",
+        "neon",
+        "shallow depth",
+        "motion blur",
+        "saturated"
+      ],
+      "style_tags_negative": [
+        "flat",
+        "bright daylight",
+        "cold"
+      ],
+      "blend_note": "Wong Kar-wai neon intimacy, motion blur",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "akira_kurosawa",
+      "name": "Akira Kurosawa",
+      "description": "Kurosawa dynamic weather chiaroscuro",
+      "system_prompt": "Style focus: Akira Kurosawa. Dynamic diagonal compositions, dramatic weather, chiaroscuro black-and-white energy, thunder, rain and wind, monumental human struggle framed against nature.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Akira Kurosawa. Dynamic diagonal compositions, dramatic weather, chiaroscuro black-and-white energy, thunder, rain and wind, monumental human struggle framed against nature.",
+      "style_tags_positive": [
+        "akira kurosawa",
+        "dynamic composition",
+        "chiaroscuro",
+        "rain",
+        "monumental"
+      ],
+      "style_tags_negative": [
+        "pastel",
+        "flat",
+        "soft"
+      ],
+      "blend_note": "Kurosawa dynamic weather, chiaroscuro",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "andrei_tarkovsky",
+      "name": "Andrei Tarkovsky",
+      "description": "Tarkovsky elemental stillness",
+      "system_prompt": "Style focus: Andrei Tarkovsky. Long-take stillness, natural diffuse light, water wind and stone, contemplative metaphysical mood, weathered texture and slow elemental time.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Andrei Tarkovsky. Long-take stillness, natural diffuse light, water wind and stone, contemplative metaphysical mood, weathered texture and slow elemental time.",
+      "style_tags_positive": [
+        "andrei tarkovsky",
+        "natural light",
+        "long take",
+        "contemplative",
+        "water stone"
+      ],
+      "style_tags_negative": [
+        "action",
+        "saturated",
+        "busy"
+      ],
+      "blend_note": "Tarkovsky elemental stillness, natural light",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "sofia_coppola",
+      "name": "Sofia Coppola",
+      "description": "Coppola pastel luxe soft focus",
+      "system_prompt": "Style focus: Sofia Coppola. Pastel soft focus, idle luxe interiors, shallow depth of field, nostalgic haze, detached feminine intimacy and decorative detail.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Sofia Coppola. Pastel soft focus, idle luxe interiors, shallow depth of field, nostalgic haze, detached feminine intimacy and decorative detail.",
+      "style_tags_positive": [
+        "sofia coppola",
+        "pastel",
+        "soft focus",
+        "shallow dof",
+        "nostalgic"
+      ],
+      "style_tags_negative": [
+        "harsh",
+        "gritty",
+        "saturated"
+      ],
+      "blend_note": "Coppola pastel luxe, soft focus",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "terrence_malick",
+      "name": "Terrence Malick",
+      "description": "Malick golden nature lyrical",
+      "system_prompt": "Style focus: Terrence Malick. Golden natural light, floating nature and macro flora, whispered intimacy, lyrical handheld drift, sun-dappled contemplative beauty.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Terrence Malick. Golden natural light, floating nature and macro flora, whispered intimacy, lyrical handheld drift, sun-dappled contemplative beauty.",
+      "style_tags_positive": [
+        "terrence malick",
+        "golden hour",
+        "natural light",
+        "macro nature",
+        "lyrical"
+      ],
+      "style_tags_negative": [
+        "dark",
+        "gritty",
+        "hard light"
+      ],
+      "blend_note": "Malick golden nature, lyrical drift",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "bong_joon_ho",
+      "name": "Bong Joon-ho",
+      "description": "Bong social-realist precision",
+      "system_prompt": "Style focus: Bong Joon-ho. Social-realist precision, cold Korean daylight, meticulous symmetrical framing, satirical detail, grounded texture and sudden tonal shifts.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Bong Joon-ho. Social-realist precision, cold Korean daylight, meticulous symmetrical framing, satirical detail, grounded texture and sudden tonal shifts.",
+      "style_tags_positive": [
+        "bong joon ho",
+        "social realism",
+        "cold daylight",
+        "symmetry",
+        "grounded"
+      ],
+      "style_tags_negative": [
+        "fantasy",
+        "saturated",
+        "glamour"
+      ],
+      "blend_note": "Bong social realism, cold precision",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "coen_brothers",
+      "name": "Coen Brothers",
+      "description": "Coen deadpan Americana",
+      "system_prompt": "Style focus: Coen Brothers. Wide flat Americana, hard midday daylight, deadpan composition, eccentric detail and dusty Plains texture, wry static framing.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Coen Brothers. Wide flat Americana, hard midday daylight, deadpan composition, eccentric detail and dusty Plains texture, wry static framing.",
+      "style_tags_positive": [
+        "coen brothers",
+        "americana",
+        "flat daylight",
+        "deadpan",
+        "wide"
+      ],
+      "style_tags_negative": [
+        "noir",
+        "moody",
+        "saturated"
+      ],
+      "blend_note": "Coen deadpan Americana, flat daylight",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "paul_thomas_anderson",
+      "name": "Paul Thomas Anderson",
+      "description": "PTA 70s warmth deep staging",
+      "system_prompt": "Style focus: Paul Thomas Anderson. Deep staging and choreographed movement, warm 70s texture, long tracking shots, intimate ensemble framing, rich autumn palettes.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Paul Thomas Anderson. Deep staging and choreographed movement, warm 70s texture, long tracking shots, intimate ensemble framing, rich autumn palettes.",
+      "style_tags_positive": [
+        "paul thomas anderson",
+        "deep focus",
+        "70s texture",
+        "tracking shot",
+        "warm"
+      ],
+      "style_tags_negative": [
+        "cold",
+        "static",
+        "flat"
+      ],
+      "blend_note": "PTA 70s warmth, deep staging",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "jean_luc_godard",
+      "name": "Jean-Luc Godard",
+      "description": "Godard new-wave immediacy",
+      "system_prompt": "Style focus: Jean-Luc Godard. French New Wave jump cuts, handheld immediacy, high-contrast black-and-white, improvised Parisian street energy, bold graphic frames.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Jean-Luc Godard. French New Wave jump cuts, handheld immediacy, high-contrast black-and-white, improvised Parisian street energy, bold graphic frames.",
+      "style_tags_positive": [
+        "jean luc godard",
+        "new wave",
+        "jump cut",
+        "handheld",
+        "high contrast bw"
+      ],
+      "style_tags_negative": [
+        "smooth",
+        "polished",
+        "pastel"
+      ],
+      "blend_note": "Godard new-wave immediacy, B&W",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "sergei_eisenstein",
+      "name": "Sergei Eisenstein",
+      "description": "Eisenstein montage diagonals",
+      "system_prompt": "Style focus: Sergei Eisenstein. Montage-driven dynamic diagonals, monumental geometry, stark chiaroscuro, masses and scale, rhythmic collision of forms.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Sergei Eisenstein. Montage-driven dynamic diagonals, monumental geometry, stark chiaroscuro, masses and scale, rhythmic collision of forms.",
+      "style_tags_positive": [
+        "sergei eisenstein",
+        "montage",
+        "dynamic diagonal",
+        "monumental",
+        "chiaroscuro"
+      ],
+      "style_tags_negative": [
+        "soft",
+        "pastel",
+        "calm"
+      ],
+      "blend_note": "Eisenstein montage diagonals, monumental",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "fritz_lang",
+      "name": "Fritz Lang",
+      "description": "Lang expressionist geometry",
+      "system_prompt": "Style focus: Fritz Lang. German-expressionist geometry, monumental shadow, oppressive artificial light, cold metallic cities and stylized angular architecture.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Fritz Lang. German-expressionist geometry, monumental shadow, oppressive artificial light, cold metallic cities and stylized angular architecture.",
+      "style_tags_positive": [
+        "fritz lang",
+        "expressionism",
+        "monumental shadow",
+        "metallic",
+        "angular"
+      ],
+      "style_tags_negative": [
+        "natural",
+        "warm",
+        "soft"
+      ],
+      "blend_note": "Lang expressionist geometry, monumental shadow",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "film_noir",
+      "name": "Film Noir",
+      "description": "Noir high-contrast shadow",
+      "system_prompt": "Style focus: Film noir. High-contrast black-and-white, venetian-blind shadows, rain-slick streets, fatalistic urban gloom, hard oblique light and cigarette smoke.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Film noir. High-contrast black-and-white, venetian-blind shadows, rain-slick streets, fatalistic urban gloom, hard oblique light and cigarette smoke.",
+      "style_tags_positive": [
+        "film noir",
+        "black and white",
+        "high contrast",
+        "venetian shadow",
+        "rain"
+      ],
+      "style_tags_negative": [
+        "color",
+        "bright",
+        "cheerful"
+      ],
+      "blend_note": "noir high-contrast shadow, fatalism",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "neo_noir",
+      "name": "Neo-Noir",
+      "description": "Neo-noir neon nights",
+      "system_prompt": "Style focus: Neo-noir. Desaturated teal-and-magenta city nights, reflective wet asphalt, neon signage, hard practical light, cynical modern urban mood.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Neo-noir. Desaturated teal-and-magenta city nights, reflective wet asphalt, neon signage, hard practical light, cynical modern urban mood.",
+      "style_tags_positive": [
+        "neo noir",
+        "teal magenta",
+        "neon",
+        "wet asphalt",
+        "desaturated"
+      ],
+      "style_tags_negative": [
+        "bright daylight",
+        "pastel",
+        "cheerful"
+      ],
+      "blend_note": "neo-noir neon nights, teal-magenta",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "spaghetti_western",
+      "name": "Spaghetti Western",
+      "description": "Spaghetti western desert sun",
+      "system_prompt": "Style focus: Spaghetti western. Harsh desert sun, cracked earth and dust, Sergio Leone extreme close-ups and squinting eyes, yellows and burnt ochres, arid tension.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Spaghetti western. Harsh desert sun, cracked earth and dust, Sergio Leone extreme close-ups and squinting eyes, yellows and burnt ochres, arid tension.",
+      "style_tags_positive": [
+        "spaghetti western",
+        "desert sun",
+        "extreme close up",
+        "dust",
+        "ochre"
+      ],
+      "style_tags_negative": [
+        "urban",
+        "cold",
+        "soft"
+      ],
+      "blend_note": "spaghetti western desert sun, Leone close-ups",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "western",
+      "name": "Western",
+      "description": "Western frontier golden hour",
+      "system_prompt": "Style focus: Western frontier. Golden-hour plains, vast skies, weathered wood and leather, hard sunlight and long shadows, rugged naturalistic texture.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Western frontier. Golden-hour plains, vast skies, weathered wood and leather, hard sunlight and long shadows, rugged naturalistic texture.",
+      "style_tags_positive": [
+        "western",
+        "golden hour",
+        "plains",
+        "leather",
+        "long shadow"
+      ],
+      "style_tags_negative": [
+        "urban",
+        "neon",
+        "futuristic"
+      ],
+      "blend_note": "western frontier, golden hour",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "slasher",
+      "name": "Slasher",
+      "description": "Slasher grain shallow dread",
+      "system_prompt": "Style focus: Slasher horror film. Shallow gritty focus, coarse 35mm grain, stark practical light and deep shadow, dread-laden POV, visceral suburban dread.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Slasher horror film. Shallow gritty focus, coarse 35mm grain, stark practical light and deep shadow, dread-laden POV, visceral suburban dread.",
+      "style_tags_positive": [
+        "slasher",
+        "grain",
+        "shallow focus",
+        "practical light",
+        "dread"
+      ],
+      "style_tags_negative": [
+        "bright",
+        "soft",
+        "cheerful"
+      ],
+      "blend_note": "slasher grain, shallow dread",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "found_footage",
+      "name": "Found Footage",
+      "description": "Found-footage shaky grain",
+      "system_prompt": "Style focus: Found-footage horror. Shaky handheld camcorder, dated video grain and chromatic aberration, raw unflattering light, cramped intimate frames, documentary dread.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Found-footage horror. Shaky handheld camcorder, dated video grain and chromatic aberration, raw unflattering light, cramped intimate frames, documentary dread.",
+      "style_tags_positive": [
+        "found footage",
+        "handheld",
+        "video grain",
+        "camcorder",
+        "raw"
+      ],
+      "style_tags_negative": [
+        "cinematic",
+        "polished",
+        "stabilized"
+      ],
+      "blend_note": "found-footage shaky grain, raw dread",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "zombie",
+      "name": "Zombie / Post-Apocalyptic",
+      "description": "Zombie decay desaturated grime",
+      "system_prompt": "Style focus: Zombie / post-apocalyptic film. Desaturated overcast light, grime and decay, abandoned urban texture, sickly greens and rust, oppressive survival mood.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Zombie / post-apocalyptic film. Desaturated overcast light, grime and decay, abandoned urban texture, sickly greens and rust, oppressive survival mood.",
+      "style_tags_positive": [
+        "zombie",
+        "post apocalyptic",
+        "desaturated",
+        "grime",
+        "decay"
+      ],
+      "style_tags_negative": [
+        "bright",
+        "cheerful",
+        "clean"
+      ],
+      "blend_note": "zombie decay, desaturated grime",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "documentary",
+      "name": "Documentary Film",
+      "description": "Documentary natural realism",
+      "system_prompt": "Style focus: Documentary cinema. Natural available light, unobtrusive realism, shallow depth of field, authentic texture, observational framing without stylization.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Documentary cinema. Natural available light, unobtrusive realism, shallow depth of field, authentic texture, observational framing without stylization.",
+      "style_tags_positive": [
+        "documentary",
+        "natural light",
+        "realism",
+        "shallow dof",
+        "observational"
+      ],
+      "style_tags_negative": [
+        "stylized",
+        "fantasy",
+        "saturated"
+      ],
+      "blend_note": "documentary natural realism",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "mockumentary",
+      "name": "Mockumentary",
+      "description": "Mockumentary deadpan flat",
+      "system_prompt": "Style focus: Mockumentary. Talking-head interviews, flat even light, deadpan ironic framing, bland office and handheld texture, faux-confessional intimacy.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Mockumentary. Talking-head interviews, flat even light, deadpan ironic framing, bland office and handheld texture, faux-confessional intimacy.",
+      "style_tags_positive": [
+        "mockumentary",
+        "talking head",
+        "flat light",
+        "deadpan",
+        "handheld"
+      ],
+      "style_tags_negative": [
+        "epic",
+        "stylized",
+        "dramatic"
+      ],
+      "blend_note": "mockumentary deadpan, flat light",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "movie_musical",
+      "name": "Movie Musical",
+      "description": "Musical saturated theatrical",
+      "system_prompt": "Style focus: Movie musical. Saturated staggered color, theatrical key light, dynamic movement and dance energy, lavish set design, glossy optimistic sheen.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Movie musical. Saturated staggered color, theatrical key light, dynamic movement and dance energy, lavish set design, glossy optimistic sheen.",
+      "style_tags_positive": [
+        "movie musical",
+        "saturated",
+        "theatrical",
+        "dynamic motion",
+        "lavish"
+      ],
+      "style_tags_negative": [
+        "gritty",
+        "desaturated",
+        "dark"
+      ],
+      "blend_note": "musical saturated theatrical, dynamic",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "grindhouse",
+      "name": "Grindhouse",
+      "description": "Grindhouse scratched pulp",
+      "system_prompt": "Style focus: Grindhouse. Scratched worn film, saturated lurid color, excessive grain and dust, hard exploitative light, sleazy pulp atmosphere.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Grindhouse. Scratched worn film, saturated lurid color, excessive grain and dust, hard exploitative light, sleazy pulp atmosphere.",
+      "style_tags_positive": [
+        "grindhouse",
+        "scratched film",
+        "saturated",
+        "grain",
+        "pulp"
+      ],
+      "style_tags_negative": [
+        "clean",
+        "polished",
+        "soft"
+      ],
+      "blend_note": "grindhouse scratched pulp, lurid",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "arthouse",
+      "name": "Arthouse",
+      "description": "Arthouse restrained naturalism",
+      "system_prompt": "Style focus: Arthouse cinema. Deliberate naturalistic framing, restrained festival palette, long contemplative shots, tactile film grain, ambiguous intimate mood.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Arthouse cinema. Deliberate naturalistic framing, restrained festival palette, long contemplative shots, tactile film grain, ambiguous intimate mood.",
+      "style_tags_positive": [
+        "arthouse",
+        "naturalistic",
+        "restrained",
+        "film grain",
+        "contemplative"
+      ],
+      "style_tags_negative": [
+        "blockbuster",
+        "saturated",
+        "commercial"
+      ],
+      "blend_note": "arthouse restrained naturalism",
+      "category": "Cinema",
+      "disabled_in_no_negative_mode": false
+    }
+  ]
+}

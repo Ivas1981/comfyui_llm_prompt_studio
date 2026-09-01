@@ -1,14 +1,18 @@
 """HTTP client for LM Studio / OpenAI-compatible servers, model cache and SSRF guard."""
+import hashlib
 import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import time
+from collections import OrderedDict
 from typing import Any, Dict, Optional
 from urllib.parse import quote, urlparse
 
 import requests
+
 
 from .constants import PLACEHOLDER, PLACEHOLDER_EMPTY
 from .debug import debug_active, log, log_http_request, log_http_response
@@ -29,12 +33,22 @@ __all__ = [
     "model_supports_vision",
     "resolve_vision",
     "model_supports_reasoning",
+    "get_model_entry",
+    "invalidate_model_entry_cache",
+    "model_architecture",
+    "model_param_count",
     "map_reasoning_level",
     "unload_all_loaded",
     "maybe_unload_old",
     "load_model",
     "ensure_model_loaded",
     "chat_completion",
+    "server_status",
+    "seen_servers",
+    "keep_loaded_servers",
+    "mark_keep_loaded",
+    "release_model",
+    "wait_until_unloaded",
 ]
 
 # Server+model pairs for which a v1 load option key was rejected (e.g. `gpu_offload` on
@@ -48,6 +62,15 @@ _MAX_REJECTED_RETRIES = 8
 # Read allow-public flag from environment for runtime configuration.
 ALLOW_PUBLIC_SERVER_URLS = os.getenv("LLM_PROMPT_STUDIO_ALLOW_PUBLIC", "False").lower() in ("1", "true", "yes")
 
+# Opt-in global LLM-response cache. OFF by default; enable with
+# LLM_PROMPT_STUDIO_LLM_CACHE=true. When on, identical chat_completion requests (same server,
+# model, messages and sampling params, excluding api_key) return the cached text instead of
+# hitting the server again. It sits BELOW the per-node `reuse_last_prompt` cache in writer.py:
+# both coexist. Bounded LRU (~256 entries) to bound memory.
+_LLM_CACHE_ENABLED = os.getenv("LLM_PROMPT_STUDIO_LLM_CACHE", "false").lower() in ("1", "true", "yes")
+_LLM_CACHE_MAX = 256
+_llm_response_cache = OrderedDict()
+
 # cache "last loaded model" to unload the old one on switch: {slot: fingerprint}
 _last_loaded = {}
 # The single model currently resident on a given server (managed by ensure_model_loaded /
@@ -57,6 +80,13 @@ _last_loaded = {}
 _server_loaded = {}
 # model instance ids returned by the v1 load endpoint, keyed for precise unload: {(server, model): id}
 _model_instances = {}
+# Servers this process has interacted with (for VRAM release). Keyed by NORMALIZED server
+# URL (not disk-backed like _static_keys, so existing installs never probe localhost on a
+# sample). Cleared on release so a stale server is not probed after the model is gone.
+_seen_servers = set()
+# Servers the user asked to keep loaded (release_vram_after_run=False / env var) — release
+# logic must skip these.
+_keep_loaded = set()
 # cache of model lists, KEYED BY NORMALIZED SERVER URL (api_key is intentionally NOT part
 # of the key or the disk cache: model lists don't depend on it, and we must not persist
 # secrets in plaintext). {server_url: (models, timestamp)}
@@ -187,8 +217,50 @@ VISION_NAME_HINTS = (
 )
 
 
+def _host_is_local(host: str) -> bool:
+    """Return True only if ``host`` resolves exclusively to loopback/private/link-local IPs.
+
+    Handles bare hostnames, mDNS (``.local``), and any other name by resolving it with
+    :func:`socket.getaddrinfo`. A host is considered local only when *every* resolved
+    address is loopback, private (RFC1918/ULA), or link-local - if any resolved address
+    is public the host is rejected (SSRF guard)."""
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip.is_private or ip.is_link_local
+    except ValueError:
+        pass
+    # Not a literal IP: resolve the hostname and accept only if all results are local.
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError as e:
+        raise ValueError(
+            f"server_url host '{host}' could not be resolved: {e}. "
+            "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow remote hosts."
+        ) from e
+    if not infos:
+        raise ValueError(f"server_url host '{host}' resolved to no addresses.")
+    for info in infos:
+        addr = info[4][0]
+        # Strip IPv6 scope id if present (e.g. "fe80::1%eth0").
+        addr = addr.split("%", 1)[0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            return False
+        if not (ip.is_loopback or ip.is_private or ip.is_link_local):
+            return False
+    return True
+
+
 def validate_server_url(url: str) -> str:
-    """Basic SSRF guard: allow http(s) and, by default, only local/private hosts."""
+    """Basic SSRF guard: allow http(s) and, by default, only local/private hosts.
+
+    Local hostnames (``localhost``, ``.local``, ``.localhost``, bare LAN names like
+    ``nas.home``) are resolved via DNS and accepted only if every resolved address is
+    loopback/private/link-local - so SSRF protection stays on without forcing users to
+    disable it (``ALLOW_PUBLIC_SERVER_URLS``) just to use a local machine by name."""
     parsed = urlparse(str(url).strip())
     if parsed.scheme not in ("http", "https"):
         raise ValueError(
@@ -198,19 +270,11 @@ def validate_server_url(url: str) -> str:
         raise ValueError("server_url has no host")
     if ALLOW_PUBLIC_SERVER_URLS:
         return url
-    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
-        return url
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        raise ValueError(
-            f"server_url host '{host}' is not a local address. "
-            "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow remote hosts.")
-    if ip.is_loopback or ip.is_private or ip.is_link_local:
+    if _host_is_local(host):
         return url
     raise ValueError(
-        f"server_url host '{host}' is public. "
-        "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow it."
+        f"server_url host '{host}' is not a local address. "
+        "Set LLM_PROMPT_STUDIO_ALLOW_PUBLIC=True in the environment to allow remote hosts."
     )
 
 
@@ -232,6 +296,10 @@ def _parse_native_models(data) -> list:
     for m in models:
         if not isinstance(m, dict):
             continue
+        # Skip embedding models: they are not chat models and must not appear in the
+        # model combo (LM Studio's native list mixes them in with a "type": "embedding").
+        if m.get("type") == "embedding":
+            continue
         mid = m.get("key") or m.get("id")
         if mid:
             ids.append(str(mid))
@@ -240,6 +308,9 @@ def _parse_native_models(data) -> list:
 
 def fetch_models(server_url: str, api_key: str = "", timeout: int = 5) -> list:
     server_url = validate_server_url(server_url)
+    # Record that this process talked to this server, so VRAM release can find it
+    # without probing localhost on every sample. Normalized (not raw) spelling.
+    _seen_servers.add(_normalize_server(server_url))
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     base = _server_root(server_url)
     # Prefer LM Studio's native model list (LMStudioAPI.md §15: "Lists models via native
@@ -267,7 +338,8 @@ def fetch_models(server_url: str, api_key: str = "", timeout: int = 5) -> list:
         snippet = (resp.text or '')[:1000]
         logger.error("Invalid JSON returned by %s: %s", server_url, snippet)
         raise RuntimeError(f"Invalid JSON from model server {server_url}: {snippet}")
-    return [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
+    return [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")
+            and m.get("type") != "embedding"]
 
 
 def _store_model_cache(server_url: str, models):
@@ -355,45 +427,142 @@ def _model_matches(entry: dict, model_id: str) -> bool:
     return any(str(c).lower() == low for c in candidates if c)
 
 
-def model_supports_vision(server_url: str, api_key: str, model_id: str,
-                          timeout: int = 5) -> Optional[bool]:
-    """Best-effort authoritative vision capability from LM Studio's native endpoint.
+# Cache of native model entries, keyed by (normalized_server_url, model_id). Stores
+# (entry_dict_or_None, timestamp). A single fetch backs architecture / param_count /
+# vision / reasoning probes so we hit /api/v1/models at most once per (server, model)
+# per TTL. Never raises.
+_MODEL_ENTRY_CACHE_TTL = 120  # seconds
+_model_entry_cache = {}
 
-    Queries ``GET {server}/api/v1/models`` and returns
-    ``entry["capabilities"]["vision"]`` (bool) when the model is present, else ``None``.
 
-    Never raises: network errors, parse errors, missing ``/api/v1/models`` and 404 all
-    return ``None`` so callers fall back to the name heuristic without regressing on
-    servers that lack the native endpoint."""
+def get_model_entry(server_url, api_key, model_id, timeout=5):
+    """Return the native ``/api/v1/models`` entry dict for ``model_id``, or ``None``.
+
+    The single authoritative fetch backing :func:`model_architecture`,
+    :func:`model_param_count`, :func:`model_supports_vision` and
+    :func:`model_supports_reasoning`. Results are cached per ``(server, model)`` with a
+    TTL so repeated probes within one run are cheap. Never raises: network errors,
+    parse errors, a missing ``/api/v1/models`` and a 404 all return ``None`` so the
+    caller falls back to the name heuristic without regressing on servers that lack the
+    native endpoint (text-generation-webui, koboldcpp, vLLM, plain OpenAI-compatible)."""
+    try:
+        srv = _normalize_server(server_url)
+    except Exception:
+        return None
+    key = (srv, model_id)
+    cached = _model_entry_cache.get(key)
+    if cached is not None:
+        entry, ts = cached
+        if time.time() - ts < _MODEL_ENTRY_CACHE_TTL:
+            return entry
     try:
         base = _server_root(validate_server_url(server_url))
         resp = requests.get(f"{base}/api/v1/models",
                             headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
                             timeout=timeout)
     except requests.RequestException:
+        _model_entry_cache[key] = (None, time.time())
         return None
     if resp.status_code != 200:
+        _model_entry_cache[key] = (None, time.time())
         return None
     try:
         data = resp.json()
     except ValueError:
+        _model_entry_cache[key] = (None, time.time())
         return None
     models = data.get("data") if isinstance(data, dict) else None
     if models is None:
         models = data.get("models") if isinstance(data, dict) else None
     if not isinstance(models, list):
+        _model_entry_cache[key] = (None, time.time())
         return None
     for entry in models:
-        if not isinstance(entry, dict):
-            continue
-        if _model_matches(entry, model_id):
-            caps = entry.get("capabilities") or {}
-            vision = caps.get("vision")
-            if isinstance(vision, bool):
-                return vision
-            # capabilities present but vision key absent -> unknown, keep looking
-            if caps:
-                return None
+        if isinstance(entry, dict) and _model_matches(entry, model_id):
+            _model_entry_cache[key] = (entry, time.time())
+            return entry
+    _model_entry_cache[key] = (None, time.time())
+    return None
+
+
+def invalidate_model_entry_cache(server=None, model=None):
+    """Drop cached native model entries.
+
+    With no args clears everything; with ``server`` (and optionally ``model``) drops the
+    matching key(s) so a model (re)load / unload does not serve a stale entry (e.g. the
+    architecture / params of a previously-loaded model)."""
+    if server is None:
+        _model_entry_cache.clear()
+        return
+    srv = _normalize_server(server)
+    if model is None:
+        for k in list(_model_entry_cache):
+            if k[0] == srv:
+                _model_entry_cache.pop(k, None)
+    else:
+        _model_entry_cache.pop((srv, model), None)
+
+
+def model_architecture(server_url, api_key, model_id, timeout=5):
+    """Return the model's architecture tag from the native endpoint, or ``None``.
+
+    Drives the LM-Studio API auto-profile (e.g. Gemma -> sampler overrides in
+    ``model_recommendations.ARCH_SAMPLER_OVERRIDES``). Never raises. Only LM Studio's
+    native ``/api/v1/models`` carries ``architecture``; OpenAI-compatible servers fall
+    back to ``None`` so behavior never regresses."""
+    entry = get_model_entry(server_url, api_key, model_id, timeout=timeout)
+    if not entry:
+        return None
+    arch = entry.get("architecture")
+    return str(arch) if arch else None
+
+
+def model_param_count(server_url, api_key, model_id, timeout=5):
+    """Return the model's *active* parameter count in billions, or ``None``.
+
+    Parses the native ``params_string``: a MoE id ``"26B-A4B"`` yields ``4`` (the active
+    expert count), while ``"7B"`` / ``"671B"`` / ``"1.5B"`` yield that single number.
+    Used to pick the strict / baseline profile from the model's real strength. Never
+    raises; non-LM-Studio / OpenAI-compatible servers return ``None`` (name heuristic)."""
+    entry = get_model_entry(server_url, api_key, model_id, timeout=timeout)
+    if not entry:
+        return None
+    s = entry.get("params_string") or ""
+    if isinstance(s, (list, tuple)):
+        s = " ".join(str(x) for x in s)
+    s = str(s)
+    # MoE: active (expert) count follows "-A<n>B", e.g. "26B-A4B" -> 4.
+    m = re.search(r"-A\s*(\d+(?:\.\d+)?)\s*B", s, re.IGNORECASE)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    # Single-number case: "7B", "671B", "1.5B".
+    m = re.search(r"(\d+(?:\.\d+)?)\s*B", s, re.IGNORECASE)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def model_supports_vision(server_url: str, api_key: str, model_id: str,
+                           timeout: int = 5) -> Optional[bool]:
+    """Best-effort authoritative vision capability from LM Studio's native endpoint.
+
+    Reads ``entry["capabilities"]["vision"]`` (bool) for ``model_id`` via
+    :func:`get_model_entry`. Never raises: any error / missing entry / 404 returns
+    ``None`` so callers fall back to the name heuristic without regressing on servers
+    that lack the native endpoint."""
+    entry = get_model_entry(server_url, api_key, model_id, timeout=timeout)
+    if not entry:
+        return None
+    caps = entry.get("capabilities") or {}
+    vision = caps.get("vision")
+    if isinstance(vision, bool):
+        return vision
     return None
 
 
@@ -409,77 +578,35 @@ def resolve_vision(server_url: str, api_key: str, model_id: str) -> bool:
     return looks_like_vision(model_id)
 
 
-# Cache of reasoning capability probes: {(server, model): allowed_options_or_None}.
-# allowed_options is the list of reasoning levels a model accepts (e.g. ["off","on"]),
-# or None when the model exposes no reasoning configuration at all (template thinking).
-_reasoning_cap_cache = {}
-
-
 def model_supports_reasoning(server_url: str, api_key: str, model_id: str,
-                             timeout: int = 5):
+                              timeout: int = 5):
     """Best-effort reasoning capability probe from LM Studio's native endpoint.
 
-    Queries ``GET {server}/api/v1/models`` and reads
-    ``entry["capabilities"]["reasoning"]`` for ``model_id``. Returns one of:
+    Reads ``entry["capabilities"]["reasoning"]`` for ``model_id`` via
+    :func:`get_model_entry`. Returns one of:
 
     * a list of allowed reasoning option strings (e.g. ``["off", "on"]``),
     * ``[]`` when reasoning is exposed but allows no extra levels,
     * ``None`` when the model exposes no reasoning configuration (the server may
       still think via its template — we simply omit the param).
 
-    Never raises: network errors, parse errors, missing ``/api/v1/models`` and 404
-    all return ``None`` so callers fall back to sending nothing rather than guessing."""
-    key = (server_url, model_id)
-    if key in _reasoning_cap_cache:
-        return _reasoning_cap_cache[key]
-    result = None
-    try:
-        base = _server_root(validate_server_url(server_url))
-        resp = requests.get(f"{base}/api/v1/models",
-                            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
-                            timeout=timeout)
-    except requests.RequestException:
-        _reasoning_cap_cache[key] = None
+    Never raises: any error / missing entry / 404 returns ``None`` so callers fall back
+    to sending nothing rather than guessing."""
+    entry = get_model_entry(server_url, api_key, model_id, timeout=timeout)
+    if not entry:
         return None
-    if resp.status_code != 200:
-        _reasoning_cap_cache[key] = None
+    caps = entry.get("capabilities") or {}
+    reasoning = caps.get("reasoning")
+    if reasoning is None:
         return None
-    try:
-        data = resp.json()
-    except ValueError:
-        _reasoning_cap_cache[key] = None
-        return None
-    models = data.get("data") if isinstance(data, dict) else None
-    if models is None:
-        models = data.get("models") if isinstance(data, dict) else None
-    if not isinstance(models, list):
-        _reasoning_cap_cache[key] = None
-        return None
-    for entry in models:
-        if not isinstance(entry, dict):
-            continue
-        if not _model_matches(entry, model_id):
-            continue
-        caps = entry.get("capabilities") or {}
-        reasoning = caps.get("reasoning")
-        if reasoning is None:
-            # capabilities present but no reasoning key -> unknown for this model.
-            result = None
-            break
-        if isinstance(reasoning, dict):
-            allowed = reasoning.get("allowed_options")
-            if isinstance(allowed, list):
-                result = [str(a) for a in allowed]
-            else:
-                # exposed but no explicit list -> treat as configurable, default off/on.
-                result = ["off", "on"]
-        elif reasoning is True:
-            result = ["off", "on"]
-        else:
-            result = []
-        break
-    _reasoning_cap_cache[key] = result
-    return result
+    if isinstance(reasoning, dict):
+        allowed = reasoning.get("allowed_options")
+        if isinstance(allowed, list):
+            return [str(a) for a in allowed]
+        return ["off", "on"]
+    if reasoning is True:
+        return ["off", "on"]
+    return []
 
 
 def map_reasoning_level(level, allowed_options):
@@ -678,6 +805,18 @@ def _is_unrecognized_keys(resp) -> bool:
     return "unrecognized" in msg or "unknown key" in msg
 
 
+def _is_structured_output_unsupported(resp) -> bool:
+    """True when the server rejected the request because it cannot honor `response_format`
+    (structured output / JSON schema / grammar). LM Studio only enables structured output
+    for models >= ~7B and exposes no reliable capability flag, so a small model answers with
+    a 4xx naming one of these indicators. We then retry the call WITHOUT response_format."""
+    if resp is None or getattr(resp, "status_code", 0) < 400:
+        return False
+    txt = (getattr(resp, "text", "") or "").lower()
+    return any(k in txt for k in
+               ("response_format", "json_schema", "json schema", "grammar", "structured"))
+
+
 def _parse_rejected_keys(resp, body_keys) -> set:
     """Extract the rejected body-key names from an `unrecognized_keys` 400 response.
 
@@ -848,6 +987,38 @@ def _record_load_config(server_url: str, model: str, resp):
             {"instance_id": instance_id, "load_config": load_config})
 
 
+def _warn_if_loaded_config_mismatch(server_url, api_key, model, context_length,
+                                    flash_attention):
+    """Diagnostic: compare the requested load config with the server's reported one.
+
+    Reads the native entry's ``loaded_instances[0].config`` (if present) and warns when
+    the actual ``context_length`` / ``flash_attention`` differ from what we requested.
+    Purely informational — never raises, never changes behavior."""
+    entry = get_model_entry(server_url, api_key, model)
+    if not entry:
+        return
+    instances = entry.get("loaded_instances") or []
+    if not instances:
+        return
+    inst = instances[0] if isinstance(instances[0], dict) else None
+    if not inst:
+        return
+    cfg = inst.get("config") or {}
+    if not isinstance(cfg, dict):
+        return
+    actual_ctx = cfg.get("context_length")
+    if actual_ctx is not None and int(actual_ctx) != int(context_length):
+        logger.warning(
+            "Model '%s' loaded with context_length=%s but %s was requested "
+            "(LM Studio may have clamped it).", model, actual_ctx, context_length)
+    actual_fa = cfg.get("flash_attention")
+    if actual_fa is not None and flash_attention is not None \
+            and bool(actual_fa) != bool(flash_attention):
+        logger.warning(
+            "Model '%s' loaded with flash_attention=%s but %s was requested.",
+            model, actual_fa, flash_attention)
+
+
 def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
                         context_length: int = 8192, gpu_offload: float = 1.0,
                         flash_attention: Optional[bool] = None,
@@ -864,12 +1035,26 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     It skips the unload+reload when the requested model is already loaded with the identical
     config (tracked server-scoped, since LM Studio serves one model at a time). A changed
     config (context_length / gpu_offload / flash-attention / KV-offload / batch-size / experts)
-    forces a reload. A failed load is not recorded as "loaded", so the next run will retry."""
+    forces a reload.     A failed load is not recorded as "loaded", so the next run will retry.
+
+    Returns ``True`` when the model is ready (already loaded with a matching config, or
+    successfully loaded now), and ``False`` when the load failed. Callers should treat a
+    ``False`` return as fatal and stop before the (unusable) LLM call, so the user gets a
+    clear "model not loaded" error instead of a confusing streaming/JSON failure."""
     if not model or model.startswith("—"):
-        return
+        # Nothing was requested (placeholder selection): there is no model to load, which is
+        # a success from this function's point of view. The node layer already guards the
+        # placeholder before reaching here, but be defensive and report success.
+        return True
+    # Record that this process loaded from this server (normalized spelling), so the
+    # VRAM-release logic can find it later without probing localhost on every sample.
+    _seen_servers.add(_normalize_server(server_url))
     # Remember this model so a saved workflow that uses it stays valid (and selectable)
     # even when the server is offline later and the combo would otherwise be the placeholder.
     remember_model(model, server_url)
+    # Invalidate any cached native-model entry for this (server, model) so a model
+    # (re)loaded without a ComfyUI restart does not surface stale architecture/params.
+    invalidate_model_entry_cache(server_url, model)
     # Fingerprint the requested load config so a changed context_length / gpu_offload /
     # flash-attention / KV-offload / batch-size / experts forces a reload even when the same
     # model is currently loaded.
@@ -879,7 +1064,7 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
     # there is nothing to do — avoid a needless unload+reload.
     if _server_loaded.get(server_url) == fingerprint:
         _last_loaded[slot] = fingerprint
-        return
+        return True
     # Evict every resident model (other nodes' included) before loading the selected one.
     unload_all_loaded(server_url, api_key)
     if not load_model(server_url, api_key, model, context_length, gpu_offload,
@@ -894,9 +1079,142 @@ def ensure_model_loaded(slot: str, server_url: str, api_key: str, model: str,
             "Model '%s' for slot '%s' was not loaded. The next LLM call will fail "
             "until the model is available (check that LM Studio is running and the "
             "model id is correct).", model, slot)
+        return False
+    _server_loaded[server_url] = fingerprint  # record the exact loaded config
+    _last_loaded[slot] = fingerprint
+    # B4.6 (diagnostic): compare the actually-loaded config with what we requested and
+    # warn on a mismatch (e.g. LM Studio clamped context_length). Never changes behavior.
+    try:
+        _warn_if_loaded_config_mismatch(server_url, api_key, model, context_length,
+                                         flash_attention)
+    except Exception:  # noqa: BLE001 — diagnostic only
+        pass
+    return True
+
+
+def server_status(server_url: str, api_key: str = "", timeout: int = 5) -> dict:
+    """Describe the local LM Studio server's availability and what is loaded.
+
+    Returns ``{"reachable": bool, "loaded_models": [ids], "error": str|None}``. Never
+    raises: any failure (unreachable host, timeout, non-200, bad JSON) yields
+    ``reachable=False`` with the reason in ``error`` so the front-end can show a clear
+    "server down" indicator without special-casing exceptions."""
+    try:
+        base = _server_root(validate_server_url(server_url))
+    except ValueError as e:
+        return {"reachable": False, "loaded_models": [], "error": str(e)}
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        resp = requests.get(f"{base}/api/v1/models", headers=headers, timeout=timeout)
+    except requests.RequestException as e:
+        return {"reachable": False, "loaded_models": [], "error": str(e)}
+    if resp.status_code != 200:
+        return {"reachable": False, "loaded_models": [],
+                "error": f"HTTP {resp.status_code}"}
+    try:
+        data = resp.json()
+    except ValueError:
+        return {"reachable": False, "loaded_models": [], "error": "invalid JSON from server"}
+    models = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(models, list):
+        models = data.get("models") if isinstance(data, dict) else None
+    loaded = []
+    if isinstance(models, list):
+        for entry in models:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("loaded_instances"):
+                key = entry.get("key") or entry.get("id")
+                if key:
+                    loaded.append(str(key))
+    return {"reachable": True, "loaded_models": loaded, "error": None}
+
+
+# ---------------------------------------------------------------------------
+# VRAM release support (consumed by vram.py / the node layer).
+# ---------------------------------------------------------------------------
+
+def seen_servers() -> set:
+    """Servers this process has loaded from / listed models on (normalized URLs)."""
+    return set(_seen_servers)
+
+
+def keep_loaded_servers() -> set:
+    """Servers the user pinned to stay loaded (release must skip these)."""
+    return set(_keep_loaded)
+
+
+def mark_keep_loaded(server_url: str, keep: bool):
+    """Pin (or unpin) a server so release logic skips / performs its unload."""
+    norm = _normalize_server(server_url)
+    if keep:
+        _keep_loaded.add(norm)
     else:
-        _server_loaded[server_url] = fingerprint  # record the exact loaded config
-        _last_loaded[slot] = fingerprint
+        _keep_loaded.discard(norm)
+
+
+def release_model(server_url: str, api_key: str = "", slot=None) -> bool:
+    """Unload the LM Studio model for a server and invalidate all cached load state.
+
+    Clears ``_server_loaded`` / ``_last_loaded`` / ``_model_instances`` (both the raw
+    and normalized URL spellings) so a subsequent ``ensure_model_loaded`` does NOT
+    skip the reload believing the model is still resident. Never raises."""
+    norm = _normalize_server(server_url)
+    # Drop any cached native-model entry for this server so a subsequent load of the
+    # same (or a different) model reports fresh architecture/params, not the unloaded one.
+    invalidate_model_entry_cache(server_url)
+    has_state = (
+        server_url in _server_loaded or norm in _server_loaded
+        or any(k for k in _last_loaded if k.startswith(norm + "::") or k == norm)
+        or any(k[0] == server_url or k[0] == norm for k in _model_instances)
+    )
+    # Avoid any network I/O when this server was never loaded (so release-only users are
+    # never probed). The unload itself is best-effort and never raises.
+    if has_state:
+        try:
+            unload_all_loaded(server_url, api_key)
+        except Exception as e:  # noqa: BLE001 — release is best-effort
+            logger.debug("release_model: unload_all_loaded failed for %s: %s", server_url, e)
+    # Invalidate cache so the next node reloads. Slots are ``f"{server}::writer"`` etc.,
+    # so drop every _last_loaded entry whose key starts with the normalized server.
+    _server_loaded.pop(server_url, None)
+    _server_loaded.pop(norm, None)
+    if slot is not None:
+        _last_loaded.pop(slot, None)
+    else:
+        # Slots are built as ``f"{server_url}::writer"`` from whatever server_url string the
+        # node passed (which may carry a trailing slash). Compare both the raw and the
+        # normalized server spelling so a release keyed by the normalized URL still finds
+        # slots left by a raw one.
+        for k in list(_last_loaded):
+            k_server = k.split("::", 1)[0]
+            if k_server == server_url or k_server == norm or k == server_url or k == norm:
+                _last_loaded.pop(k, None)
+    for k in list(_model_instances):
+        if _normalize_server(k[0]) == norm or k[0] == server_url:
+            _model_instances.pop(k, None)
+    return True
+
+
+def wait_until_unloaded(server_url: str, api_key: str = "", timeout: float = 10.0,
+                        interval: float = 0.25) -> bool:
+    """Poll ``server_status`` until no model is loaded, or the timeout elapses.
+
+    Returns the outcome (True = confirmed empty); never raises. LM Studio frees VRAM
+    asynchronously, so a brief poll is needed before ComfyUI allocates GPU memory."""
+    deadline = time.time() + timeout
+    try:
+        while time.time() < deadline:
+            try:
+                status = server_status(server_url, api_key)
+            except Exception:  # noqa: BLE001 — yielding failure is fine, keep polling
+                status = {"loaded_models": ["?"]}
+            if not status.get("loaded_models"):
+                return True
+            time.sleep(interval)
+    except Exception:  # noqa: BLE001 — timeout / interruption: treat as "not confirmed"
+        return False
+    return False
 
 
 def _serialize_message_content(content):
@@ -948,6 +1266,58 @@ def _enrich_http_error(model: str, status: int, text: str, has_images: bool) -> 
     return None
 
 
+def _llm_cache_key(server_url, api_key, model, messages, temperature, max_tokens, seed,
+                    reasoning, repeat_penalty, top_k, top_p, min_p, presence_penalty,
+                    response_format):
+    """Stable hash for a chat_completion request. ``api_key`` is intentionally excluded so the
+    cache is shared across key-less local calls; every other request-shaping arg is included.
+    Multimodal message parts are serialized via their data-URL string for a stable key."""
+    def _norm_content(content):
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return [(
+                p.get("type"),
+                p.get("text", ""),
+                (p.get("image_url", {}) or {}).get("url", ""),
+            ) for p in content if isinstance(p, dict)]
+        return content
+
+    payload = {
+        "server_url": server_url,
+        "model": model,
+        "messages": [(m.get("role"), _norm_content(m.get("content", "")))
+                     for m in messages if isinstance(m, dict)],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "seed": seed,
+        "reasoning": reasoning,
+        "repeat_penalty": repeat_penalty,
+        "top_k": top_k,
+        "top_p": top_p,
+        "min_p": min_p,
+        "presence_penalty": presence_penalty,
+        "response_format": response_format,
+    }
+    s = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def _llm_cache_store(key, text):
+    """Store a successful response in the bounded LRU cache (no-op when disabled/unkeyed)."""
+    if not key or not _LLM_CACHE_ENABLED:
+        return
+    _llm_response_cache[key] = text
+    _llm_response_cache.move_to_end(key)
+    while len(_llm_response_cache) > _LLM_CACHE_MAX:
+        _llm_response_cache.popitem(last=False)
+
+
+def _llm_cache_clear():
+    """Drop all cached responses (used by tests and on config change)."""
+    _llm_response_cache.clear()
+
+
 def chat_completion(server_url, api_key, model, messages,
                      temperature, max_tokens, timeout=600, seed=None,
                      reasoning="off", repeat_penalty=1.0,
@@ -967,6 +1337,18 @@ def chat_completion(server_url, api_key, model, messages,
         isinstance(m.get("content"), list)
         for m in messages if isinstance(m, dict))
 
+    # --- Global LLM-response cache (opt-in) --------------------------------------
+    # Identical requests (server, model, messages, sampling params; api_key excluded) hit the
+    # cache instead of the network. Disabled by default; only active when _LLM_CACHE_ENABLED.
+    cache_key = None
+    if _LLM_CACHE_ENABLED:
+        cache_key = _llm_cache_key(server_url, api_key, model, messages, temperature, max_tokens,
+                                   seed, reasoning, repeat_penalty, top_k, top_p, min_p,
+                                   presence_penalty, response_format)
+        if cache_key in _llm_response_cache:
+            logger.debug("LLM cache HIT for model '%s' (skipping network).", model)
+            return _llm_response_cache[cache_key]
+
     # Prefer the native /api/v1/chat endpoint for ALL requests (text, vision, reasoning):
     # it is the project's base integration. A JSON-Schema `response_format` (structured
     # output) is forced onto the OpenAI /chat/completions path, which supports json_schema
@@ -980,14 +1362,23 @@ def chat_completion(server_url, api_key, model, messages,
 
     if prefer_native:
         try:
-            return _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
-                             timeout=timeout, seed=seed, reasoning=reasoning,
-                             repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
-                             min_p=min_p,
-                             presence_penalty=presence_penalty,
-                             frequency_penalty=frequency_penalty)
+            result = _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
+                              timeout=timeout, seed=seed, reasoning=reasoning,
+                              repeat_penalty=repeat_penalty, top_k=top_k, top_p=top_p,
+                              min_p=min_p,
+                              presence_penalty=presence_penalty,
+                              frequency_penalty=frequency_penalty)
+            _llm_cache_store(cache_key, result)
+            return result
         except Exception as e:  # noqa: BLE001 — graceful fallback to OpenAI-compatible path
-            logger.warning("Native /api/v1/chat failed (%s); falling back to OpenAI path.", e)
+            e_text = str(e)
+            # A seed/key rejection is an *expected* fallback (LM Studio's native
+            # /api/v1/chat does not accept seed), not a real error, so keep it quiet.
+            if "unrecognized_keys" in e_text and "seed" in e_text:
+                logger.debug("Native /api/v1/chat rejected seed; falling back to "
+                             "OpenAI-compatible path so the seed is honored.")
+            else:
+                logger.warning("Native /api/v1/chat failed (%s); falling back to OpenAI path.", e)
             # Vision rejection on the native path is the classic reason to fall back here.
             if has_images:
                 logger.debug("Falling back to OpenAI /chat/completions for vision request.")
@@ -998,14 +1389,19 @@ def chat_completion(server_url, api_key, model, messages,
     if seed is not None:
         body["seed"] = seed
     # Forward the sampling params the node layer already computed (native-v1 equivalents).
-    # `min_p` is native-v1-only (LMStudioAPI.md §8/§6.1) and must stay out of the OpenAI body,
-    # keeping the fallback symmetric with the native path so sampling never silently changes.
+    # Most OpenAI-compatible servers accept them; a few builds reject `min_p` / `reasoning`
+    # / the penalty keys with a 400 `unrecognized_keys`, in which case the retry block below
+    # drops the rejected key(s) so a single unsupported param never fails the whole call.
     if top_p is not None:
         body["top_p"] = top_p
     if top_k is not None:
         body["top_k"] = top_k
     if repeat_penalty is not None:
         body["repeat_penalty"] = repeat_penalty
+    if min_p is not None:
+        body["min_p"] = min_p
+    if reasoning is not None:
+        body["reasoning"] = reasoning
     if presence_penalty is not None:
         body["presence_penalty"] = presence_penalty
     if frequency_penalty is not None:
@@ -1013,12 +1409,14 @@ def chat_completion(server_url, api_key, model, messages,
     if response_format is not None:
         body["response_format"] = response_format
     started = time.time()
-    # Some LM Studio builds reject `presence_penalty` / `frequency_penalty` on the OpenAI
-    # path with a 400 `unrecognized_keys`. Drop the rejected penalty and retry once so a
-    # single unsupported param never fails the whole call (mirrors the native v1 retry).
-    penal_keys = ["presence_penalty", "frequency_penalty"]
-    drop_penal = False
-    for _ in range(2):
+    # Some LM Studio builds reject `presence_penalty` / `frequency_penalty` / `min_p` /
+    # `reasoning` on the OpenAI path with a 400 `unrecognized_keys`. Drop the rejected
+    # keys and retry once so a single unsupported param never fails the whole call
+    # (mirrors the native v1 retry).
+    optional_keys = ["presence_penalty", "frequency_penalty", "min_p", "reasoning"]
+    dropped = False
+    tried_without_format = False
+    for _ in range(3):
         try:
             resp = requests.post(
                 f"{server_url.rstrip('/')}/chat/completions",
@@ -1028,16 +1426,28 @@ def chat_completion(server_url, api_key, model, messages,
         except requests.RequestException as e:
             logger.error("Could not reach LM Studio (%s): %s", server_url, e)
             raise RuntimeError(f"Could not reach LM Studio ({server_url}): {e}")
-        if (drop_penal is False and resp.status_code == 400
+        if (not dropped and resp.status_code == 400
                 and _is_unrecognized_keys(resp)):
             rejected = _parse_rejected_keys(resp, set(body.keys()))
-            if any(k in penal_keys for k in rejected):
-                for k in penal_keys:
+            to_drop = [k for k in rejected if k in optional_keys]
+            if to_drop:
+                for k in to_drop:
                     body.pop(k, None)
-                drop_penal = True
-                logger.debug("OpenAI path dropped unsupported penalty key(s) %s; retrying.",
-                             sorted(rejected & set(penal_keys)))
+                dropped = True
+                logger.debug("OpenAI path dropped unsupported key(s) %s; retrying.",
+                             sorted(to_drop))
                 continue
+        # Structured output (response_format) is not supported by every model (e.g. LM
+        # Studio requires ~7B+ and exposes no capability flag). If the server rejects it,
+        # retry once WITHOUT response_format so a small model still returns plain text that
+        # the node's JSON parser can recover from. The retry is attempted at most once.
+        if (response_format is not None and not tried_without_format
+                and _is_structured_output_unsupported(resp)):
+            body.pop("response_format", None)
+            tried_without_format = True
+            logger.warning("Structured output (response_format) rejected by the server; "
+                           "retrying without it (model '%s' will return plain text).", model)
+            continue
         break
     if resp.status_code >= 400:
         txt = resp.text or ""
@@ -1074,6 +1484,7 @@ def chat_completion(server_url, api_key, model, messages,
                  model, time.time() - started, len(content),
                  _serialize_message_content(last))
 
+    _llm_cache_store(cache_key, content)
     return content
 
 
@@ -1145,20 +1556,29 @@ def _is_reasoning_rejection(text: str) -> bool:
     low = (text or "").lower()
     return ("reasoning" in low
             and ("does not expose reasoning" in low
-                 or "not support" in low and "reasoning" in low
-                 or "is not supported" in low and "reasoning" in low
-                 or "invalid" in low and "reasoning" in low))
+                 or ("not support" in low and "reasoning" in low)
+                 or ("is not supported" in low and "reasoning" in low)
+                 or ("invalid" in low and "reasoning" in low)))
 
 
-def _post_v1_chat(url, headers, payload, timeout):
+def _post_v1_chat(url, headers, payload, timeout, protected_keys=None):
     """POST to the native ``/api/v1/chat`` endpoint, resilient to ``unrecognized_keys`` 400s.
 
-    Mirrors :func:`load_model`: if the server rejects optional body keys (e.g. ``seed`` on
-    builds that don't accept it), the rejected keys are dropped from the payload and the
-    request is retried, so a single unsupported parameter no longer fails the whole call and
-    forces a fallback to the OpenAI path. Other 400s are returned unchanged for the caller's
-    reasoning-rejection / error-enrichment handling. Connection errors propagate so the
-    caller's reachability guard can turn them into a clear ``RuntimeError``."""
+    Mirrors :func:`load_model`: if the server rejects OPTIONAL body keys (e.g.
+    ``flash_attention``/``reasoning`` on builds that don't accept them), the rejected keys are
+    dropped from the payload and the request is retried, so a single unsupported parameter no
+    longer fails the whole call and forces a fallback to the OpenAI path.
+
+    ``protected_keys`` names user-intent parameters (currently just ``seed``) that must NOT be
+    silently dropped: LM Studio's native ``/api/v1/chat`` rejects ``seed`` with
+    ``unrecognized_keys``, and dropping it would make seed control look broken while the model
+    actually ignores the seed. When a protected key is rejected we keep it in the body, so the
+    call keeps returning 400 and :func:`_chat_v1` lets the caller fall back to the
+    OpenAI-compatible ``/v1/chat/completions`` endpoint, which DOES honor ``seed``. Other 400s
+    are returned unchanged for the caller's reasoning-rejection / error-enrichment handling.
+    Connection errors propagate so the caller's reachability guard can turn them into a clear
+    ``RuntimeError``."""
+    protected = set(protected_keys or set())
     body = dict(payload)
     last_resp = None
     for _ in range(_MAX_REJECTED_RETRIES + 1):
@@ -1171,6 +1591,14 @@ def _post_v1_chat(url, headers, payload, timeout):
             dropped = set()
             for k in _parse_rejected_keys(resp, set(body.keys())):
                 if k in body:
+                    if k in protected:
+                        # User-intent key: never silently drop it. Keep it so the caller
+                        # (which falls back to the OpenAI path that honors seed) sees the
+                        # rejection instead of running with the seed ignored.
+                        logger.debug(
+                            "Native /api/v1/chat rejected protected key '%s'; will fall "
+                            "back to OpenAI-compatible path so the seed is honored.", k)
+                        continue
                     body.pop(k, None)
                     dropped.add(k)
             if not dropped:
@@ -1199,6 +1627,12 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
+    # Whether the request carries image (vision) inputs — used to surface a clear
+    # "model does not support image inputs" error on vision rejection.
+    has_images = any(
+        isinstance(m.get("content"), list)
+        for m in messages if isinstance(m, dict))
+
     system_prompt, input_parts = _build_native_chat_input(messages)
 
     # Decide whether to send reasoning. When skip_reasoning (one-shot fallback) or the model
@@ -1213,7 +1647,6 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
         "input": input_parts,
         "temperature": temperature,
         "max_output_tokens": max_tokens,
-        "repeat_penalty": repeat_penalty,
         "store": False,
     }
     if system_prompt is not None:
@@ -1232,12 +1665,21 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
         payload["presence_penalty"] = presence_penalty
     if frequency_penalty is not None:
         payload["frequency_penalty"] = frequency_penalty
+    # repeat_penalty is only sent when explicitly set; the OpenAI-compatible fallback
+    # already guards this, but the native path must too so custom-mode (which passes
+    # None for the default 1.0) does not emit "repeat_penalty": null on strict schemas.
+    if repeat_penalty is not None:
+        payload["repeat_penalty"] = repeat_penalty
 
     log_http_request("POST", url, headers, payload)
     started = time.time()
 
     try:
-        resp = _post_v1_chat(url, headers, payload, timeout)
+        # `seed` is a protected key: if LM Studio's native /api/v1/chat rejects it we must
+        # NOT drop it (that would make seed control silently do nothing); instead the call
+        # keeps failing and chat_completion falls back to the OpenAI-compatible endpoint,
+        # which honors seed.
+        resp = _post_v1_chat(url, headers, payload, timeout, protected_keys={"seed"})
     except requests.RequestException as e:
         raise RuntimeError(f"Could not reach LM Studio ({url}): {e}")
     if resp.status_code >= 400:
@@ -1250,7 +1692,7 @@ def _chat_v1(server_url, api_key, model, messages, temperature, max_tokens,
                             min_p=min_p, skip_reasoning=True,
                             presence_penalty=presence_penalty,
                             frequency_penalty=frequency_penalty)
-        enriched = _enrich_http_error(model, resp.status_code, resp.text or "", False)
+        enriched = _enrich_http_error(model, resp.status_code, resp.text or "", has_images)
         if enriched is not None:
             raise RuntimeError(enriched)
         raise RuntimeError(

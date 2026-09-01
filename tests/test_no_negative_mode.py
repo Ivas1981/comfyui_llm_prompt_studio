@@ -9,7 +9,7 @@ if _PARENT not in sys.path:
 
 from comfyui_llm_prompt_studio.nodes import writer, scene_builder  # noqa: E402
 from comfyui_llm_prompt_studio.model_meta import (  # noqa: E402
-    is_no_negative_family, detect_checkpoint_family)
+    is_no_negative_family, detect_checkpoint_family, detect_checkpoint_family_info)
 from comfyui_llm_prompt_studio.parsing import (  # noqa: E402
     parse_critic_json, find_missing_fields)
 from unittest.mock import patch  # noqa: E402
@@ -28,8 +28,8 @@ def _json(**fields):
 
 def _run_writer(chat_side_effect, prompt_mode="auto", family="", generate_face_prompts=False,
                 max_field_retries=2, face_prompt_instruction="", revision_notes="",
-                unique_id="1"):
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+                unique_id="1", architecture=""):
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion", side_effect=chat_side_effect):
         result = writer.LLMPromptStudioWriter().execute(
             server_url="http://localhost:1234/v1", api_key="", model="m",
@@ -37,19 +37,20 @@ def _run_writer(chat_side_effect, prompt_mode="auto", family="", generate_face_p
             revision_notes=revision_notes, temperature=0.7, max_tokens=512, seed=0,
             reuse_last_prompt=False, generate_face_prompts=generate_face_prompts,
             max_field_retries=max_field_retries, face_prompt_instruction=face_prompt_instruction,
-            prompt_mode=prompt_mode, family=family, unique_id=unique_id)
+            prompt_mode=prompt_mode, family=family, unique_id=unique_id, architecture=architecture)
     return result
 
 
-def _run_scene(chat_side_effect, prompt_mode="auto", family="", description="a cat sitting"):
-    with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: None), \
+def _run_scene(chat_side_effect, prompt_mode="auto", family="", description="a cat sitting",
+               architecture=""):
+    with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(scene_builder, "chat_completion", side_effect=chat_side_effect):
         return scene_builder.LLMPromptStudioSceneBuilder().execute(
             stage="2 - compose", image=None, server_url="http://localhost:1234/v1", api_key="",
             model="m", context_length=16384, gpu_offload=1.0, describe_prompt="D",
             composer_prompt="C", user_changes="", image_max_size=1024, temperature=0.7,
             max_tokens=1024, max_field_retries=2, vision_check=False, description_view=description,
-            prompt_mode=prompt_mode, family=family)
+            prompt_mode=prompt_mode, family=family, architecture=architecture)
 
 
 # --- mode selection ---------------------------------------------------------
@@ -130,7 +131,7 @@ def test_no_negative_runtime_error_only_on_empty_positive():
 def test_cache_key_distinguishes_modes():
     _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
                 prompt_mode="standard", unique_id="cache-z")
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion",
                       side_effect=lambda *a, **k: _json(positive="a cat", negative="blurry",
                                                         scene_name="cat")) as call:
@@ -151,7 +152,7 @@ def test_cache_key_survives_checkpoint_family_change():
                 prompt_mode="standard", family="base", unique_id="cache-f")
     # Swapping to a different checkpoint (different detected family) with reuse on must NOT
     # regenerate: the same prompts are carried over to the new checkpoint.
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion",
                       side_effect=lambda *a, **k: _json(positive="WRONG", negative="WRONG",
                                                         scene_name="WRONG")) as call:
@@ -168,9 +169,29 @@ def test_cache_key_survives_checkpoint_family_change():
     assert result[1] == "blurry"
 
 
-def test_scene_no_negative_forces_empty():
+def test_auto_flux_architecture_forces_no_negative():
+    # A base family with a Flux architecture must force the empty negative (force_no_negative).
+    result = _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                         prompt_mode="auto", family="base", architecture="flux")
+    assert result[1] == ""
+
+
+def test_auto_sd3_architecture_forces_no_negative():
+    result = _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                         prompt_mode="auto", family="base", architecture="sd3")
+    assert result[1] == ""
+
+
+def test_auto_sdxl_architecture_keeps_negative():
+    # SDXL architecture must NOT force no-negative in auto mode with a base family.
+    result = _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                         prompt_mode="auto", family="base", architecture="sdxl")
+    assert result[1] == "blurry"
+
+
+def test_scene_flux_architecture_forces_no_negative():
     result = _run_scene([_json(positive="a cat", negative="blurry", scene_name="cat")],
-                         prompt_mode="no_negative")
+                        prompt_mode="auto", architecture="flux")
     assert result["result"][1] == ""
 
 
@@ -182,7 +203,7 @@ def test_preset_no_negative_uses_no_negative_variant():
     def spy(*a, **k):
         captured.append(a[3])  # the messages list
         return _json(positive="a cat", negative="IGNORED", scene_name="cat")
-    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(writer, "chat_completion", side_effect=spy):
         result = writer.LLMPromptStudioWriter().execute(
             server_url="http://localhost:1234/v1", api_key="", model="m",
@@ -207,7 +228,7 @@ def test_scene_standard_uses_standard_composer_when_default():
     def spy(*a, **k):
         captured.append(a[3])  # the messages list
         return _json(positive="a cat", negative="blurry", scene_name="cat")
-    with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: None), \
+    with patch.object(scene_builder, "ensure_model_loaded", lambda *a, **k: True), \
          patch.object(scene_builder, "chat_completion", side_effect=spy):
         scene_builder.LLMPromptStudioSceneBuilder().execute(
             stage="2 - compose", image=None, server_url="http://localhost:1234/v1", api_key="",
@@ -337,3 +358,83 @@ def test_smart_loader_reports_distilled_family_from_lora(monkeypatch):
         lora_name="cinematic_style.safetensors", apply_lora="auto",
         strength_model=1.0, vae_user="[none]", unique_id="y")
     assert res2["result"][4] == "base"
+
+
+def test_detect_excludes_ss_tag_frequency(monkeypatch):
+    # sd-scripts writes a training-tag histogram under `ss_tag_frequency`; if a base
+    # model happens to carry a "lightning" (or any distilled) tag there, it must not be
+    # mistaken for a distilled checkpoint. The key contains "tag", so it is excluded.
+    import json as _json
+    meta = {
+        "modelspec.architecture": "stableDiffusionXL_v1",
+        "ss_tag_frequency": _json.dumps({
+            "artist": {"someartist": 1.0},
+            "lightning": {"a": 1.0},  # would falsely flag without the "tag" exclusion
+            "copyright": {"b": 1.0},
+        }),
+    }
+    monkeypatch.setattr(
+        "comfyui_llm_prompt_studio.model_meta.read_safetensors_metadata",
+        lambda *a, **k: meta)
+    monkeypatch.setattr(
+        "comfyui_llm_prompt_studio.model_meta.os.path.isfile", lambda *a, **k: True)
+    import folder_paths as _fp
+    monkeypatch.setattr(_fp, "get_full_path", lambda *a, **k: "/x.safetensors")
+    assert detect_checkpoint_family("my_base_xl.safetensors") == "base"
+    # A genuinely structured field still wins.
+    meta2 = {"modelspec.title": "Foo Lightning Bar"}
+    monkeypatch.setattr(
+        "comfyui_llm_prompt_studio.model_meta.read_safetensors_metadata",
+        lambda *a, **k: meta2)
+    assert detect_checkpoint_family("my_base_xl.safetensors") == "lightning"
+
+
+def test_flash_attention_does_not_mask_other_families(monkeypatch):
+    # 'flash_attention' is an attention mechanism, not the Flash family. A model whose
+    # name also carries a real distilled marker (here 'lcm') must still be detected.
+    assert detect_checkpoint_family("flash_attention_lcm_model.safetensors") == "lcm"
+    # And a name that is ONLY flash_attention must remain 'base'.
+    assert detect_checkpoint_family("model_flash_attention.safetensors") == "base"
+
+
+def test_detect_camelcase_after_lowercase_word():
+    # A capitalized marker following a lowercase word (no separator) is a valid
+    # CamelCase boundary and must be detected — previously the lowercase letter
+    # immediately before the marker rejected the match.
+    assert detect_checkpoint_family("photoLightning.safetensors") == "lightning"
+    assert detect_checkpoint_family("myLcmModel.safetensors") == "lcm"
+    assert detect_checkpoint_family("v21Turbo.safetensors") == "turbo"
+    assert detect_checkpoint_family("V50_v50Lightning.safetensors") == "lightning"
+
+
+def test_detect_position_picks_earliest_marker():
+    # When several markers are present, the one occurring earliest wins.
+    assert detect_checkpoint_family("sd_xl_lcm_lightning_4step.safetensors") == "lcm"
+    assert detect_checkpoint_family("sd_xl_lightning_lcm.safetensors") == "lightning"
+
+
+def test_detect_schnell_tcd_pcm():
+    assert detect_checkpoint_family("sdxl_schnell.safetensors") == "schnell"
+    assert detect_checkpoint_family("sd_xl_tcd.safetensors") == "tcd"
+    assert detect_checkpoint_family("pcm_sdxl.safetensors") == "pcm"
+    assert is_no_negative_family("schnell") is True
+    assert is_no_negative_family("tcd") is True
+    assert is_no_negative_family("pcm") is True
+
+
+def test_detect_family_info_source(monkeypatch):
+    # A marker in the file name is reported with source "filename".
+    assert detect_checkpoint_family_info("SDXLLightning_4step.safetensors") == ("lightning", "filename")
+    # No marker anywhere -> "base" with source "base".
+    assert detect_checkpoint_family_info("my_base_xl.safetensors") == ("base", "base")
+    # A marker that exists ONLY in structured metadata is reported with source "metadata".
+    meta = {"modelspec.title": "Foo Turbo Bar"}
+    monkeypatch.setattr(
+        "comfyui_llm_prompt_studio.model_meta.read_safetensors_metadata",
+        lambda *a, **k: meta)
+    monkeypatch.setattr(
+        "comfyui_llm_prompt_studio.model_meta.os.path.isfile", lambda *a, **k: True)
+    import folder_paths as _fp
+    monkeypatch.setattr(_fp, "get_full_path", lambda *a, **k: "/x.safetensors")
+    assert detect_checkpoint_family_info("my_base_xl.safetensors") == ("turbo", "metadata")
+

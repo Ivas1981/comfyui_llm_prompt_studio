@@ -1,0 +1,196 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Traditional Media",
+  "presets": [
+    {
+      "id": "charcoal_sketch",
+      "name": "Charcoal Sketch",
+      "description": "charcoal drawing",
+      "system_prompt": "You are an expert SDXL prompt engineer for charcoal drawing. Write as connected art-direction prose with smudgy, gestural graphite marks.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for charcoal drawing. Write as connected art-direction prose with smudgy, gestural graphite marks.",
+      "style_tags_positive": [
+        "charcoal sketch",
+        "smudged",
+        "gestural",
+        "monochrome"
+      ],
+      "style_tags_negative": [
+        "color",
+        "photorealistic",
+        "clean"
+      ],
+      "blend_note": "Charcoal Sketch",
+      "category": "Traditional Media",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "classical_realism",
+      "name": "Classical Realism",
+      "description": "Academic representational painting",
+      "system_prompt": "Style focus: classical realist painting. Careful academic draftsmanship, smooth layered glazes, balanced composition, subtle naturalistic light, refined finish.",
+      "style_tags_positive": [
+        "classical realism",
+        "academic",
+        "glazes",
+        "naturalistic"
+      ],
+      "style_tags_negative": [
+        "cartoon",
+        "flat"
+      ],
+      "blend_note": "academic finish",
+      "category": "Traditional Media",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: classical realist painting. Careful academic draftsmanship, smooth layered glazes, balanced composition, subtle naturalistic light, refined finish."
+    },
+    {
+      "id": "collage",
+      "name": "Collage",
+      "description": "cut-paper and mixed-media collage",
+      "system_prompt": "You are an expert SDXL prompt engineer for cut-paper and mixed-media collage. Write as connected art-direction prose with layered, torn-paper texture.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for cut-paper and mixed-media collage. Write as connected art-direction prose with layered, torn-paper texture.",
+      "style_tags_positive": [
+        "collage",
+        "torn paper",
+        "mixed media",
+        "layered"
+      ],
+      "style_tags_negative": [
+        "photorealistic",
+        "smooth",
+        "3d render"
+      ],
+      "blend_note": "Collage",
+      "category": "Traditional Media",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "impasto_oil",
+      "name": "Impasto Oil",
+      "description": "Thick-textured油画 brushwork",
+      "system_prompt": "Style focus: impasto oil painting. Thick sculpted paint ridges, visible bristle direction, rich layered color, tactile surface catching light.",
+      "style_tags_positive": [
+        "impasto",
+        "thick paint",
+        "brush texture",
+        "oil"
+      ],
+      "style_tags_negative": [
+        "smooth",
+        "flat"
+      ],
+      "blend_note": "thick paint texture",
+      "category": "Traditional Media",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: impasto oil painting. Thick sculpted paint ridges, visible bristle direction, rich layered color, tactile surface catching light."
+    },
+    {
+      "id": "ink_illustration",
+      "name": "Ink Illustration",
+      "description": "detailed pen-and-ink illustration",
+      "system_prompt": "You are an expert SDXL prompt engineer for detailed pen-and-ink illustration. Write as connected art-direction prose with fine cross-hatching.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for detailed pen-and-ink illustration. Write as connected art-direction prose with fine cross-hatching.",
+      "style_tags_positive": [
+        "ink illustration",
+        "cross-hatching",
+        "fine line",
+        "stippling"
+      ],
+      "style_tags_negative": [
+        "color",
+        "photorealistic",
+        "blurry"
+      ],
+      "blend_note": "Ink Illustration",
+      "category": "Traditional Media",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "gothic_illumination",
+      "name": "Manuscript Illumination",
+      "description": "Medieval gold-leaf art",
+      "system_prompt": "Style focus: medieval manuscript illumination. Gold-leaf ground, fine tempera detail, decorative borders, flattened perspective, jewel-like saturated color.",
+      "style_tags_positive": [
+        "illumination",
+        "gold leaf",
+        "tempera",
+        "ornate border"
+      ],
+      "style_tags_negative": [
+        "modern",
+        "photoreal"
+      ],
+      "blend_note": "gold leaf, ornate",
+      "category": "Traditional Media",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: medieval manuscript illumination. Gold-leaf ground, fine tempera detail, decorative borders, flattened perspective, jewel-like saturated color."
+    },
+    {
+      "id": "oil_painting",
+      "name": "Oil Painting",
+      "description": "Classic oil painting style",
+      "system_prompt": "You are an expert SDXL prompt engineer for classical oil paintings. Write as connected painterly prose: subject and composition first, then visible brushwork, impasto texture, rich chiaroscuro lighting and classical palette.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for classical oil paintings. Write as connected painterly prose: subject and composition first, then visible brushwork, impasto texture, rich chiaroscuro lighting and classical palette.",
+      "style_tags_positive": [
+        "oil painting",
+        "brushwork",
+        "impasto",
+        "classical art",
+        "rich textures"
+      ],
+      "style_tags_negative": [
+        "digital",
+        "3d render",
+        "photograph",
+        "flat"
+      ],
+      "blend_note": "Oil Painting — visible brushstrokes, impasto/canvas texture, classical chiaroscuro, painterly color blending",
+      "category": "Traditional Media",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "pastel",
+      "name": "Pastel",
+      "description": "soft pastel drawing",
+      "system_prompt": "You are an expert SDXL prompt engineer for soft pastel drawing. Write as connected art-direction prose with powdery, layered color.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for soft pastel drawing. Write as connected art-direction prose with powdery, layered color.",
+      "style_tags_positive": [
+        "pastel",
+        "soft color",
+        "powdery texture",
+        "chalk"
+      ],
+      "style_tags_negative": [
+        "hard edges",
+        "photorealistic",
+        "neon"
+      ],
+      "blend_note": "Pastel",
+      "category": "Traditional Media",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "watercolor",
+      "name": "Watercolor",
+      "description": "Soft watercolor painting style",
+      "system_prompt": "You are an expert SDXL prompt engineer for watercolor paintings. Write as connected prose: subject and mood first, then soft luminous washes, paper texture, delicate edges and bleeding pigment.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for watercolor paintings. Write as connected prose: subject and mood first, then soft luminous washes, paper texture, delicate edges and bleeding pigment.",
+      "style_tags_positive": [
+        "watercolor",
+        "soft washes",
+        "paper texture",
+        "delicate",
+        "luminous"
+      ],
+      "style_tags_negative": [
+        "oil painting",
+        "3d render",
+        "photograph",
+        "hard edges"
+      ],
+      "blend_note": "Watercolor",
+      "category": "Traditional Media",
+      "disabled_in_no_negative_mode": false
+    }
+  ]
+}

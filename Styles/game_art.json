@@ -1,0 +1,129 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Game Art",
+  "presets": [
+    {
+      "id": "cel_shaded_3d",
+      "name": "Cel-Shaded 3D",
+      "description": "Toon-shaded 3D game look",
+      "system_prompt": "Style focus: cel-shaded 3D. Hard rim light, flat toon gradient, bold outline, stylized forms, bright readable palette like a 3D animated game.",
+      "style_tags_positive": [
+        "cel shaded",
+        "toon shading",
+        "bold outline",
+        "stylized 3d"
+      ],
+      "style_tags_negative": [
+        "realistic",
+        "photographic"
+      ],
+      "blend_note": "toon shading, outline",
+      "category": "Game Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: cel-shaded 3D. Hard rim light, flat toon gradient, bold outline, stylized forms, bright readable palette like a 3D animated game."
+    },
+    {
+      "id": "hand_drawn_2d",
+      "name": "Hand-Drawn 2D",
+      "description": "2D game animation look",
+      "system_prompt": "Style focus: hand-drawn 2D game art. Slightly imperfect ink line, frame-by-frame personality, limited but charming palette, paper or cel texture.",
+      "style_tags_positive": [
+        "hand drawn 2d",
+        "ink line",
+        "cel texture"
+      ],
+      "style_tags_negative": [
+        "3d",
+        "photoreal"
+      ],
+      "blend_note": "hand-drawn charm",
+      "category": "Game Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: hand-drawn 2D game art. Slightly imperfect ink line, frame-by-frame personality, limited but charming palette, paper or cel texture."
+    },
+    {
+      "id": "isometric",
+      "name": "Isometric Game",
+      "description": "Isometric game-art look",
+      "system_prompt": "Style focus: isometric game art. Fixed 30-degree axonometric view, readable tile-based forms, clean stylized shading, cohesive palette, diorama-like clarity.",
+      "style_tags_positive": [
+        "isometric",
+        "axonometric",
+        "stylized",
+        "tile based"
+      ],
+      "style_tags_negative": [
+        "perspective",
+        "messy"
+      ],
+      "blend_note": "isometric clarity",
+      "category": "Game Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: isometric game art. Fixed 30-degree axonometric view, readable tile-based forms, clean stylized shading, cohesive palette, diorama-like clarity."
+    },
+    {
+      "id": "low_poly_3d",
+      "name": "Low Poly 3D",
+      "description": "low-poly 3D render",
+      "system_prompt": "You are an expert SDXL prompt engineer for low-poly 3D render. as concise comma-separated tags for a faceted low-poly look.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for low-poly 3D render. as concise comma-separated tags for a faceted low-poly look.",
+      "style_tags_positive": [
+        "low poly",
+        "faceted",
+        "flat shading",
+        "minimalist 3d"
+      ],
+      "style_tags_negative": [
+        "smooth",
+        "photorealistic",
+        "high poly"
+      ],
+      "blend_note": "Low Poly 3D",
+      "category": "Game Art",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "photorealistic_aaa",
+      "name": "Photorealistic AAA",
+      "description": "Next-gen game render look",
+      "system_prompt": "Style focus: photorealistic AAA game render. High-poly detail, PBR materials, real-time GI, subtle film grain, hero-asset lighting, screenshot-from-a-game framing.",
+      "style_tags_positive": [
+        "aaa game render",
+        "pbr",
+        "photoreal",
+        "realtime gi"
+      ],
+      "style_tags_negative": [
+        "flat",
+        "toon"
+      ],
+      "blend_note": "PBR game render",
+      "category": "Game Art",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: photorealistic AAA game render. High-poly detail, PBR materials, real-time GI, subtle film grain, hero-asset lighting, screenshot-from-a-game framing."
+    },
+    {
+      "id": "pixel_art",
+      "name": "Pixel Art",
+      "description": "Retro pixel art style",
+      "system_prompt": "You are an expert SDXL prompt engineer for retro pixel art. Use concise comma-separated tags SDXL pixel-art models expect: subject and key traits first, then 16-bit, limited palette, crisp pixels, dithering, retro game style.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for retro pixel art. Use concise comma-separated tags SDXL pixel-art models expect: subject and key traits first, then 16-bit, limited palette, crisp pixels, dithering, retro game style.",
+      "style_tags_positive": [
+        "pixel art",
+        "16-bit",
+        "retro game",
+        "limited palette",
+        "crisp pixels"
+      ],
+      "style_tags_negative": [
+        "smooth",
+        "photorealistic",
+        "3d render",
+        "blurry"
+      ],
+      "blend_note": "Pixel Art",
+      "category": "Game Art",
+      "disabled_in_no_negative_mode": false
+    }
+  ]
+}

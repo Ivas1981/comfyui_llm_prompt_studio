@@ -15,7 +15,8 @@ import {
 const ADVANCED_WIDGETS = ["context_length", "gpu_offload",
                            "flash_attention", "offload_kv_cache_to_gpu",
                            "temperature", "max_tokens", "repeat_penalty",
-                           "top_k", "top_p", "min_p"];
+                           "top_k", "top_p", "min_p", "reasoning",
+                           "release_vram_after_run"];
 
 // Hide/show a single widget named `name` on `node`.
 //
@@ -31,7 +32,7 @@ const ADVANCED_WIDGETS = ["context_length", "gpu_offload",
 // restored from the cache when shown again.
 const _advOrig = {};   // "<nodeId>:<name>" -> original computeSize
 
-function setWidgetHidden(node, name, hidden) {
+export function setWidgetHidden(node, name, hidden) {
     const w = getW(node, name);
     if (!w) return;
     const key = node.id + ":" + name;
@@ -142,8 +143,13 @@ export async function refreshModels(node) {
             const mw = getW(n, "model");
             if (mw) {
                 mw.options = mw.options || {};
+                // Keep the placeholder list in the dropdown so the user sees the
+                // "server unavailable" message, but NEVER clobber the previously
+                // selected model when only placeholders came back — otherwise a
+                // transient server outage would silently reset every node's model.
                 mw.options.values = models;
-                if (!models.includes(mw.value)) mw.value = models[0];
+                const real = models.filter(m => typeof m === "string" && !m.startsWith("—"));
+                if (real.length && !real.includes(mw.value)) mw.value = real[0];
             }
         }
     }
@@ -163,6 +169,43 @@ export async function refreshModels(node) {
     }
 
     app.graph.setDirtyCanvas(true, true);
+}
+
+// Poll the LM Studio server status and reflect it in a read-only indicator widget.
+// Runs on a 3s interval; self-guards against duplicates and stops if the node is removed.
+const _statusPollers = new WeakSet();
+
+export function pollServerStatus(node) {
+    if (_statusPollers.has(node)) return;
+    _statusPollers.add(node);
+    const update = async () => {
+        try {
+            if (!app.graph || !app.graph.nodes || !app.graph.nodes.includes(node)) {
+                if (node._statusTimer) clearInterval(node._statusTimer);
+                _statusPollers.delete(node);
+                return;
+            }
+            const server_url = getW(node, "server_url")?.value || "http://localhost:1234/v1";
+            const api_key = getW(node, "api_key")?.value || "";
+            const w = getW(node, "server_status");
+            if (!w) return;
+            const data = await getJSON(
+                "/llm_prompt_studio/status?server_url=" + encodeURIComponent(server_url),
+                api_key ? { "Authorization": "Bearer " + api_key } : undefined);
+            if (!data || !data.reachable) {
+                w.value = "● Server down";
+            } else if (data.loaded_models && data.loaded_models.length) {
+                w.value = "● Connected — " + data.loaded_models.join(", ");
+            } else {
+                w.value = "● Connected (no model loaded)";
+            }
+        } catch (e) {
+            const w = getW(node, "server_status");
+            if (w) w.value = "● Server down";
+        }
+    };
+    update();
+    node._statusTimer = setInterval(update, 3000);
 }
 
 export async function saveToLibrary(node) {
@@ -235,48 +278,54 @@ export function sendToWriter(node) {
 // ---------------------------------------------------------------------------
 export async function reloadPresets(node) {
     try {
-        const data = await getJSON("/llm_prompt_studio/presets");
+        const data = await getJSON("/llm_prompt_studio/styles");
         const names = data.names || [];
         const w = getW(node, "style_preset");
         if (!w) return;
         const opts = ["— none —", ...names];
         w.options = w.options || {};
         w.options.values = opts;
-        if (!opts.includes(w.value)) w.value = "— none —";
+        // Preserve a previously saved value. The combobox shows labels like
+        // "Category / Name"; a workflow saved with a bare name "Name" is no longer in
+        // `opts`, so fall back to the entry whose bare name (after "/ ") matches.
+        if (!opts.includes(w.value)) {
+            const match = opts.find(o => o.split("/ ").pop().trim() === w.value);
+            w.value = match || "— none —";
+        }
         app.graph.setDirtyCanvas(true, true);
     } catch (e) {
-        alert("Could not reload presets: " + e);
+        alert("Could not reload styles: " + e);
     }
 }
 
 export async function resetPresets(node) {
     if (typeof confirm === "function" &&
-        !confirm("Reset style presets to defaults? Your custom edits will be lost.")) {
+        !confirm("Reset style presets to defaults? Your custom edits to the Styles/ files will be lost.")) {
         return;
     }
     try {
-        const data = await postJSON("/llm_prompt_studio/presets/reset", {});
+        const data = await postJSON("/llm_prompt_studio/styles/reset", {});
         if (data.error) {
-            alert("Preset reset failed: " + data.error);
+            alert("Style reset failed: " + data.error);
             return;
         }
         await reloadPresets(node);
-        alert("Presets reset to defaults.");
+        alert("Styles reset to defaults.");
     } catch (e) {
-        alert("Preset reset failed: " + e);
+        alert("Style reset failed: " + e);
     }
 }
 
 export async function copyPresetsPath(node) {
     try {
-        const data = await getJSON("/llm_prompt_studio/presets");
+        const data = await getJSON("/llm_prompt_studio/styles");
         const path = data.path || "";
         if (typeof navigator !== "undefined" && navigator.clipboard) {
             navigator.clipboard.writeText(path).catch(() => {});
         }
-        alert("Presets file path copied:\n" + path);
+        alert("Styles folder path copied:\n" + path);
     } catch (e) {
-        alert("Could not get presets path: " + e);
+        alert("Could not get styles path: " + e);
     }
 }
 

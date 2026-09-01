@@ -1,0 +1,121 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Experimental",
+  "presets": [
+    {
+      "id": "chromatic_aberration",
+      "name": "Chromatic Aberration",
+      "description": "RGB-split optical glitch",
+      "system_prompt": "Style focus: chromatic aberration. Deliberate red/blue channel split at edges, lens fringing, glitchy optical distortion, digital imperfection.",
+      "style_tags_positive": [
+        "chromatic aberration",
+        "rgb split",
+        "lens fringing"
+      ],
+      "style_tags_negative": [
+        "perfect optics"
+      ],
+      "blend_note": "rgb split",
+      "category": "Experimental",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: chromatic aberration. Deliberate red/blue channel split at edges, lens fringing, glitchy optical distortion, digital imperfection."
+    },
+    {
+      "id": "double_exposure",
+      "name": "Double Exposure",
+      "description": "Overlay blend photography",
+      "system_prompt": "Style focus: double exposure. Two images blended by luminosity — a silhouette filled with a contrasting scene, dreamlike conceptual overlap.",
+      "style_tags_positive": [
+        "double exposure",
+        "overlay",
+        "silhouette blend"
+      ],
+      "style_tags_negative": [
+        "flat single"
+      ],
+      "blend_note": "conceptual overlay",
+      "category": "Experimental",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: double exposure. Two images blended by luminosity — a silhouette filled with a contrasting scene, dreamlike conceptual overlap."
+    },
+    {
+      "id": "glitch_art",
+      "name": "Glitch Art",
+      "description": "digital glitch art",
+      "system_prompt": "You are an expert SDXL prompt engineer for digital glitch art. Write as connected art-direction prose with datamosh and chromatic aberration.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for digital glitch art. Write as connected art-direction prose with datamosh and chromatic aberration.",
+      "style_tags_positive": [
+        "glitch art",
+        "datamosh",
+        "chromatic aberration",
+        "corrupted"
+      ],
+      "style_tags_negative": [
+        "clean",
+        "photorealistic",
+        "smooth"
+      ],
+      "blend_note": "Glitch Art",
+      "category": "Experimental",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "kaleidoscope",
+      "name": "Kaleidoscope",
+      "description": "Mirror-symmetric pattern art",
+      "system_prompt": "Style focus: kaleidoscope. Radial mirror symmetry, repeated fractured segments, saturated pattern, hypnotic ornamental geometry.",
+      "style_tags_positive": [
+        "kaleidoscope",
+        "mirror symmetry",
+        "radial pattern"
+      ],
+      "style_tags_negative": [
+        "asymmetry"
+      ],
+      "blend_note": "radial symmetry",
+      "category": "Experimental",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: kaleidoscope. Radial mirror symmetry, repeated fractured segments, saturated pattern, hypnotic ornamental geometry."
+    },
+    {
+      "id": "long_exposure",
+      "name": "Long Exposure",
+      "description": "Motion-blur light photography",
+      "system_prompt": "Style focus: long-exposure photography. Smooth silky motion blur of water/cloud/light, trails of moving lights, calm ethereal atmosphere, tripod stillness.",
+      "style_tags_positive": [
+        "long exposure",
+        "motion blur",
+        "light trails",
+        "silky"
+      ],
+      "style_tags_negative": [
+        "noisy",
+        "static harsh"
+      ],
+      "blend_note": "silky motion blur",
+      "category": "Experimental",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: long-exposure photography. Smooth silky motion blur of water/cloud/light, trails of moving lights, calm ethereal atmosphere, tripod stillness."
+    },
+    {
+      "id": "pixel_sorting",
+      "name": "Pixel Sorting",
+      "description": "Datamosh pixel-sort glitch",
+      "system_prompt": "Style focus: pixel sorting. Rows/columns of pixels reordered by brightness creating streaked glitch rivers, abstract corruption, digital decay over the image.",
+      "style_tags_positive": [
+        "pixel sorting",
+        "glitch",
+        "datamosh",
+        "streaked"
+      ],
+      "style_tags_negative": [
+        "clean",
+        "smooth"
+      ],
+      "blend_note": "glitch streaks",
+      "category": "Experimental",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: pixel sorting. Rows/columns of pixels reordered by brightness creating streaked glitch rivers, abstract corruption, digital decay over the image."
+    }
+  ]
+}

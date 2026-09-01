@@ -1,0 +1,166 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Architecture",
+  "presets": [
+    {
+      "id": "art_deco_arch",
+      "name": "Art Deco Architecture",
+      "description": "Deco building design",
+      "system_prompt": "Style focus: Art Deco architecture. Stepped ziggurat forms, streamlined vertical emphasis, chrome and geometric luxe, optimistic machine-age elegance.",
+      "style_tags_positive": [
+        "art deco architecture",
+        "ziggurat",
+        "streamlined",
+        "geometric luxe"
+      ],
+      "style_tags_negative": [
+        "rough",
+        "organic"
+      ],
+      "blend_note": "stepped luxe",
+      "category": "Architecture",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Art Deco architecture. Stepped ziggurat forms, streamlined vertical emphasis, chrome and geometric luxe, optimistic machine-age elegance."
+    },
+    {
+      "id": "bauhaus",
+      "name": "Bauhaus",
+      "description": "Functional modernist design",
+      "system_prompt": "Style focus: Bauhaus architecture. White cubic volumes, ribbon windows, primary color accents, functional honesty, asymmetry and clean geometry.",
+      "style_tags_positive": [
+        "bauhaus",
+        "white cube",
+        "ribbon windows",
+        "functional"
+      ],
+      "style_tags_negative": [
+        "ornate",
+        "historical"
+      ],
+      "blend_note": "white cubic",
+      "category": "Architecture",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Bauhaus architecture. White cubic volumes, ribbon windows, primary color accents, functional honesty, asymmetry and clean geometry."
+    },
+    {
+      "id": "brutalism",
+      "name": "Brutalism",
+      "description": "Raw concrete architecture",
+      "system_prompt": "Style focus: Brutalist architecture. Raw board-marked concrete, monumental massing, repetitive geometric modules, stark shadows, imposing honesty of material.",
+      "style_tags_positive": [
+        "brutalism",
+        "concrete",
+        "monolithic",
+        "geometric"
+      ],
+      "style_tags_negative": [
+        "ornate",
+        "soft"
+      ],
+      "blend_note": "raw concrete mass",
+      "category": "Architecture",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Brutalist architecture. Raw board-marked concrete, monumental massing, repetitive geometric modules, stark shadows, imposing honesty of material."
+    },
+    {
+      "id": "deconstructivism",
+      "name": "Deconstructivism",
+      "description": "Fragmented building design",
+      "system_prompt": "Style focus: Deconstructivist architecture. Fragmented non-rectilinear forms, warped surfaces, deliberate dissonance, sculptural dynamic massing.",
+      "style_tags_positive": [
+        "deconstructivism",
+        "fragmented",
+        "warped",
+        "sculptural"
+      ],
+      "style_tags_negative": [
+        "symmetrical",
+        "calm"
+      ],
+      "blend_note": "fragmented mass",
+      "category": "Architecture",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Deconstructivist architecture. Fragmented non-rectilinear forms, warped surfaces, deliberate dissonance, sculptural dynamic massing."
+    },
+    {
+      "id": "gothic_architecture",
+      "name": "Gothic Architecture",
+      "description": "Cathedral architecture",
+      "system_prompt": "Style focus: Gothic architecture. Pointed arches, ribbed vaults, soaring stained glass, flying buttresses, vertical aspiration and ornament.",
+      "style_tags_positive": [
+        "gothic architecture",
+        "pointed arch",
+        "stained glass",
+        "vaulted"
+      ],
+      "style_tags_negative": [
+        "modern",
+        "plain"
+      ],
+      "blend_note": "vertical ornament",
+      "category": "Architecture",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Gothic architecture. Pointed arches, ribbed vaults, soaring stained glass, flying buttresses, vertical aspiration and ornament."
+    },
+    {
+      "id": "mid_century_arch",
+      "name": "Mid-Century Architecture",
+      "description": "Modernist house design",
+      "system_prompt": "Style focus: mid-century modern architecture. Flat or butterfly roofs, floor-to-ceiling glass, indoor-outdoor flow, warm wood and stone, optimistic horizontality.",
+      "style_tags_positive": [
+        "mid century architecture",
+        "flat roof",
+        "glass",
+        "warm wood"
+      ],
+      "style_tags_negative": [
+        "heavy",
+        "ornate"
+      ],
+      "blend_note": "horizontal glass",
+      "category": "Architecture",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: mid-century modern architecture. Flat or butterfly roofs, floor-to-ceiling glass, indoor-outdoor flow, warm wood and stone, optimistic horizontality."
+    },
+    {
+      "id": "postmodern_arch",
+      "name": "Postmodern Architecture",
+      "description": "Playful building design",
+      "system_prompt": "Style focus: postmodern architecture. Ironic historical quotation, bold color, playful forms, columns used decoratively, anti-purity exuberance.",
+      "style_tags_positive": [
+        "postmodern architecture",
+        "playful",
+        "bold color",
+        "quotation"
+      ],
+      "style_tags_negative": [
+        "austere",
+        "pure"
+      ],
+      "blend_note": "playful quotation",
+      "category": "Architecture",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: postmodern architecture. Ironic historical quotation, bold color, playful forms, columns used decoratively, anti-purity exuberance."
+    },
+    {
+      "id": "victorian_arch",
+      "name": "Victorian Architecture",
+      "description": "Gothic-revival building",
+      "system_prompt": "Style focus: Victorian architecture. Ornate facades, bay windows, turrets, patterned brick, elaborate trim, cluttered romantic detail.",
+      "style_tags_positive": [
+        "victorian architecture",
+        "ornate facade",
+        "turret",
+        "trim"
+      ],
+      "style_tags_negative": [
+        "minimal",
+        "modern"
+      ],
+      "blend_note": "ornate detail",
+      "category": "Architecture",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Victorian architecture. Ornate facades, bay windows, turrets, patterned brick, elaborate trim, cluttered romantic detail."
+    }
+  ]
+}

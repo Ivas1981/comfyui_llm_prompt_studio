@@ -45,14 +45,18 @@ def _reset_state():
     lm_http._model_cache.clear()
     lm_http._static_keys.clear()
     lm_http._server_loaded.clear()
+    lm_http._seen_servers.clear()
+    lm_http._keep_loaded.clear()
     yield
     lm_http._last_loaded.clear()
-    lm_http._last_loaded.update(saved)
     lm_http._rejected_v1_keys.clear()
     lm_http._model_instances.clear()
     lm_http._model_cache.clear()
     lm_http._static_keys.clear()
     lm_http._server_loaded.clear()
+    lm_http._seen_servers.clear()
+    lm_http._keep_loaded.clear()
+    lm_http._llm_response_cache.clear()
 
 
 def test_validate_server_url_allows_local():
@@ -63,6 +67,29 @@ def test_validate_server_url_allows_local():
 def test_validate_server_url_rejects_public():
     with pytest.raises(ValueError):
         lm_http.validate_server_url("http://1.2.3.4/v1")
+
+
+def test_validate_server_url_resolves_local_hostname(monkeypatch):
+    # A bare LAN hostname (e.g. "nas.home") should be accepted only when DNS resolves it
+    # exclusively to private/loopback addresses - without disabling SSRF protection.
+    import socket
+
+    def fake_getaddrinfo(host, port, *a, **k):
+        return [(socket.AF_INET, 0, 0, "", ("192.168.1.50", 0))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    assert lm_http.validate_server_url("http://nas.home:1234/v1") == "http://nas.home:1234/v1"
+
+
+def test_validate_server_url_rejects_public_hostname(monkeypatch):
+    import socket
+
+    def fake_getaddrinfo(host, port, *a, **k):
+        return [(socket.AF_INET, 0, 0, "", ("8.8.8.8", 0))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(ValueError):
+        lm_http.validate_server_url("http://my.server:1234/v1")
 
 
 def test_fetch_models_returns_ids():
@@ -107,6 +134,27 @@ def test_fetch_models_handles_nonjson_native_then_openai():
 
 
 
+def test_fetch_models_filters_embedding_models():
+    # Embedding models are not chat models and must not appear in the model combo, even
+    # when LM Studio's native /api/v1/models list mixes them in with a "type": "embedding".
+    resp = _ok_response(text=json.dumps({"data": [
+        {"key": "chat-model", "id": "chat-model"},
+        {"key": "embed-model", "type": "embedding"},
+    ]}))
+    with patch("requests.get", return_value=resp):
+        assert lm_http.fetch_models(LOCAL_V1) == ["chat-model"]
+
+
+def test_fetch_models_filters_embedding_models_openai_fallback():
+    native = _ok_response(status=404, text="not found")
+    openai = _ok_response(text=json.dumps({"data": [
+        {"id": "chat-model"},
+        {"id": "embed-model", "type": "embedding"},
+    ]}))
+    with patch("requests.get", side_effect=[native, openai]):
+        assert lm_http.fetch_models(LOCAL_V1) == ["chat-model"]
+
+
 def test_chat_completion_handles_nonjson_response():
     resp = MagicMock()
     resp.status_code = 200
@@ -147,20 +195,38 @@ def test_chat_completion_openai_fallback_forwards_sampling_params():
     assert "min_p" not in body
 
 
-def test_post_v1_chat_drops_unrecognized_seed_and_retries():
-    # A server that rejects `seed` (unrecognized_keys) must not fail the native call: the
+def test_post_v1_chat_drops_unrecognized_optional_key_and_retries():
+    # A server that rejects an OPTIONAL key (e.g. top_k) must not fail the native call: the
     # key is dropped and the request retried once, successfully.
     reject = _ok_response(status=400,
                           text='{"error":{"code":"unrecognized_keys",'
-                               '"message":"Unrecognized key(s) in object: \'seed\'"}}')
+                               '"message":"Unrecognized key(s) in object: \'top_k\'"}}')
     ok = _ok_response(status=200, text=json.dumps(
         {"output": [{"type": "message", "content": "ok"}]}))
     with patch("requests.post", side_effect=[reject, ok]) as post:
         resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
-                                     {"model": "m", "seed": 0}, 5)
+                                     {"model": "m", "seed": 0, "top_k": 40}, 5)
     assert resp.status_code == 200
-    # The retry request omitted the rejected key.
-    assert "seed" not in post.call_args_list[1][1]["json"]
+    # The retry request omitted the rejected optional key.
+    assert "top_k" not in post.call_args_list[1][1]["json"]
+
+
+def test_post_v1_chat_keeps_protected_seed_when_rejected():
+    # A USER-INTENT key (`seed`) must NOT be silently dropped when the native endpoint
+    # rejects it: instead the call keeps failing so the caller (chat_completion) can fall
+    # back to the OpenAI-compatible route that actually honors seed. Without this protection,
+    # seed control would silently do nothing.
+    reject = _ok_response(status=400,
+                          text='{"error":{"code":"unrecognized_keys",'
+                               '"message":"Unrecognized key(s) in object: \'seed\'"}}')
+    with patch("requests.post", return_value=reject) as post:
+        resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
+                                     {"model": "m", "seed": 7}, 5,
+                                     protected_keys={"seed"})
+    # seed stays in the body and the call is NOT retried into a success.
+    assert resp.status_code == 400
+    assert post.call_count == 1
+    assert post.call_args_list[0][1]["json"]["seed"] == 7
 
 
 def test_post_v1_chat_passes_through_non_key_errors():
@@ -169,29 +235,31 @@ def test_post_v1_chat_passes_through_non_key_errors():
     err = _ok_response(status=400, text=json.dumps({"error": {"message": "bad request"}}))
     with patch("requests.post", return_value=err) as post:
         resp = lm_http._post_v1_chat("http://x/api/v1/chat", {},
-                                     {"model": "m", "seed": 0}, 5)
+                                     {"model": "m", "seed": 0, "top_k": 40}, 5)
     assert resp.status_code == 400
     assert post.call_count == 1
 
 
-def test_chat_completion_native_succeeds_when_seed_rejected():
-    # Native /api/v1/chat rejects `seed` (unrecognized_keys) -> drop it, retry, succeed,
-    # with NO fallback to the OpenAI /chat/completions route.
+def test_chat_completion_falls_back_to_openai_when_native_rejects_seed():
+    # Native /api/v1/chat rejects `seed` (unrecognized_keys) -> the call is NOT retried into a
+    # success with seed silently dropped; instead chat_completion falls back to the
+    # OpenAI-compatible /v1/chat/completions endpoint, which honors `seed`. Regression test
+    # for seed control appearing broken while the model ignored the seed entirely.
     reject = _ok_response(status=400,
                           text='{"error":{"code":"unrecognized_keys",'
                                '"message":"Unrecognized key(s) in object: \'seed\'"}}')
-    ok = _ok_response(status=200, text=json.dumps(
-        {"output": [{"type": "message", "content": "native result"}]}))
+    oai_ok = _ok_response(status=200, text=json.dumps({
+        "choices": [{"message": {"content": "openai result"}}]}))
     with patch("requests.get", return_value=_models_response([{"key": "m", "capabilities": {}}])), \
-         patch("requests.post", side_effect=[reject, ok]) as post:
+         patch("requests.post", side_effect=[reject, oai_ok]) as post:
         out = lm_http.chat_completion(LOCAL_V1, "", "m",
                                       [{"role": "user", "content": "hi"}], 0.7, 100,
-                                      seed=0)
-    assert out == "native result"
-    # Both POSTs are the native /api/v1/chat (retry after dropping seed), no OpenAI call.
-    assert post.call_count == 2
-    assert all("chat/completions" not in c[0][0] for c in post.call_args_list)
-    assert "seed" not in post.call_args_list[1][1]["json"]
+                                      seed=7)
+    assert out == "openai result"
+    # The fallback POST is the OpenAI /chat/completions route and still carries the seed.
+    oai_calls = [c for c in post.call_args_list if "chat/completions" in c[0][0]]
+    assert oai_calls, "expected a fallback to /chat/completions"
+    assert oai_calls[0][1]["json"]["seed"] == 7
 
 
 def test_load_model_success_v1():
@@ -377,6 +445,95 @@ def test_ensure_model_loaded_old_string_state_forces_reload():
          patch.object(lm_http, "load_model", return_value=True) as load:
         lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m")
     load.assert_called_once()
+
+
+def test_ensure_model_loaded_returns_true_on_success():
+    # A4: the function now reports success so callers can stop before a doomed LLM call.
+    with patch("requests.get", return_value=_ok_response(status=404)), \
+         patch.object(lm_http, "load_model", return_value=True):
+        assert lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m") is True
+
+
+def test_ensure_model_loaded_returns_false_on_failure():
+    with patch("requests.get", return_value=_ok_response(status=404)), \
+         patch.object(lm_http, "load_model", return_value=False):
+        assert lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m") is False
+
+
+def test_ensure_model_loaded_returns_true_for_placeholder():
+    # A placeholder (no real model selected) is treated as "nothing to load" -> success.
+    assert lm_http.ensure_model_loaded("s", LOCAL_V1, "", "— none —") is True
+
+
+def test_ensure_model_loaded_returns_true_when_already_loaded():
+    fp = ("m", 8192, 1.0, None, None, None, None)
+    lm_http._server_loaded[LOCAL_V1] = fp
+    with patch("requests.get") as get, \
+         patch.object(lm_http, "load_model") as load:
+        assert lm_http.ensure_model_loaded("s", LOCAL_V1, "", "m") is True
+    load.assert_not_called()
+    get.assert_not_called()
+
+
+
+
+# ---------------------------------------------------------------------------
+# Global LLM-response cache (opt-in, off by default).
+# ---------------------------------------------------------------------------
+
+def test_llm_cache_hit_avoids_second_network_call():
+    # With the cache enabled, an identical repeat request is served from cache (one POST only).
+    lm_http._LLM_CACHE_ENABLED = True
+    lm_http._llm_response_cache.clear()
+    try:
+        ok = _ok_response(status=200,
+                          text=json.dumps({"output": [{"type": "message",
+                                                       "content": "hello"}]}))
+        with patch("requests.get",
+                   return_value=_models_response([{"key": "m", "capabilities": {}}])), \
+             patch("requests.post", return_value=ok) as post:
+            out1 = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                           [{"role": "user", "content": "hi"}], 0.7, 100)
+            out2 = lm_http.chat_completion(LOCAL_V1, "", "m",
+                                           [{"role": "user", "content": "hi"}], 0.7, 100)
+        assert out1 == out2 == "hello"
+        assert post.call_count == 1
+    finally:
+        lm_http._LLM_CACHE_ENABLED = False
+        lm_http._llm_response_cache.clear()
+
+
+def test_llm_cache_disabled_always_hits_network():
+    # Default-off cache: identical requests still hit the network every time.
+    assert lm_http._LLM_CACHE_ENABLED is False
+    with patch("requests.get",
+               return_value=_models_response([{"key": "m", "capabilities": {}}])), \
+         patch("requests.post",
+               return_value=_ok_response(status=200,
+                                         text=json.dumps({"output": [{"type": "message",
+                                                                      "content": "x"}]}))) as post:
+        lm_http.chat_completion(LOCAL_V1, "", "m", [{"role": "user", "content": "hi"}], 0.7, 100)
+        lm_http.chat_completion(LOCAL_V1, "", "m", [{"role": "user", "content": "hi"}], 0.7, 100)
+    assert post.call_count == 2
+
+
+def test_llm_cache_distinct_requests_not_merged():
+    # Different messages -> different keys -> a real second call (not a cache hit).
+    lm_http._LLM_CACHE_ENABLED = True
+    lm_http._llm_response_cache.clear()
+    try:
+        ok = _ok_response(status=200,
+                          text=json.dumps({"output": [{"type": "message",
+                                                       "content": "x"}]}))
+        with patch("requests.get",
+                   return_value=_models_response([{"key": "m", "capabilities": {}}])), \
+             patch("requests.post", return_value=ok) as post:
+            lm_http.chat_completion(LOCAL_V1, "", "m", [{"role": "user", "content": "a"}], 0.7, 100)
+            lm_http.chat_completion(LOCAL_V1, "", "m", [{"role": "user", "content": "b"}], 0.7, 100)
+        assert post.call_count == 2
+    finally:
+        lm_http._LLM_CACHE_ENABLED = False
+        lm_http._llm_response_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -647,3 +804,53 @@ def test_chat_completion_enriches_model_load_failure():
             lm_http.chat_completion(LOCAL_V1, "", "m", messages, 0.7, 100)
     assert "failed to load on the server" in str(exc.value)
     assert "exited before becoming healthy" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# B4: native /api/v1/models entry cache + architecture / param_count helpers.
+# ---------------------------------------------------------------------------
+
+def test_get_model_entry_matches_and_caches():
+    models = _models_response([{"key": "gemma-3-12b", "architecture": "gemma3",
+                                "params_string": "12B", "loaded_instances": []}])
+    with patch("requests.get", return_value=models):
+        entry = lm_http.get_model_entry(LOCAL_V1, "", "gemma-3-12b")
+    assert entry is not None
+    assert entry["architecture"] == "gemma3"
+    # A second call within the TTL must not re-hit the network (cache returns the object).
+    with patch("requests.get", side_effect=AssertionError("should be cached")):
+        assert lm_http.get_model_entry(LOCAL_V1, "", "gemma-3-12b") is entry
+
+
+def test_get_model_entry_not_listed_returns_none():
+    models = _models_response([{"key": "other"}])
+    with patch("requests.get", return_value=models):
+        assert lm_http.get_model_entry(LOCAL_V1, "", "missing") is None
+
+
+def test_get_model_entry_network_error_returns_none():
+    with patch("requests.get", side_effect=__import__("requests").RequestException("down")):
+        assert lm_http.get_model_entry(LOCAL_V1, "", "m") is None
+
+
+def test_model_architecture_and_param_count():
+    entry = {"key": "m", "architecture": "gemma3", "params_string": "26B-A4B"}
+    with patch.object(lm_http, "get_model_entry", return_value=entry):
+        assert lm_http.model_architecture(LOCAL_V1, "", "m") == "gemma3"
+        assert lm_http.model_param_count(LOCAL_V1, "", "m") == 4.0
+    # MoE suffix absent -> single number.
+    with patch.object(lm_http, "get_model_entry", return_value={"params_string": "7B"}):
+        assert lm_http.model_param_count(LOCAL_V1, "", "m") == 7.0
+    # No entry -> None (graceful fallback, no regression on non-LM-Studio servers).
+    with patch.object(lm_http, "get_model_entry", return_value=None):
+        assert lm_http.model_architecture(LOCAL_V1, "", "m") is None
+        assert lm_http.model_param_count(LOCAL_V1, "", "m") is None
+
+
+def test_invalidate_model_entry_cache():
+    with patch("requests.get", return_value=_models_response([{"key": "m"}])):
+        assert lm_http.get_model_entry(LOCAL_V1, "", "m") is not None
+    lm_http.invalidate_model_entry_cache(LOCAL_V1, "m")
+    with patch("requests.get", side_effect=AssertionError("should refetch after invalidation")):
+        with pytest.raises(AssertionError):
+            lm_http.get_model_entry(LOCAL_V1, "", "m")

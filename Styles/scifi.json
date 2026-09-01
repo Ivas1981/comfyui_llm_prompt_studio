@@ -1,0 +1,146 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Sci-Fi",
+  "presets": [
+    {
+      "id": "chris_foss",
+      "name": "Chris Foss",
+      "description": "Psychedelic ships illustration",
+      "system_prompt": "Style focus: Chris Foss. Gigantic detailed spacecraft, lush airbrushed gradients, saturated otherworldly color, epic scale, gleaming hulls.",
+      "style_tags_positive": [
+        "chris foss",
+        "spaceship",
+        "airbrush",
+        "epic scale"
+      ],
+      "style_tags_negative": [
+        "gritty",
+        "flat"
+      ],
+      "blend_note": "airbrushed ships",
+      "category": "Sci-Fi",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Chris Foss. Gigantic detailed spacecraft, lush airbrushed gradients, saturated otherworldly color, epic scale, gleaming hulls."
+    },
+    {
+      "id": "john_berkey",
+      "name": "John Berkey",
+      "description": "Majestic planetary sci-fi",
+      "system_prompt": "Style focus: John Berkey. Majestic planets and monuments, bold confident brush, dramatic scale, rich textured color, awe and grandeur.",
+      "style_tags_positive": [
+        "john berkey",
+        "planetary",
+        "majestic",
+        "grand scale"
+      ],
+      "style_tags_negative": [
+        "small",
+        "flat"
+      ],
+      "blend_note": "majestic scale",
+      "category": "Sci-Fi",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: John Berkey. Majestic planets and monuments, bold confident brush, dramatic scale, rich textured color, awe and grandeur."
+    },
+    {
+      "id": "mecha",
+      "name": "Mecha",
+      "description": "Giant robot sci-fi look",
+      "system_prompt": "Style focus: mecha. Detailed giant robots, mechanical panel lines, cockpit and weapon detail, dynamic battle posing, industrially believable design.",
+      "style_tags_positive": [
+        "mecha",
+        "giant robot",
+        "mechanical detail",
+        "battle"
+      ],
+      "style_tags_negative": [
+        "organic",
+        "cute"
+      ],
+      "blend_note": "mechanical detail",
+      "category": "Sci-Fi",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: mecha. Detailed giant robots, mechanical panel lines, cockpit and weapon detail, dynamic battle posing, industrially believable design."
+    },
+    {
+      "id": "ralph_mcquarrie",
+      "name": "Ralph McQuarrie",
+      "description": "Classic Star Wars concept look",
+      "system_prompt": "Style focus: Ralph McQuarrie. Cinematic sci-fi concept painting, atmospheric haze, dramatic rim light, iconic costume and vehicle silhouettes, painterly mood.",
+      "style_tags_positive": [
+        "ralph mcquarrie",
+        "sci-fi concept",
+        "atmospheric",
+        "rim light"
+      ],
+      "style_tags_negative": [
+        "flat",
+        "anime"
+      ],
+      "blend_note": "cinematic sci-fi",
+      "category": "Sci-Fi",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Ralph McQuarrie. Cinematic sci-fi concept painting, atmospheric haze, dramatic rim light, iconic costume and vehicle silhouettes, painterly mood."
+    },
+    {
+      "id": "retro_futurism",
+      "name": "Retro-Futurism",
+      "description": "Atomic-age future look",
+      "system_prompt": "Style focus: retro-futurism. 1950s vision of the future — rocket fins, googie architecture, pastel Jetsons optimism, analog space-age kitsch.",
+      "style_tags_positive": [
+        "retro futurism",
+        "atomic age",
+        "googie",
+        "pastel future"
+      ],
+      "style_tags_negative": [
+        "grim",
+        "modern"
+      ],
+      "blend_note": "atomic optimism",
+      "category": "Sci-Fi",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: retro-futurism. 1950s vision of the future — rocket fins, googie architecture, pastel Jetsons optimism, analog space-age kitsch."
+    },
+    {
+      "id": "space_opera",
+      "name": "Space Opera",
+      "description": "Epic galactic sci-fi look",
+      "system_prompt": "Style focus: space opera. Sweeping galactic vistas, heroic crews, glowing tech, nebulae and capital ships, epic romantic lighting.",
+      "style_tags_positive": [
+        "space opera",
+        "galactic",
+        "nebula",
+        "epic"
+      ],
+      "style_tags_negative": [
+        "drab",
+        "mundane"
+      ],
+      "blend_note": "epic galactic",
+      "category": "Sci-Fi",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: space opera. Sweeping galactic vistas, heroic crews, glowing tech, nebulae and capital ships, epic romantic lighting."
+    },
+    {
+      "id": "syd_mead",
+      "name": "Syd Mead",
+      "description": "Linear-blend hard sci-fi illustration",
+      "system_prompt": "Style focus: Syd Mead. Sleek hard-surface industrial design, reflective chrome and glass, warm hazy future cities, precise linear perspective, optimistic yet gritty.",
+      "style_tags_positive": [
+        "syd mead",
+        "hard sci-fi",
+        "chrome",
+        "future city"
+      ],
+      "style_tags_negative": [
+        "fantasy",
+        "medieval"
+      ],
+      "blend_note": "sleek hard-surface",
+      "category": "Sci-Fi",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Syd Mead. Sleek hard-surface industrial design, reflective chrome and glass, warm hazy future cities, precise linear perspective, optimistic yet gritty."
+    }
+  ]
+}

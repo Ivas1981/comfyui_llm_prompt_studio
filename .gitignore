@@ -26,6 +26,9 @@ __pycache__/
 # Runtime cache (persisted model list for the model combo)
 llm_prompt_studio_models_cache.json
 
+# Runtime cache (persisted ultralytics class lists for the model combos)
+models/ultralytics/.class_cache.json
+
 # Local tooling / planning (not part of the project)
 .kilo/
 plans/
@@ -33,3 +36,12 @@ plans/
 # Local-only working folders (kept on disk, never pushed to GitHub)
 research/
 docs/TestModels.md
+
+# Model weights are committed so users get them without manual downloads.
+# (YOLO face detectors, latent upscalers.)
+
+# Local test/diagnostic output (not part of the project)
+tools/live_results.txt
+tools/_last.txt
+tests/_output/
+

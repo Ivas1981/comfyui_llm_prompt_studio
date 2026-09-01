@@ -1,0 +1,106 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Render Engines",
+  "presets": [
+    {
+      "id": "3d_render",
+      "name": "3D Render",
+      "description": "3D render (Octane, Unreal) style",
+      "system_prompt": "You are an expert SDXL prompt engineer for clean 3D renders. Use concise comma-separated tags SDXL 3D models expect: subject and key traits first, then render engine (octane render, unreal engine, blender), lighting (global illumination, subsurface scattering, physically based rendering) and material detail.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for clean 3D renders. Use concise comma-separated tags SDXL 3D models expect: subject and key traits first, then render engine (octane render, unreal engine, blender), lighting (global illumination, subsurface scattering, physically based rendering) and material detail.",
+      "style_tags_positive": [
+        "3d render",
+        "octane render",
+        "unreal engine",
+        "physically based rendering",
+        "subsurface scattering"
+      ],
+      "style_tags_negative": [
+        "painting",
+        "sketch",
+        "anime",
+        "photograph"
+      ],
+      "blend_note": "3D Render",
+      "category": "Render Engines",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "blender_cycles",
+      "name": "Blender Cycles",
+      "description": "Cycles path-traced look",
+      "system_prompt": "Style focus: Blender Cycles. Path-traced global illumination, soft caustics, neutral PBR shading, clean studio or HDRI lighting, subtle filmic tone.",
+      "style_tags_positive": [
+        "blender cycles",
+        "path tracing",
+        "pbr",
+        "hdri lighting"
+      ],
+      "style_tags_negative": [
+        "painterly"
+      ],
+      "blend_note": "path-traced PBR",
+      "category": "Render Engines",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Blender Cycles. Path-traced global illumination, soft caustics, neutral PBR shading, clean studio or HDRI lighting, subtle filmic tone."
+    },
+    {
+      "id": "octane",
+      "name": "Octane Render",
+      "description": "Octane GPU render look",
+      "system_prompt": "Style focus: Octane render. Physically based lighting, rich volumetrics, glossy reflective surfaces, cinematic color, smooth denoised clean output.",
+      "style_tags_positive": [
+        "octane render",
+        "pbr",
+        "volumetric",
+        "glossy"
+      ],
+      "style_tags_negative": [
+        "noisy",
+        "flat"
+      ],
+      "blend_note": "PBR, volumetrics",
+      "category": "Render Engines",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Octane render. Physically based lighting, rich volumetrics, glossy reflective surfaces, cinematic color, smooth denoised clean output."
+    },
+    {
+      "id": "redshift",
+      "name": "Redshift",
+      "description": "Redshift production render look",
+      "system_prompt": "Style focus: Redshift. Production CGI look, tight specular highlights, deep shadows, saturated cinematic grade, fine motion-blur-ready detail.",
+      "style_tags_positive": [
+        "redshift render",
+        "cinematic cgi",
+        "specular"
+      ],
+      "style_tags_negative": [
+        "flat"
+      ],
+      "blend_note": "production CGI",
+      "category": "Render Engines",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Redshift. Production CGI look, tight specular highlights, deep shadows, saturated cinematic grade, fine motion-blur-ready detail."
+    },
+    {
+      "id": "unreal_engine",
+      "name": "Unreal Engine 5",
+      "description": "Real-time UE5 render look",
+      "system_prompt": "Style focus: Unreal Engine 5 real-time render. Nanite detail, Lumen global illumination, soft indirect light, crisp PBR materials, subtle bloom, game-cinematic framing.",
+      "style_tags_positive": [
+        "unreal engine 5",
+        "nanite",
+        "lumen gi",
+        "pbr materials"
+      ],
+      "style_tags_negative": [
+        "flat",
+        "painterly"
+      ],
+      "blend_note": "real-time PBR, Lumen GI",
+      "category": "Render Engines",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: Unreal Engine 5 real-time render. Nanite detail, Lumen global illumination, soft indirect light, crisp PBR materials, subtle bloom, game-cinematic framing."
+    }
+  ]
+}

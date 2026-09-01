@@ -1,0 +1,151 @@
+{
+  "schema_version": "2.0.0",
+  "category": "Comics & Manga",
+  "presets": [
+    {
+      "id": "bande_dessinee",
+      "name": "Bande Dessinee",
+      "description": "European album comic look",
+      "system_prompt": "Style focus: European bande dessinee. Precise clean pen work, realistic proportions, rich detailed settings, flat color with subtle modeling, witty composition.",
+      "style_tags_positive": [
+        "bande dessinee",
+        "clean pen",
+        "detailed setting",
+        "flat color"
+      ],
+      "style_tags_negative": [
+        "messy",
+        "anime"
+      ],
+      "blend_note": "precise clean pen",
+      "category": "Comics & Manga",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: European bande dessinee. Precise clean pen work, realistic proportions, rich detailed settings, flat color with subtle modeling, witty composition."
+    },
+    {
+      "id": "comic",
+      "name": "Comic / Graphic Novel",
+      "description": "Comic book / graphic novel style",
+      "system_prompt": "You are an expert SDXL prompt engineer for comic book and graphic-novel art. Write as connected art-direction prose or concise tags: subject and dynamic pose first, then bold inking, halftone shading, graphic-novel composition and ink line quality.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for comic book and graphic-novel art. Write as connected art-direction prose or concise tags: subject and dynamic pose first, then bold inking, halftone shading, graphic-novel composition and ink line quality.",
+      "style_tags_positive": [
+        "comic book",
+        "bold inking",
+        "graphic novel",
+        "halftone",
+        "dynamic pose"
+      ],
+      "style_tags_negative": [
+        "photorealistic",
+        "3d render",
+        "painterly"
+      ],
+      "blend_note": "Comic / Graphic Novel",
+      "category": "Comics & Manga",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "indie_graphic_novel",
+      "name": "Indie Graphic Novel",
+      "description": "Literary alternative comics look",
+      "system_prompt": "Style focus: indie graphic novel. Personal ink or watercolor texture, irregular hand-drawn line, muted earthy palette, intimate framing, narrative quiet mood.",
+      "style_tags_positive": [
+        "indie comic",
+        "hand-drawn",
+        "muted palette",
+        "ink texture"
+      ],
+      "style_tags_negative": [
+        "glossy",
+        "superhero"
+      ],
+      "blend_note": "hand-drawn, intimate",
+      "category": "Comics & Manga",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: indie graphic novel. Personal ink or watercolor texture, irregular hand-drawn line, muted earthy palette, intimate framing, narrative quiet mood."
+    },
+    {
+      "id": "ligne_claire",
+      "name": "Ligne Claire",
+      "description": "Hergé-style clean-line illustration",
+      "system_prompt": "Style focus: ligne claire. Uniform clean contours, no shading gradients, flat even color areas, precise detail and a calm objective composition.",
+      "style_tags_positive": [
+        "ligne claire",
+        "clean linework",
+        "flat colors",
+        "uniform contours"
+      ],
+      "style_tags_negative": [
+        "messy lines",
+        "heavy shading",
+        "gritty"
+      ],
+      "blend_note": "clean uniform linework",
+      "category": "Comics & Manga",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: ligne claire. Uniform clean contours, no shading gradients, flat even color areas, precise detail and a calm objective composition."
+    },
+    {
+      "id": "manhwa_webtoon",
+      "name": "Manhwa / Webtoon",
+      "description": "Korean manhwa / webtoon art",
+      "system_prompt": "You are an expert SDXL prompt engineer for Korean manhwa / webtoon art. Write as connected art-direction prose with clean linework and vertical format.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for Korean manhwa / webtoon art. Write as connected art-direction prose with clean linework and vertical format.",
+      "style_tags_positive": [
+        "manhwa",
+        "webtoon",
+        "clean linework",
+        "cell shading"
+      ],
+      "style_tags_negative": [
+        "photorealistic",
+        "messy",
+        "3d render"
+      ],
+      "blend_note": "Manhwa / Webtoon",
+      "category": "Comics & Manga",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "noir",
+      "name": "Noir",
+      "description": "film-noir black-and-white atmosphere",
+      "system_prompt": "You are an expert SDXL prompt engineer for film-noir black-and-white atmosphere. Write as connected art-direction prose with hard shadows and rain.",
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nYou are an expert SDXL prompt engineer for film-noir black-and-white atmosphere. Write as connected art-direction prose with hard shadows and rain.",
+      "style_tags_positive": [
+        "film noir",
+        "high contrast",
+        "hard shadows",
+        "rain"
+      ],
+      "style_tags_negative": [
+        "color",
+        "bright",
+        "cheerful"
+      ],
+      "blend_note": "Noir",
+      "category": "Comics & Manga",
+      "disabled_in_no_negative_mode": false
+    },
+    {
+      "id": "superhero",
+      "name": "Superhero Comic",
+      "description": "American superhero comic look",
+      "system_prompt": "Style focus: American superhero comic. Bold inked linework, saturated color, dramatic foreshortening, heroic musculature, dynamic cape and motion, halftone shading.",
+      "style_tags_positive": [
+        "superhero comic",
+        "bold ink",
+        "saturated color",
+        "dynamic pose"
+      ],
+      "style_tags_negative": [
+        "realistic",
+        "muted"
+      ],
+      "blend_note": "bold ink, dynamic heroism",
+      "category": "Comics & Manga",
+      "disabled_in_no_negative_mode": false,
+      "system_prompt_no_negative": "NO-NEGATIVE MODE: distilled models (DMD / LCM / Turbo / Hyper / Lightning / Flash) sample at CFG ~1, where the negative prompt is mathematically ignored, so you MUST express every stylistic and quality constraint as a POSITIVE statement inside the positive prompt instead of forbidding things. Phrase exclusions positively (e.g. 'sharp focus, clean lines, no blur, no extra limbs'). The negative and face_negative fields must remain empty strings.\n\nStyle focus: American superhero comic. Bold inked linework, saturated color, dramatic foreshortening, heroic musculature, dynamic cape and motion, halftone shading."
+    }
+  ]
+}

@@ -13,10 +13,12 @@ __all__ = [
 
 
 def combo_models(server_url: str = DEFAULT_SERVER):
-    # Return the disk-persisted model list for THIS server (populated by "Refresh models"
-    # and on the first successful fetch). Reading the file directly avoids any dependence
-    # on import-time seeding, so a saved workflow whose model is present in the cache always
-    # validates against a real list — scoped to its own server_url (no cross-server mix-up).
+    # Return the disk-persisted model list for the GIVEN server_url (populated by "Refresh
+    # models" and on the first successful fetch). Reading the file directly avoids any
+    # dependence on import-time seeding, so a saved workflow whose model is present in the
+    # cache always validates against a real list. NOTE: INPUT_TYPES can only express a single
+    # default server_url, so this per-URL cache is reached with DEFAULT_SERVER at build time
+    # and the node's actual server_url is only applied via the widget at runtime.
     # INPUT_TYPES must NOT hit the network: the manual Refresh is the source of truth and the
     # nodeCreated handler refreshes shortly after the node appears.
     cached = cached_model_list(server_url)
