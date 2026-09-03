@@ -22,29 +22,28 @@ def _detect(name, metadata, tmp_path):
 
 
 def test_detect_family_from_parent_folder(tmp_path):
-    # A generically-named file inside a family-named folder is still recognized because
-    # detect_checkpoint_family() scans the immediate parent folder name.
+    # A generically-named file inside a family-named folder is NOT recognized via folder name
+    # because folder hint has been removed; only metadata and filename are considered.
     folder = tmp_path / "Lightning"
     folder.mkdir()
     fake = folder / "model.safetensors"
     fake.write_bytes(b"")
     with patch.object(model_meta, "read_safetensors_metadata", return_value={}), \
          patch.object(model_meta.folder_paths, "get_full_path", return_value=str(fake)):
-        assert model_meta.detect_checkpoint_family("model.safetensors") == "lightning"
+        assert model_meta.detect_checkpoint_family("model.safetensors") == "base"
 
 
 def test_detect_family_info_from_parent_folder(tmp_path):
-    # F1 regression (#1.1): detect_checkpoint_family_info() — the actual path used by Smart
-    # Loader — must also scan the immediate parent folder name, so a generically-named file
-    # inside a family-named folder is recognized (and reported with source "filename").
+    # With folder hint removed, a generically-named file inside a family-named folder
+    # yields base with source "base" when no metadata or filename marker present.
     folder = tmp_path / "Lightning"
     folder.mkdir()
     fake = folder / "model.safetensors"
     fake.write_bytes(b"")
     with patch.object(model_meta, "read_safetensors_metadata", return_value={}), \
          patch.object(model_meta.folder_paths, "get_full_path", return_value=str(fake)):
-            assert model_meta.detect_checkpoint_family_info("model.safetensors") == \
-                ("lightning", "filename")
+        assert model_meta.detect_checkpoint_family_info("model.safetensors") == \
+            ("base", "base")
 
 
 def test_flash_resolves_when_flash_attention_in_metadata(tmp_path):
