@@ -46,9 +46,9 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
   families) and conditionally applies a distillation LoRA. It exposes `detected_family` (the
   **effective** family — a distilled LoRA applied to a base checkpoint folds its family in, so
   no-negative mode auto-enables downstream) and `detected_family_info` with the detection provenance
-  (`filename` / `metadata` / `base` / `override`). The widget shows the checkpoint's **own** family
+  (`metadata` / `filename` / `base` / `override`). The widget shows the checkpoint's **own** family
   and a notification when a distillation LoRA was applied, e.g.
-   `family: base | source: filename | LoRA applied: dmd_lora.safetensors (distilled: dmd)`.
+   `family: base | source: metadata | LoRA applied: dmd_lora.safetensors (distilled: dmd)`.
    It also reports the base **`architecture`** (SDXL / SD1.5 / Pony / Illustrious / Flux / SD3) via
    `detected_architecture` / `detected_architecture_info`; wire `detected_architecture` into the
    Writer / Scene Builder `architecture` input to tailor token style and negatives per base model
@@ -434,9 +434,8 @@ own KSampler supports, so no `target`/"Efficient" split is needed.
   pick a recommended steps/cfg/sampler row (quality = highest step count, speed = lowest).
 - **Family detection:** the effective family is resolved in this order — `detected_family` (if
   wired, from the Smart Loader; it already folds in a distillation LoRA), then `family_override`,
-  then auto-detection from the checkpoint **filename**, its safetensors **metadata**, and its
-  **parent folder name** (so a generically-named file inside a `Lightning/` folder is still
-  recognized). For known Lightning/Hyper checkpoints the step count can also be read from the
+  then auto-detection from the checkpoint safetensors **metadata**, then its **filename** (so a generically-named file is recognized by its name).
+  For known Lightning/Hyper checkpoints the step count can also be read from the For known Lightning/Hyper checkpoints the step count can also be read from the
   filename (`SDXL-Lightning_4step` → 4 steps).
 - **AYS SDXL for distilled families:** for distilled families (lightning, hyper, dmd, turbo, lcm,
   tcd, pcm, flash, schnell) the node recommends **`AYS SDXL`** at the `balanced`/`speed` presets;
