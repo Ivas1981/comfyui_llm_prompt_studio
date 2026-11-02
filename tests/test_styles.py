@@ -85,7 +85,8 @@ def test_build_system_prompt_uses_no_negative_variant_for_preset():
     without_neg = styles.build_system_prompt(preset, negative_prompt=False)
     assert preset["system_prompt"] in with_neg
     assert preset["system_prompt_no_negative"] in without_neg
-    assert preset["system_prompt"] not in without_neg
+    assert without_neg != with_neg
+    assert "NO-NEGATIVE MODE" in without_neg
 
 
 def test_resolve_style_token_accepts_label_or_id():
@@ -104,6 +105,20 @@ def test_architecture_addendum_in_build():
     assert "Flux model" in flux
     sd15 = styles.build_system_prompt(None, architecture="sd15")
     assert "SD1.5 model" in sd15
+
+
+def test_prompt_assembly_does_not_duplicate_finish_or_face_instructions():
+    sp = styles.get_system_prompts()
+    text = styles.build_system_prompt(None, negative_prompt=True, face_prompt=True)
+    assert text.count("ALWAYS finish your reply with the complete JSON object") == 1
+    assert text.count("If you use reasoning, keep it under 5 sentences") == 1
+    assert text.count(sp["face_instruction"].strip()) == 1
+
+
+def test_default_writer_system_has_one_finish_instruction():
+    from comfyui_llm_prompt_studio.nodes import _defaults
+    assert _defaults.DEFAULT_SYSTEM.count(
+        "ALWAYS finish your reply with the complete JSON object") == 1
 
 
 EXPECTED_FORMATS = ["natural", "tags", "weighted", "structured", "midjourney", "booru"]
@@ -145,3 +160,28 @@ def test_migration_preserves_all_legacy_presets():
     missing_names = legacy_names - new_names
     assert not missing_ids, f"legacy preset ids missing from catalog: {missing_ids}"
     assert not missing_names, f"legacy preset names missing from catalog: {missing_names}"
+
+
+def test_legacy_category_labels_resolve_to_the_same_style():
+    # Released 1.2.x workflows store "Category > Name" values. The resolver must map each
+    # to the intended style (the old "/ " split broke names that themselves contain " / ").
+    from comfyui_llm_prompt_studio import presets
+    for label in presets.get_preset_names():
+        resolved = styles.get_style_by_label(label)
+        assert resolved is not None, f"legacy label not resolved: {label}"
+        assert resolved["name"] == label.split(" > ", 1)[-1].strip()
+
+
+def test_slash_scoped_labels_still_resolve():
+    # Newer "Category / Name" values are accepted as an alias of the display format.
+    preset = styles.get_all_styles()[0]
+    label = f"{preset.get('category', '')} / {preset['name']}"
+    resolved = styles.get_style_by_label(label)
+    assert resolved is not None
+    assert resolved["id"] == preset["id"]
+
+
+def test_display_labels_use_the_documented_separator():
+    labels = [l for l in styles.get_style_labels() if l != "— none —"]
+    assert labels
+    assert any(" > " in label for label in labels)

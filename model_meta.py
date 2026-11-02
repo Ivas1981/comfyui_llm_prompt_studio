@@ -283,25 +283,18 @@ def read_safetensors_metadata(path: str, max_header: int = 10 * 1024 * 1024) -> 
 def _scan_checkpoint_text(ckpt_name: str):
     """Build the detection text for a checkpoint/LoRA.
 
-    Returns ``(file_text, meta_text)`` where ``file_text`` is the file name with the
-    immediate parent folder name appended (so a generically-named file inside a
-    family-named folder is still recognized) and ``meta_text`` is the structured
-    safetensors metadata. Both halves are kept separate so callers can attribute a
-    detected marker to its source."""
+    Returns ``(file_text, meta_text)`` where ``file_text`` is the file name (the parent
+    folder is deliberately NOT scanned — a generic checkpoint inside a ``Lightning/``
+    folder must not be mis-detected) and ``meta_text`` is the structured safetensors
+    metadata. Both halves are kept separate so callers can attribute a detected marker
+    to its source."""
     name = str(ckpt_name)
     full_path = folder_paths.get_full_path("checkpoints", ckpt_name)
     if not full_path or not os.path.isfile(full_path):
-        # LoRA checkpoints live under the "loras" category; fall back to it so a LoRA's
-        # own metadata is also consulted instead of only its filename.
+        # LoRA checkpoints live under the loras folder; fall back to it so a LoRA's own
+        # metadata is also consulted instead of only its filename.
         full_path = folder_paths.get_full_path("loras", ckpt_name)
     file_text = name
-    if full_path and os.path.isfile(full_path):
-        # Append the immediate parent folder name (e.g.
-        # ``models/checkpoints/Lightning/model.safetensors``). Only the immediate parent
-        # is scanned to limit false hits.
-        parent = os.path.basename(os.path.dirname(full_path))
-        if parent:
-            file_text += " " + parent
     meta_text = ""
     if full_path and os.path.isfile(full_path):
         meta = read_safetensors_metadata(full_path)
@@ -311,8 +304,11 @@ def _scan_checkpoint_text(ckpt_name: str):
 
 
 def detect_checkpoint_family(ckpt_name: str) -> str:
-    """Detects the checkpoint family from filename + (structured) safetensors metadata.
-    Returns 'base' if no distillation marker is found.
+    """Detect the checkpoint family from metadata, then filename.
+
+    Returns 'base' if no distillation marker is found. Metadata is authoritative because
+    a base checkpoint's filename may mention a family (e.g. a merge) while its structured
+    metadata records the actual base architecture.
 
     Family words may be concatenated to other words without a separator (e.g.
     "HyperSDXL", "SDXLLightning", "LCMXL"); those are caught via case-aware boundaries.
@@ -322,13 +318,13 @@ def detect_checkpoint_family(ckpt_name: str) -> str:
     `ss_tag_frequency` histogram containing the tag "lightning" cannot falsely flag a
     base model as distilled.
 
-    When several markers are present, the one that occurs *earliest* in the scanned text
-    wins, since that is the most likely true family of the checkpoint."""
+    Within each source the earliest marker wins."""
     file_text, meta_text = _scan_checkpoint_text(ckpt_name)
-    text = file_text
     if meta_text:
-        text += " " + meta_text
-    family, _ = _first_family(text)
+        family, _ = _first_family(meta_text)
+        if family:
+            return family
+    family, _ = _first_family(file_text)
     return family or "base"
 
 
@@ -364,22 +360,19 @@ def detect_checkpoint_family_info(ckpt_name: str):
 
     Returns a ``(family, source)`` tuple. ``source`` is one of:
 
-    * ``"filename"``  — the marker came from the checkpoint/LoRA file name;
     * ``"metadata"``  — the marker came from the safetensors metadata (structured keys only);
+    * ``"filename"``  — the marker came from the checkpoint/LoRA file name;
     * ``"base"``      — no distillation marker was found (treated as a base model).
 
     A manual ``override`` is decided by the caller (Smart Loader) and is intentionally not
-    produced here. Scanning the filename before the metadata preserves the "earliest
-    occurrence wins" rule used by :func:`detect_checkpoint_family`."""
+    produced here. Metadata is checked before the filename, matching
+    :func:`detect_checkpoint_family`."""
     file_text, meta_text = _scan_checkpoint_text(ckpt_name)
-    # ``file_text`` already includes the immediate parent folder, so the documented
-    # "generically-named file inside a family-named folder is still recognized" behavior
-    # applies to the family-info path used by Smart Loader as well.
-    family, _ = _first_family(file_text)
-    if family:
-        return family, "filename"
     if meta_text:
         family, _ = _first_family(meta_text)
         if family:
             return family, "metadata"
+    family, _ = _first_family(file_text)
+    if family:
+        return family, "filename"
     return "base", "base"

@@ -295,7 +295,10 @@ class LLMPromptStudioKSamplerHiresFix:
                 hires_positive=None, hires_negative=None, optional_vae=None, unique_id=None):
         with node_span("LLMPromptStudioKSamplerHiresFix", unique_id):
             release_before_sample()
-            base = self._sample(model, seed, steps, cfg, sampler_name, scheduler,
+            # "base" is a hires-only sentinel; the base pass must receive a real sampler.
+            base_sampler = "dpmpp_2m" if sampler_name == "base" else sampler_name
+            base_sched = "karras" if scheduler == "base" else scheduler
+            base = self._sample(model, seed, steps, cfg, base_sampler, base_sched,
                                 positive, negative, latent_image, denoise)
 
             b_h, b_w = self._latent_hw(base)
@@ -336,7 +339,7 @@ class LLMPromptStudioKSamplerHiresFix:
                         target_w, target_h, hires_upscale_iterations,
                         tile=hires_latent_upscale_tile)
                 sam2, sched2 = self._resolve_hires_sampler(
-                    sampler_name, scheduler, hires_sampler_name, hires_scheduler)
+                    base_sampler, base_sched, hires_sampler_name, hires_scheduler)
                 cfg2 = hires_cfg if hires_cfg >= 0 else cfg
                 pos2 = hires_positive if hires_positive is not None else positive
                 neg2 = hires_negative if hires_negative is not None else negative

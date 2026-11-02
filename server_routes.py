@@ -41,6 +41,32 @@ def _save_class_cache_file(data):
         logger.warning("could not persist model class cache: %s", e)
 
 
+def _safe_model_path(filename, kind):
+    """Resolve a model filename inside ``models/ultralytics/<kind>`` safely.
+
+    Rejects path separators, ``..`` traversal and unexpected extensions before touching
+    the optional ultralytics loader (which executes torch weight loading).
+    """
+    if not isinstance(filename, str):
+        return None
+    filename = filename.strip()
+    if not filename or filename in (".", "..") or filename == "(none)":
+        return None
+    if os.path.basename(filename) != filename:
+        return None
+    if not filename.lower().endswith((".pt", ".pth")):
+        return None
+    root = os.path.dirname(os.path.abspath(__file__))
+    base = os.path.realpath(os.path.join(root, "models", "ultralytics", kind))
+    path = os.path.realpath(os.path.join(base, filename))
+    try:
+        if os.path.commonpath([base, path]) != base:
+            return None
+    except ValueError:
+        return None
+    return path
+
+
 def _model_class_names(filename, kind):
     """Return ``[(index, name), ...]`` for an ultralytics model, or ``[]``.
 
@@ -51,16 +77,15 @@ def _model_class_names(filename, kind):
     Results are cached in memory and on disk. A model is re-inspected only when
     it is first seen or its file mtime/size changed, so adding new models (or
     replacing existing ones) augments the cache automatically."""
-    if not filename or filename == "(none)":
-        return []
     if kind not in ("seg", "gender", "bbox"):
+        return []
+    path = _safe_model_path(filename, kind)
+    if path is None:
         return []
     key = (kind, filename)
     with _MODEL_CLASS_LOCK:
         if key in _MODEL_CLASS_CACHE:
             return _MODEL_CLASS_CACHE[key]
-        root = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(root, "models", "ultralytics", kind, filename)
         if not os.path.isfile(path):
             return []
         stat = os.stat(path)

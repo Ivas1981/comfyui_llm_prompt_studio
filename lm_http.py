@@ -153,12 +153,18 @@ def _read_disk_cache():
     return {}
 
 
-def _persist_models(server_url: str, models):
+def _persist_models(server_url: str, models, replace: bool = False):
+    """Persist a server's model list.
+
+    ``replace=True`` is used by an explicit Refresh: the server's list is authoritative,
+    so models deleted on the server disappear from the combo. The default merge behavior
+    is for ``remember_model`` (keep previously used ids selectable while offline).
+    """
     if not models or models in ([PLACEHOLDER], [PLACEHOLDER_EMPTY]):
         return
     server_url = _normalize_server(server_url)
     cache = _read_disk_cache()
-    existing = cache.get(server_url) or []
+    existing = [] if replace else (cache.get(server_url) or [])
     merged = list(dict.fromkeys(list(existing) + list(models)))
     cache[server_url] = merged
     try:
@@ -189,7 +195,8 @@ def _load_disk_cache():
 
 def cached_model_list(server_url: str = DEFAULT_SERVER):
     """Return the persisted model list for `server_url` (non-blocking), seeding the
-    in-memory cache. Falls back to the default-server list when this server has none yet."""
+    in-memory cache. Returns None when this server has no cached list yet (Refresh is the
+    source of truth); a different server's models are never substituted."""
     disk = _read_disk_cache()
     srv = _normalize_server(server_url)
     models = disk.get(srv)
@@ -197,8 +204,6 @@ def cached_model_list(server_url: str = DEFAULT_SERVER):
         _store_model_cache(srv, list(models))
         _static_keys.add(srv)
         return list(models)
-    if srv != DEFAULT_SERVER and disk.get(DEFAULT_SERVER):
-        return list(disk[DEFAULT_SERVER])
     return None
 
 
@@ -358,7 +363,7 @@ def cache_models(server_url: str, api_key: str, models: list):
         # scoped to its own models — fixing the cross-server model mix-up where a Refresh of
         # server B would overwrite server A's combo. The api_key is deliberately not stored.
         _store_model_cache(srv, list(models))
-        _persist_models(srv, models)
+        _persist_models(srv, models, replace=True)
         _static_keys.add(srv)
 
 
@@ -1221,7 +1226,8 @@ def _serialize_message_content(content):
     """Convert message content that may be a list (multimodal parts) into a plain text string
     acceptable to OpenAI-style chat/completions endpoints.
 
-    Strategy: join text parts; for image_url parts include the URL (data URL is preserved).
+    Strategy: join text parts; for image_url parts include only a short placeholder for
+    data URLs so base64 image payloads never reach the debug log.
     """
     if isinstance(content, str):
         return content
@@ -1237,7 +1243,10 @@ def _serialize_message_content(content):
             elif typ == "image_url":
                 img = part.get("image_url", {})
                 url = img.get("url") if isinstance(img, dict) else None
-                out.append(f"[Image: {url}]")
+                if isinstance(url, str) and url.lstrip().lower().startswith("data:"):
+                    out.append(f"[Image: <data-url {len(url)} chars>]")
+                else:
+                    out.append(f"[Image: {url}]")
             else:
                 out.append(str(part))
         return "\n".join([s for s in out if s])
@@ -1268,7 +1277,7 @@ def _enrich_http_error(model: str, status: int, text: str, has_images: bool) -> 
 
 def _llm_cache_key(server_url, api_key, model, messages, temperature, max_tokens, seed,
                     reasoning, repeat_penalty, top_k, top_p, min_p, presence_penalty,
-                    response_format):
+                    frequency_penalty, response_format):
     """Stable hash for a chat_completion request. ``api_key`` is intentionally excluded so the
     cache is shared across key-less local calls; every other request-shaping arg is included.
     Multimodal message parts are serialized via their data-URL string for a stable key."""
@@ -1297,6 +1306,7 @@ def _llm_cache_key(server_url, api_key, model, messages, temperature, max_tokens
         "top_p": top_p,
         "min_p": min_p,
         "presence_penalty": presence_penalty,
+        "frequency_penalty": frequency_penalty,
         "response_format": response_format,
     }
     s = json.dumps(payload, sort_keys=True, default=str)
@@ -1344,7 +1354,7 @@ def chat_completion(server_url, api_key, model, messages,
     if _LLM_CACHE_ENABLED:
         cache_key = _llm_cache_key(server_url, api_key, model, messages, temperature, max_tokens,
                                    seed, reasoning, repeat_penalty, top_k, top_p, min_p,
-                                   presence_penalty, response_format)
+                                   presence_penalty, frequency_penalty, response_format)
         if cache_key in _llm_response_cache:
             logger.debug("LLM cache HIT for model '%s' (skipping network).", model)
             return _llm_response_cache[cache_key]

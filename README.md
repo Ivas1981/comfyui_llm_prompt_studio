@@ -55,7 +55,10 @@ This pack is built for a **single-user, single-machine, single-ComfyUI-instance*
    (SDXL generation is unchanged when the input is left empty).
  - **Smart Parameters** — recommends KSampler `steps` / `cfg` / `sampler` / `scheduler` from the
    detected checkpoint family (wired from the Smart Loader's `detected_family`); emits them as COMBO
-   outputs that plug straight into a `KSampler` (one full scheduler list including AYS SD1/SDXL/SVD and GITS).
+   outputs that plug straight into the studio `KSampler` (one full scheduler list including AYS
+   SD1/SDXL/SVD and GITS; the standard `KSampler` only supports the standard schedulers).
+   With `balanced` / `speed` / `quality` the recommendation is authoritative; set `user` to pass
+   the widget values through manually.
 - **LM Studio server-status indicator** — Writer / Image Critic / Scene Builder show a live
   `server_status` widget (`● Connected — <loaded model names>` / `● Connected (no model loaded)` /
   `● Server down`), polled from the pack's status route every few seconds.
@@ -361,12 +364,14 @@ Loads a saved scene from the prompt library.
 ### LLM Prompt Studio Scene Builder
 
 Two-stage scene construction from an image.
-  - **Inputs:** `stage` (`1 - describe` / `2 - compose`), `image`, `server_url`,
+  - **Inputs:** `stage` (`1 - describe` / `2 - compose`), `server_url`,
     `api_key`, `model`, `load_model_profile`, `context_length`, `gpu_offload`,
     `describe_prompt`, `composer_prompt`, `user_changes`, `image_max_size`, `temperature`,
     `max_tokens`,     `max_field_retries`, `vision_check`, `description_view`, `prompt_mode`,
     `family`, `architecture`, `flash_attention`, `offload_kv_cache_to_gpu`, `reasoning`, `repeat_penalty`,
-    `top_k`, `top_p`, `min_p`, `release_vram_after_run`.
+    `top_k`, `top_p`, `min_p`, `release_vram_after_run`. `image` is an optional input: stage 1
+    (`describe`) requires it, while stage 2 (`compose`) works from `description_view` alone.
+    The `description` output is passed through in both stages.
   - **`load_model_profile`** works as on the Writer. The stage decides the "kind": stage 1
     (`describe`) is prose from a vision input, so it is always `baseline` with **no**
     structured output; stage 2 (`compose`) is the JSON writer contract and gets
@@ -431,13 +436,14 @@ own KSampler supports, so no `target`/"Efficient" split is needed.
 - **Outputs:** `steps` (INT), `cfg` (FLOAT), `sampler_name` (COMBO), `scheduler` (COMBO), `info`
   (STRING).
 - **Presets:** `user` passes your widget values through unchanged; `balanced` / `speed` / `quality`
-  pick a recommended steps/cfg/sampler row (quality = highest step count, speed = lowest).
+  always use the recommendation (quality = highest step count, speed = lowest), ignoring stale
+  widget values from a previous `detected_family`.
 - **Family detection:** the effective family is resolved in this order — `detected_family` (if
   wired, from the Smart Loader; it already folds in a distillation LoRA), then `family_override`,
-  then auto-detection from the checkpoint **filename**, its safetensors **metadata**, and its
-  **parent folder name** (so a generically-named file inside a `Lightning/` folder is still
-  recognized). For known Lightning/Hyper checkpoints the step count can also be read from the
-  filename (`SDXL-Lightning_4step` → 4 steps).
+  then auto-detection from the checkpoint **metadata** and **filename** (the parent folder is no
+  longer used, so a generic file inside a `Lightning/` folder stays `base` unless its metadata or
+  filename says otherwise). For known Lightning/Hyper checkpoints the step count can also be read
+  from the filename (`SDXL-Lightning_4step` → 4 steps).
 - **AYS SDXL for distilled families:** for distilled families (lightning, hyper, dmd, turbo, lcm,
   tcd, pcm, flash, schnell) the node recommends **`AYS SDXL`** at the `balanced`/`speed` presets;
   any family present in `model_meta.FAMILY_MARKERS` that has no hand-written row gets sane generic
@@ -675,10 +681,12 @@ entry is shown as `Category > Name`. Presets are loaded from the `Styles/` folde
   the style); a style tag already present in the prompt (or in `face_positive`) is not appended
   again — duplicates are skipped (this already applied to the negative tags); the preset's
   negative tags are skipped in no-negative mode;
-- overrides the system prompt with the preset's `system_prompt` **only when** the system-prompt
-  widget is left at its default. In no-negative mode the preset's dedicated
-  `system_prompt_no_negative` variant is used instead (it requires an empty `negative` /
-  `face_negative`), so the preset's style still applies without contradicting the mode.
+- uses the preset's `system_prompt` only when a preset is selected **and**
+  `use_preset_system_prompt` is on; turn the toggle off to keep your own `system_prompt` while
+  still applying the preset's style tags. With no preset selected the `system_prompt` widget is
+  always the base. In no-negative mode the preset's dedicated `system_prompt_no_negative`
+  variant is used instead (it requires an empty `negative` / `face_negative`), so the preset's
+  style still applies without contradicting the mode.
 
 Every preset's system prompt carries an **Engineering rules** block (derived from SDXL prompt-engineering
 practice): compose in clear layers (subject → appearance → action/pose → object relationships → environment →

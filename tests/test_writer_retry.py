@@ -41,19 +41,16 @@ def test_no_retry_when_complete():
     assert "[FIELD RETRY" not in result[2]
 
 
-def test_retry_on_missing_scene_name():
+def test_no_retry_on_missing_scene_name():
+    # scene_name falls back to slugify(positive); it must not consume a retry.
     seq = [
         _json(positive="a cat", negative="b", scene_name=""),
         _json(positive="a cat", negative="b", scene_name="cat_scene"),
     ]
     result, call = _run(seq)
-    assert call.call_count == 2
-    # The retry request mentions the missing field.
-    retry_msgs = call.call_args_list[1].args[3]
-    assert any("scene_name" in m.get("content", "") for m in retry_msgs
-               if m.get("role") == "user")
-    assert result[3] == "cat_scene"
-    assert "[FIELD RETRY" in result[2]
+    assert call.call_count == 1
+    assert result[3] == slugify("a cat")
+    assert "[FIELD RETRY" not in result[2]
 
 
 def test_retry_on_missing_face_fields_when_requested():
@@ -81,12 +78,12 @@ def test_no_retry_on_face_fields_when_not_requested():
 
 
 def test_scene_name_fallback_via_slugify():
-    # Model keeps omitting scene_name across all attempts.
-    seq = [_json(positive="a red cat", negative="b", scene_name="")] * 3
+    # The model may omit scene_name; the node falls back without retrying.
+    seq = [_json(positive="a red cat", negative="b", scene_name="")]
     result, call = _run(seq, max_field_retries=2)
-    assert call.call_count == 3  # initial + 2 retries
+    assert call.call_count == 1
     assert result[3] == slugify("a red cat")
-    assert "[FIELD RETRY" in result[2]
+    assert "[FIELD RETRY" not in result[2]
 
 
 def test_runtime_error_when_positive_empty():
@@ -120,11 +117,11 @@ def test_auto_mode_distilled_family_keeps_face_negative_empty():
 
 def test_raw_marker_on_retry():
     seq = [
-        _json(positive="a cat", negative="b", scene_name=""),
+        _json(positive="", negative="b", scene_name="s"),
         _json(positive="a cat", negative="b", scene_name="cat_scene"),
     ]
     result, _ = _run(seq, max_field_retries=2)
-    assert result[2].startswith("[FIELD RETRY 1/2: missing scene_name]")
+    assert result[2].startswith("[FIELD RETRY 1/2: missing positive]")
 
 
 def test_reuse_cache_key_excludes_family_but_includes_inputs():

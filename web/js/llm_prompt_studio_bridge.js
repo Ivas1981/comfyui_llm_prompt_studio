@@ -442,6 +442,19 @@ api.addEventListener("executed", (e) => {
         if (fiw && info) fiw.value = info;
     }
 
+    // --- Smart Parameters: mirror the authoritative backend recommendation into the widgets ---
+    if (isSmartParams(node)) {
+        const sync = (name, key) => {
+            const w = getW(node, name);
+            if (w && output[key] && output[key].length) w.value = output[key][0];
+        };
+        sync("steps", "steps");
+        sync("cfg", "cfg");
+        sync("sampler_name", "sampler_name");
+        sync("scheduler", "scheduler");
+        app.graph.setDirtyCanvas(true, true);
+    }
+
     // --- Scene Builder: show stage results in the view widgets ---
     if (isScene(node)) {
         if (output.description) {

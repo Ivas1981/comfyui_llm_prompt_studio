@@ -164,12 +164,24 @@ def get_preset_by_name(name: str) -> Optional[Dict]:
 
 
 def get_architecture_guidance() -> Dict:
-    """Architecture-specific prompt guidance from ``presets_default.json``.
+    """Architecture-specific prompt guidance.
 
+    Prefers the active ``Styles/system_prompts.json`` (the documented user-editable source)
+    and falls back to the legacy ``presets_default.json`` when the Styles entry is absent.
     Keyed by canonical architecture (``sdxl``, ``sd15``, ``pony``, ``illustrious``,
     ``flux``, ``sd3``, ``unknown``). Each entry may carry ``system_addendum`` (appended to
     the system prompt), ``default_negative`` (appended to the negative in standard mode) and
-    ``force_no_negative`` (bool). User-editable via the presets file."""
+    ``force_no_negative`` (bool)."""
+    try:
+        try:
+            from .styles import get_architecture_guidance as _styles_guidance
+        except ImportError:  # top-level (tests)
+            from styles import get_architecture_guidance as _styles_guidance  # type: ignore
+        guidance = _styles_guidance()
+        if guidance:
+            return guidance
+    except Exception:  # noqa: BLE001 - styles are optional; legacy file still works
+        pass
     data = load_presets_raw()
     return data.get("architecture_guidance", {})
 

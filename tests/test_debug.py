@@ -76,6 +76,15 @@ def test_debug_redacts_base64(tmp_path, monkeypatch):
     assert "<base64 200 chars>" in content
 
 
+def test_debug_redacts_nested_data_url(tmp_path, monkeypatch):
+    _set_output(tmp_path, monkeypatch, "FULL")
+    url = "data:image/jpeg;base64," + ("A" * 200)
+    debug.log_node_enter("Critic", "1", {"messages": [{"image_url": {"url": url}}]})
+    content = (tmp_path / "llm_prompt_studio.log").read_text(encoding="utf-8")
+    assert "data:image/jpeg" not in content
+    assert "<data-url" in content
+
+
 def test_log_type_mismatch(tmp_path, monkeypatch):
     _set_output(tmp_path, monkeypatch, "FULL")
     debug.log_type_mismatch("7", "sampler_name", ("base", "euler"), ["base", "euler"],

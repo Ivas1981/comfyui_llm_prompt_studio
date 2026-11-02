@@ -1,3 +1,4 @@
+import hashlib
 import os
 import re
 import logging
@@ -109,6 +110,11 @@ class LLMPromptStudioSmartSave:
             for lora in loras:
                 parts.append(_slug_part(lora))
             base = "_".join(p for p in parts if p) or "llm_prompt_studio"
+            # Keep the filename comfortably below the Windows MAX_PATH limit even when
+            # many LoRAs are stacked; the hash preserves uniqueness for long stacks.
+            if len(base) > 120:
+                digest = hashlib.sha1(base.encode("utf-8")).hexdigest()[:8]
+                base = base[:111].rstrip("_") + "_" + digest
 
             results = []
             images_ui = []

@@ -127,9 +127,10 @@ def test_find_missing_fields_all_present():
     assert find_missing_fields(parsed, require_face=True) == []
 
 
-def test_find_missing_fields_empty_scene_name():
+def test_find_missing_fields_empty_scene_name_is_not_retried():
+    # An empty scene_name falls back to slugify(positive), so it must not consume a retry.
     parsed = ("a", "b", "", "fp", "fn")
-    assert find_missing_fields(parsed) == ["scene_name"]
+    assert find_missing_fields(parsed) == []
 
 
 def test_find_missing_fields_face_only_when_required():

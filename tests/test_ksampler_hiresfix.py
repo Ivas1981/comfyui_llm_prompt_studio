@@ -6,7 +6,12 @@ LatentUpscale / VAE* classes are replaced with lightweight fakes so the node log
 a GPU.
 """
 
+import pytest
 import torch
+
+if "stub" in str(getattr(torch, "__version__", "")):
+    pytest.skip("requires real torch tensors (conftest installed the headless stub)",
+                allow_module_level=True)
 
 import comfyui_llm_prompt_studio.nodes.ksampler_hiresfix as kh
 from comfyui_llm_prompt_studio.nodes import _latent_upscaler as lu

@@ -599,6 +599,9 @@ class LLMPromptStudioFaceDetailer:
                      guide_size, max_size, crop_factor, feather, inpaint_model,
                      seg_mask=None, mask_shape="square", bbox_scale=1.0,
                      iterations=1, vae_tile_size=0):
+        # "base" is only meaningful on hires-style consumers; this node has no base pass.
+        sampler_name = "dpmpp_2m" if sampler_name == "base" else sampler_name
+        scheduler = "karras" if scheduler == "base" else scheduler
         # Optional scaling of the detected face bbox around its center. >1 captures
         # more of the region (jaw/neck), <1 keeps only the face center. 1.0 = exact.
         if bbox_scale is not None and float(bbox_scale) != 1.0:

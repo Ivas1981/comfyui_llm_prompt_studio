@@ -104,35 +104,41 @@ def _looks_like_b64(s: str) -> bool:
     return "=" in core or len(core) % 4 == 0
 
 
-def _redact_obj(obj: Any) -> Any:
+def _is_b64_data_url(s: str) -> bool:
+    """True for ``data:<mime>;base64,...`` strings (image payloads)."""
+    low = s.lstrip().lower()
+    return low.startswith("data:") and ";base64," in low
+
+
+def _redact_value(obj: Any, max_len: Optional[int] = None) -> Any:
     if isinstance(obj, dict):
         out = {}
         for k, v in obj.items():
             kl = str(k).lower()
             if kl in ("authorization", "api_key", "apikey"):
                 out[k] = mask_api_key(str(v)) if v else v
-            elif isinstance(v, str) and _looks_like_b64(v):
-                out[k] = f"<base64 {len(v)} chars>"
-            elif isinstance(v, (dict, list)):
-                out[k] = _redact_obj(v)
             else:
-                out[k] = v
+                out[k] = _redact_value(v, max_len)
         return out
     if isinstance(obj, list):
-        return [_redact_obj(x) for x in obj]
+        return [_redact_value(x, max_len) for x in obj]
+    if isinstance(obj, str):
+        if _is_b64_data_url(obj):
+            return f"<data-url {len(obj)} chars>"
+        if _looks_like_b64(obj):
+            return f"<base64 {len(obj)} chars>"
+        if max_len is not None and len(obj) > max_len:
+            return obj[:max_len] + f"... ({len(obj)} chars)"
     return obj
 
 
+def _redact_obj(obj: Any) -> Any:
+    return _redact_value(obj, None)
+
+
 def _truncate(data: Dict[str, Any], max_len: int = 200) -> Dict[str, Any]:
-    out = {}
-    for k, v in data.items():
-        if isinstance(v, str) and len(v) > max_len:
-            out[k] = v[:max_len] + f"... ({len(v)} chars)"
-        elif isinstance(v, (dict, list)):
-            out[k] = _redact_obj(v)
-        else:
-            out[k] = v
-    return out
+    redacted = _redact_value(data, max_len)
+    return redacted if isinstance(redacted, dict) else {}
 
 
 def log(level: str, event_type: str, node_id: str, data: Dict[str, Any]):

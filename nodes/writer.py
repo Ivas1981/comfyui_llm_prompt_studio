@@ -9,16 +9,14 @@ from ..model_meta import is_no_negative_family, is_no_negative_architecture
 from ..parsing import find_missing_fields, parse_prompt_json, slugify
 from ..presets import (get_architecture_guidance, append_negative_tags, append_positive_tags)
 from ..styles import (build_system_prompt, get_style_by_label, get_style_labels,
-                      ensure_styles_dir, resolve_style,
+                      get_styles_revision, ensure_styles_dir, resolve_style,
                       resolve_style_token)
 from .model_recommendations import resolve_profile
 from ..debug import log_node_enter, log_node_exit, log_error
 from ._scene_analysis import analyze_scene, describe_scene
 from ..vram import (release_after_llm, release_enabled,
                      mark_keep_loaded, coerce_bool_widget)
-from ._defaults import (DEFAULT_SYSTEM, DEFAULT_SYSTEM_NO_NEGATIVE,
-                        FACE_PROMPT_INSTRUCTION, FACE_PROMPT_INSTRUCTION_NO_NEGATIVE,
-                        REASONING_HINT)
+from ._defaults import DEFAULT_SYSTEM, FACE_PROMPT_INSTRUCTION
 
 logger = logging.getLogger("llm_prompt_studio")
 
@@ -42,6 +40,21 @@ def _append_or_merge_user(messages, text):
 # Cache of the last generated prompt per node instance: {unique_id: result_tuple}
 _PROMPT_CACHE_MAX = 128
 _prompt_cache = {}
+
+
+def _scene_hint(image, enabled):
+    """Return the CV description of ``image`` (or ``""``) without raising.
+
+    The hint is part of the Writer cache key: two different images must never share a
+    cached prompt just because they have the same dimensions.
+    """
+    if image is None or not enabled:
+        return ""
+    try:
+        return describe_scene(analyze_scene(image)) or ""
+    except Exception as e:  # noqa: BLE001 - hint is best-effort
+        logger.debug("Writer scene hint failed: %s", e)
+        return ""
 
 
 def _preset_names():
@@ -110,10 +123,10 @@ class LLMPromptStudioWriter:
                                   "tooltip": "Apply a style preset (Styles/ folder) — its system "
                                              "prompt, style tags and blend note"}),
                 "use_preset_system_prompt": ("BOOLEAN", {"default": True,
-                                  "tooltip": "When a style preset is selected, override the "
-                                             "system prompt with the preset's (unless you have "
-                                             "customized it). Turn off to keep your own system "
-                                             "prompt even with a preset loaded."}),
+                                  "tooltip": "When a style preset is selected, use the preset's "
+                                             "system prompt instead of the system_prompt widget. "
+                                             "Turn off to keep your own system prompt; with no "
+                                             "preset selected the widget is always used."}),
                 "nsfw": ("BOOLEAN", {"default": False,
                                      "tooltip": "Allow explicit/mature content only when the user "
                                                 "explicitly requests it. Off = safe-for-work."}),
@@ -122,8 +135,9 @@ class LLMPromptStudioWriter:
                                    "tooltip": "How the model should phrase the positive prompt "
                                               "(sentences / tags / weighted / structured / MJ / booru)"}),
                 "blend_styles": ("STRING", {"default": "",
-                                    "tooltip": "Comma-separated style ids to blend with the main "
-                                               "preset (max 3). Union of tags + blend notes."}),
+                                    "tooltip": "Comma-separated style ids or 'Category > Name' "
+                                               "labels to blend with the main preset (max 3). "
+                                               "Union of tags + blend notes."}),
                 "flash_attention": ("BOOLEAN", {"default": False,
                                     "tooltip": "Enable Flash Attention for faster generation and lower VRAM usage"}),
                 "offload_kv_cache_to_gpu": ("BOOLEAN", {"default": True,
@@ -246,11 +260,12 @@ class LLMPromptStudioWriter:
         # "Reset Styles" buttons, which call the corresponding backend routes.
         ensure_styles_dir()
 
+        scene_hint = _scene_hint(image, cv_scene_hint)
         cache_key = (unique_id, prompt_mode, style_preset, system_prompt,
                       idea, revision_notes, generate_face_prompts, face_prompt_instruction,
-                      architecture, nsfw, prompt_format,
-                      blend_styles,
-                     tuple(image.shape) if image is not None else None)
+                      architecture, nsfw, prompt_format, blend_styles,
+                      use_preset_system_prompt, scene_hint,
+                      get_styles_revision())
         # Reuse mode: return cached result without calling the LLM
         if reuse_last_prompt:
             cached = _prompt_cache.get(cache_key)
@@ -294,11 +309,13 @@ class LLMPromptStudioWriter:
             if prompt_mode == "no_negative":
                 no_negative = True
             elif prompt_mode == "standard":
+                # Explicit standard mode always emits a negative prompt, even for
+                # architectures where the negative is technically inert (Flux/SD3).
                 no_negative = False
             else:
                 no_negative = is_no_negative_family(family) or is_no_negative_architecture(architecture)
-            if not no_negative and arch_guidance.get("force_no_negative"):
-                no_negative = True
+                if not no_negative and arch_guidance.get("force_no_negative"):
+                    no_negative = True
             logger.info("Writer node %s prompt mode: %s (family=%r, arch=%r) -> no_negative=%s",
                         unique_id, prompt_mode, family, architecture, no_negative)
 
@@ -314,24 +331,25 @@ class LLMPromptStudioWriter:
             face_on = bool(generate_face_prompts)
 
             # Assemble the system prompt from base + style + orthogonal toggles (nsfw,
-            # prompt_format, negative, face, blend, architecture). The preset is only injected
-            # when use_preset_system_prompt is on; otherwise the user's own system_prompt is the base.
+            # prompt_format, negative, face, blend, architecture). The preset prompt is used
+            # only when a preset is selected AND the toggle is on; otherwise the user's
+            # system_prompt is the base (also when no preset is selected).
+            use_preset_prompt = bool(use_preset_system_prompt) and preset is not None
             effective_system = build_system_prompt(
-                preset if use_preset_system_prompt else None,
+                preset if use_preset_prompt else None,
                 nsfw=bool(nsfw),
                 prompt_format=prompt_format,
                 negative_prompt=eff_negative,
                 face_prompt=face_on,
                 blend_styles=blend_styles,
                 architecture=arch,
-                base=None if use_preset_system_prompt else system_prompt,
+                base=None if use_preset_prompt else system_prompt,
             )
-            if REASONING_HINT and "ALWAYS finish your reply with the complete JSON object" \
-                    not in effective_system:
-                effective_system = effective_system + REASONING_HINT
-            # A custom face instruction (if provided) appends to the generic one.
-            if face_on and face_prompt_instruction.strip():
-                effective_system = effective_system + "\n\n" + face_prompt_instruction.strip()
+            # A custom face instruction appends only when it adds something new; the widget
+            # default is the same built-in text that build_system_prompt already inserted.
+            custom_face = face_prompt_instruction.strip()
+            if face_on and custom_face and custom_face not in effective_system:
+                effective_system = effective_system + "\n\n" + custom_face
 
     
             # v1-native sampling params: convert "off"/default widget values to None so the
@@ -393,17 +411,12 @@ class LLMPromptStudioWriter:
                     "in the same JSON format."
                 ))
 
-            if image is not None and cv_scene_hint:
-                try:
-                    hint = describe_scene(analyze_scene(image))
-                    if hint:
-                        _append_or_merge_user(
-                            messages,
-                            f"{hint} Use this to tailor the prompt to the actual content "
-                            "(e.g. treat anime/illustration differently from a photo, keep "
-                            "skin tones natural for portraits).")
-                except Exception as e:  # noqa: BLE001 - hint is best-effort
-                    logger.debug("Writer scene hint failed: %s", e)
+            if scene_hint:
+                _append_or_merge_user(
+                    messages,
+                    f"{scene_hint} Use this to tailor the prompt to the actual content "
+                    "(e.g. treat anime/illustration differently from a photo, keep "
+                    "skin tones natural for portraits).")
     
             raw = chat_completion(server_url, api_key, model, messages,
                                     temperature, max_tokens, seed=seed,

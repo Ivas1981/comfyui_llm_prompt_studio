@@ -182,6 +182,43 @@ def test_auto_sd3_architecture_forces_no_negative():
     assert result[1] == ""
 
 
+def test_standard_flux_keeps_explicit_negative():
+    # Explicit standard mode must win over the architecture's force_no_negative hint.
+    result = _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                         prompt_mode="standard", family="base", architecture="flux")
+    assert result[1] == "blurry"
+
+
+def test_standard_sd3_keeps_explicit_negative():
+    result = _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                         prompt_mode="standard", family="base", architecture="sd3")
+    assert result[1] == "blurry"
+
+
+def test_writer_uses_custom_system_prompt_without_preset():
+    # use_preset_system_prompt defaults to True, but with no style selected the widget must
+    # still be the base prompt.
+    captured = []
+    with patch.object(writer, "ensure_model_loaded", lambda *a, **k: True), \
+         patch.object(writer, "chat_completion",
+                      side_effect=lambda *a, **k: captured.append(a[3]) or
+                      _json(positive="a cat", negative="blurry", scene_name="cat")):
+        writer.LLMPromptStudioWriter().execute(
+            server_url="http://localhost:1234/v1", api_key="", model="m",
+            context_length=8192, gpu_offload=1.0, system_prompt="MY CUSTOM SYSTEM",
+            idea="a cat", revision_notes="", temperature=0.7, max_tokens=512, seed=0,
+            reuse_last_prompt=False, generate_face_prompts=False,
+            max_field_retries=2, face_prompt_instruction="", prompt_mode="standard",
+            family="", unique_id="custom-system")
+    assert "MY CUSTOM SYSTEM" in captured[0][0]["content"]
+
+
+def test_scene_standard_flux_keeps_explicit_negative():
+    result = _run_scene([_json(positive="a cat", negative="blurry", scene_name="cat")],
+                        prompt_mode="standard", architecture="flux")
+    assert result["result"][1] == "blurry"
+
+
 def test_auto_sdxl_architecture_keeps_negative():
     # SDXL architecture must NOT force no-negative in auto mode with a base family.
     result = _run_writer([_json(positive="a cat", negative="blurry", scene_name="cat")],
@@ -214,7 +251,9 @@ def test_preset_no_negative_uses_no_negative_variant():
             prompt_mode="no_negative", family="", style_preset="Anime / Manga",
             unique_id="preset-nn")
     sys_msg = captured[0][0]["content"]
-    assert '"negative": ""' in sys_msg
+    # The assembled prompt must explicitly ask for an empty negative field, and must not
+    # fall back to the standard "negative is always required" wording.
+    assert "Leave the 'negative' field EMPTY" in sys_msg
     assert "negative prompt (always required)" not in sys_msg
     # the node still forces the negative empty regardless of the model's reply
     assert result[1] == ""

@@ -33,12 +33,13 @@ def _build_input_types(sched_combo):
                 "tooltip": "Force a checkpoint family (lightning/hyper/turbo/lcm/tcd/pcm/flash/"
                            "schnell) or leave 'auto'. Detection order: detected_family (from "
                            "Smart Loader) -> family_override -> auto-detect from the checkpoint "
-                           "filename, its safetensors metadata, and its parent folder name.",
+                           "metadata, then its filename.",
             }),
             "preset": (list(PRESETS), {
                 "default": "user",
-                "tooltip": "user = pass your widgets through; balanced = recommended steps/cfg/"
-                           "sampler; speed = lowest step count; quality = highest step count.",
+                "tooltip": "user = pass the steps/cfg/sampler/scheduler widgets through; "
+                           "balanced/speed/quality = always use the recommendation (the widgets "
+                           "are display-only).",
             }),
             "steps": ("INT", {"default": 0, "min": 0, "max": 10000, "step": 1}),
             "cfg": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 100.0, "step": 0.1}),
@@ -48,13 +49,13 @@ def _build_input_types(sched_combo):
         "optional": {
             "detected_family": ("STRING", {
                 "default": "",
-                "tooltip": "Optional family from Smart Loader; overrides filename/folder "
+                "tooltip": "Optional family from Smart Loader; overrides filename/metadata "
                            "auto-detection when set.",
             }),
             "ckpt_name": ("STRING", {
                 "default": "",
-                "tooltip": "Checkpoint filename; used to auto-detect family (filename, metadata, "
-                           "and parent folder).",
+                "tooltip": "Checkpoint filename; used to auto-detect family from metadata and "
+                           "the filename.",
             }),
             "architecture": ("STRING", {"default": "",
                                         "tooltip": "Base architecture from Smart Loader's "
@@ -67,14 +68,13 @@ def _build_input_types(sched_combo):
 
 def apply_parameters(preset, family_override, steps, cfg, sampler_name, scheduler,
                      detected_family="", ckpt_name="", architecture="", unique_id=None):
-    """Resolve effective params, applying recommendations for any sentinel value.
+    """Resolve effective params for the selected preset.
 
-    Sentinels: ``steps <= 0``, ``cfg < 0``, ``sampler_name == "auto"``,
-    ``scheduler == "auto"`` mean "use the recommendation". The backend does not clamp
-    the user-editable widgets; only the sentinel defaults fall through to the table.
-
-    For the ``user`` preset the widget values are passed through unchanged (with safe
-    defaults when a sentinel is still present), so manual edits are never overwritten.
+    ``user`` passes the widget values through (with safe defaults for sentinel values).
+    Every other preset is authoritative: steps/cfg/sampler/scheduler are taken from the
+    recommendation regardless of the widget values. This keeps the node correct when a
+    linked ``detected_family`` changes between runs — the widgets may still show the
+    previous family in the UI, but execution always uses the current recommendation.
     """
     if preset == "user":
         out_steps = steps if steps and steps > 0 else 20
@@ -92,10 +92,10 @@ def apply_parameters(preset, family_override, steps, cfg, sampler_name, schedule
     if not eff:
         eff = model_meta.detect_checkpoint_family(ckpt_name or "")
     rec = recommend(eff or "base", preset, ckpt_name or "", architecture=architecture or "")
-    out_steps = steps if steps and steps > 0 else rec["steps"]
-    out_cfg = cfg if cfg is not None and cfg >= 0 else rec["cfg"]
-    out_sampler = sampler_name if sampler_name and sampler_name != "auto" else rec["sampler"]
-    out_sched = scheduler if scheduler and scheduler != "auto" else rec["scheduler"]
+    out_steps = rec["steps"]
+    out_cfg = rec["cfg"]
+    out_sampler = rec["sampler"]
+    out_sched = rec["scheduler"]
     info = "family: %s | preset: %s | arch: %s | %s" % (
         eff, preset, architecture or "", rec.get("note", ""))
     return (out_steps, out_cfg, out_sampler, out_sched, info)
@@ -116,4 +116,15 @@ class LLMPromptStudioSmartParameters:
         return _build_input_types(FULL_SCHEDULERS)
 
     def apply(self, *a, **k):
-        return apply_parameters(*a, **k)
+        result = apply_parameters(*a, **k)
+        # Sync the visible widgets with the authoritative backend result. The event is
+        # ignored in older frontends that do not deliver `executed` for non-output nodes.
+        return {
+            "ui": {
+                "steps": [result[0]],
+                "cfg": [result[1]],
+                "sampler_name": [result[2]],
+                "scheduler": [result[3]],
+            },
+            "result": result,
+        }

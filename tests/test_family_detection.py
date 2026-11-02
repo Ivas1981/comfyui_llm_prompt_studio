@@ -21,30 +21,29 @@ def _detect(name, metadata, tmp_path):
         return model_meta.detect_checkpoint_family(name)
 
 
-def test_detect_family_from_parent_folder(tmp_path):
-    # A generically-named file inside a family-named folder is still recognized because
-    # detect_checkpoint_family() scans the immediate parent folder name.
+def test_parent_folder_is_not_a_family_hint(tmp_path):
+    # A generically-named file inside a family-named folder must NOT be mis-detected from
+    # the folder name; only metadata and filename are authoritative.
     folder = tmp_path / "Lightning"
     folder.mkdir()
     fake = folder / "model.safetensors"
     fake.write_bytes(b"")
     with patch.object(model_meta, "read_safetensors_metadata", return_value={}), \
          patch.object(model_meta.folder_paths, "get_full_path", return_value=str(fake)):
-        assert model_meta.detect_checkpoint_family("model.safetensors") == "lightning"
+        assert model_meta.detect_checkpoint_family("model.safetensors") == "base"
 
 
-def test_detect_family_info_from_parent_folder(tmp_path):
-    # F1 regression (#1.1): detect_checkpoint_family_info() — the actual path used by Smart
-    # Loader — must also scan the immediate parent folder name, so a generically-named file
-    # inside a family-named folder is recognized (and reported with source "filename").
+def test_family_info_ignores_parent_folder(tmp_path):
+    # Smart Loader uses detect_checkpoint_family_info(); the folder name must not become a
+    # detection source either.
     folder = tmp_path / "Lightning"
     folder.mkdir()
     fake = folder / "model.safetensors"
     fake.write_bytes(b"")
     with patch.object(model_meta, "read_safetensors_metadata", return_value={}), \
          patch.object(model_meta.folder_paths, "get_full_path", return_value=str(fake)):
-            assert model_meta.detect_checkpoint_family_info("model.safetensors") == \
-                ("lightning", "filename")
+        assert model_meta.detect_checkpoint_family_info("model.safetensors") == \
+            ("base", "base")
 
 
 def test_flash_resolves_when_flash_attention_in_metadata(tmp_path):

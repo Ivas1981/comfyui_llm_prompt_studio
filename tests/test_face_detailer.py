@@ -5,7 +5,12 @@ the detection, upscale math, latent-crop (//8) and no-VAEEncode behavior can be
 checked without a GPU.
 """
 
+import pytest
 import torch
+
+if "stub" in str(getattr(torch, "__version__", "")):
+    pytest.skip("requires real torch tensors (conftest installed the headless stub)",
+                allow_module_level=True)
 
 import comfyui_llm_prompt_studio.nodes.face_detailer as fd
 from comfyui_llm_prompt_studio.nodes import _imgutils as iu

@@ -49,7 +49,6 @@ class LLMPromptStudioSceneBuilder:
         return {
             "required": {
                 "stage": (["1 - describe", "2 - compose"],),
-                "image": ("IMAGE",),
                 "server_url": ("STRING", {"default": "http://localhost:1234/v1"}),
                 "api_key": ("STRING", {"default": ""}),
                 "model": (combo_models(),),
@@ -98,6 +97,8 @@ class LLMPromptStudioSceneBuilder:
                                       "overrides it."}),
             },
             "optional": {
+                "image": ("IMAGE", {"tooltip": "Source image (required for stage 1; optional "
+                                               "for stage 2, which composes from the description)"}),
                 "family": ("STRING", {"default": ""}),
                 "architecture": ("STRING", {"default": "",
                                             "tooltip": "Base architecture detected by Smart "
@@ -161,7 +162,11 @@ class LLMPromptStudioSceneBuilder:
         # Stage 1 ("describe") sends an image; stage 2 ("compose") only consumes the
         # pre-computed text description. This drives whether the vision check applies.
         _stage_is_describe = stage.startswith("1")
-        _has_image = _stage_is_describe
+        _has_image = _stage_is_describe and image is not None
+        if _stage_is_describe and image is None:
+            raise RuntimeError(
+                "Scene Builder stage 1 ('describe') requires an image input. "
+                "Connect an IMAGE or switch to stage 2 ('compose').")
 
         # The vision check only matters for stage 1 (describe), which actually sends an
         # image. Stage 2 (compose) consumes only the pre-computed text description and never
@@ -264,11 +269,13 @@ class LLMPromptStudioSceneBuilder:
             if prompt_mode == "no_negative":
                 no_negative = True
             elif prompt_mode == "standard":
+                # Explicit standard mode always emits a negative prompt, even for
+                # architectures where the negative is technically inert (Flux/SD3).
                 no_negative = False
             else:
                 no_negative = is_no_negative_family(family) or is_no_negative_architecture(architecture)
-            if not no_negative and arch_guidance.get("force_no_negative"):
-                no_negative = True
+                if not no_negative and arch_guidance.get("force_no_negative"):
+                    no_negative = True
             logger.info("Scene Builder prompt mode: %s (family=%r, arch=%r) -> no_negative=%s",
                          prompt_mode, family, architecture, no_negative)
     
@@ -367,8 +374,10 @@ class LLMPromptStudioSceneBuilder:
             log_node_exit("Scene Builder", unique_id,
                           {"stage": 2, "positive": positive[:200], "negative": negative[:200],
                            "scene_name": scene_name[:200]}, (time.time() - _t0) * 1000)
-            return {"ui": {"prompt_view": [positive]},
-                    "result": (positive, negative, scene_name, positive, "")}
+            return {"ui": {"prompt_view": [positive],
+                            "description": [description_view.strip()]},
+                    "result": (positive, negative, scene_name, positive,
+                               description_view.strip())}
         finally:
             if loaded and release and release_enabled():
                 mark_keep_loaded(server_url, False)

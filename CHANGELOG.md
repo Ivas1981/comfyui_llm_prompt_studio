@@ -124,6 +124,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   by the gender filter) regardless of `gender_filter`. Applies only when `gender_filter != any`.
 
 ### Changed
+- **Style labels are back on `Category > Name`.** The Styles loader briefly emitted
+  `Category / Name`, which broke 1.2.x saved workflows and could resolve a legacy label to the
+  wrong style (`Digital & Contemporary > Digital Art / Concept Art` → `Concept Art`). The resolver
+  now accepts `>`, `/`, bare names and ids; the combo, README and `blend_styles` agree again.
+- **Writer `use_preset_system_prompt` semantics fixed.** With no preset selected the
+  `system_prompt` widget is always the base prompt; the preset's prompt is used only when a preset
+  is selected **and** the toggle is on. The stale "unless you have customized it" tooltip was removed.
+- **Smart Parameters presets are authoritative.** `balanced` / `speed` / `quality` always use the
+  recommendation; stale `steps`/`cfg`/`sampler`/`scheduler` widgets from a previous
+  `detected_family` no longer override it. `user` remains the manual pass-through mode.
+- **Model refresh replaces the server list.** Refresh now overwrites the per-server cache instead of
+  merging, so models deleted on the server disappear; a server with no cache no longer borrows the
+  default server's models.
+- **Scene Builder stage 2 no longer requires an image** (stage 1 still does) and its `description`
+  output now passes the description through instead of returning an empty string.
+- **Architecture guidance has one source.** `default_negative` / `force_no_negative` now read the
+  active `Styles/system_prompts.json` (with the legacy file as fallback), matching the addendum.
+- **Upgrade migration for the user Styles copy.** `ensure_styles_dir()` now copies newly shipped
+  style files and adds missing `system_prompts.json` keys to an existing user copy without
+  overwriting edits.
+
+### Fixed
+- **Duplicated system-prompt instructions.** `writer_system` already ended with the JSON-finish
+  sentence, and `build_system_prompt` / `_with_hint` appended it (plus `reasoning_hint`) again;
+  with `use_preset_system_prompt=False` the finish sentence appeared three times. The assembly is
+  now idempotent, and the default face-instruction widget no longer duplicates the built-in block.
+- **`prompt_mode="standard"` was overridden by Flux/SD3 `force_no_negative`.** Standard mode now
+  always emits a negative in both Writer and Scene Builder; the architecture force applies only in
+  `auto` mode.
+- **Debug FULL could log base64 image data URLs.** `data:<mime>;base64,...` strings are now masked
+  recursively at any nesting depth, and the HTTP debug line no longer serializes the full image URL.
+- **`/llm_prompt_studio/model_classes` path traversal.** Filenames are restricted to a plain
+  `.pt`/`.pth` basename inside `models/ultralytics/<kind>` before the ultralytics loader runs.
+- **Writer prompt cache could return a prompt for a different image.** The CV scene hint (or an
+  empty string) is now part of the key, along with `use_preset_system_prompt` and the Styles
+  revision, so Reload Styles and image changes invalidate reuse.
+- **Empty `scene_name` no longer consumes a field retry.** The Writer/Scene Builder already fall
+  back to `slugify(positive)`; retries are reserved for empty `positive`/`negative`.
+- **Checkpoint-family false positives.** `detect_checkpoint_family` /
+  `detect_checkpoint_family_info` now check structured safetensors metadata before the filename and
+  no longer treat the parent folder name as a hint, so `Lightning/model.safetensors` is not
+  mis-detected as distilled.
+- **Very long Smart Save filenames.** The base name is capped at 120 chars (with a short hash)
+  to avoid Windows MAX_PATH failures when many LoRAs are stacked.
+- **Removed the stale example workflow.** `workflow/LLM Studio.json` used an old widget schema and
+  a committed local API key; the file is deleted. Rotate that key and purge it from Git history.
+
+### Changed (styles)
 - **Style `system_prompt` blocks fully centralized (DRY).** Per-preset `system_prompt` now holds only the
   genre persona plus genre-specific guidance (photography "Capture-EXIF rule", anime booru-tag vocabulary,
   etc.). All generic craft rules that were duplicated across presets have been stripped and are now sourced

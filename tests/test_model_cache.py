@@ -12,12 +12,12 @@ from comfyui_llm_prompt_studio.constants import PLACEHOLDER  # noqa: E402
 
 
 def _real_persist(cache_file):
-    def persist(server_url, models):
+    def persist(server_url, models, replace=False):
         if not models:
             return
         srv = lm_http._normalize_server(server_url)
         cache = lm_http._read_disk_cache()
-        existing = cache.get(srv) or []
+        existing = [] if replace else (cache.get(srv) or [])
         merged = list(dict.fromkeys(list(existing) + list(models)))
         cache[srv] = merged
         with open(str(cache_file), "w", encoding="utf-8") as f:
@@ -82,3 +82,30 @@ def test_combo_models_returns_placeholder_when_empty(monkeypatch):
     lm_http._static_keys.clear()
     from comfyui_llm_prompt_studio.combos import combo_models
     assert combo_models("http://x:1234/v1") == [PLACEHOLDER]
+
+
+def test_refresh_replaces_the_server_list(tmp_path, monkeypatch):
+    # A model deleted on the server must disappear from the combo after Refresh; the old
+    # merge behavior kept it forever.
+    cache_file = tmp_path / "models_cache.json"
+    monkeypatch.setattr(lm_http, "_model_cache_path", lambda: str(cache_file))
+    monkeypatch.setattr(lm_http, "_persist_models", _real_persist(cache_file))
+    lm_http._model_cache.clear()
+    lm_http._static_keys.clear()
+
+    srv = "http://server:1234/v1"
+    lm_http.cache_models(srv, "", ["a", "b"])
+    lm_http.cache_models(srv, "", ["b", "c"])
+    assert sorted(lm_http.cached_model_list(srv)) == ["b", "c"]
+
+
+def test_no_cross_server_fallback(tmp_path, monkeypatch):
+    # A server without its own cache must NOT borrow the default server's model list.
+    cache_file = tmp_path / "models_cache.json"
+    monkeypatch.setattr(lm_http, "_model_cache_path", lambda: str(cache_file))
+    monkeypatch.setattr(lm_http, "_persist_models", _real_persist(cache_file))
+    lm_http._model_cache.clear()
+    lm_http._static_keys.clear()
+
+    lm_http.cache_models(lm_http.DEFAULT_SERVER, "", ["default-only"])
+    assert lm_http.cached_model_list("http://other:1234/v1") is None

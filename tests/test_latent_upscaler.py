@@ -8,7 +8,13 @@ key names match) and that a forward pass scales the latent by the requested fact
 import os
 import sys
 
+import pytest
 import torch
+
+if "stub" in str(getattr(torch, "__version__", "")):
+    pytest.skip("requires real torch tensors (conftest installed the headless stub)",
+                allow_module_level=True)
+pytest.importorskip("safetensors")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PT = os.path.join(ROOT, "models", "upscale_models", "sdxl_resizer.pt")

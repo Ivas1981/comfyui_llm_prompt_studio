@@ -28,6 +28,9 @@ _USER_DIR_NAME = "llm_prompt_studio_styles"
 
 # Cache of the loaded styles (invalidated by reload_styles / reset_styles).
 _cache: Dict = {}
+# Bumped whenever the active styles are reloaded/reset. Writer's prompt cache includes this
+# so "Reload Styles" / "Reset Styles" invalidate prompts generated from the old files.
+_revision = 0
 
 
 def _package_styles_dir() -> str:
@@ -51,18 +54,70 @@ def _active_styles_dir() -> str:
     return _package_styles_dir()
 
 
+def _merge_missing_keys(src: Dict, dst: Dict) -> bool:
+    """Recursively add keys from ``src`` that are absent in ``dst`` (never overwrite)."""
+    changed = False
+    for key, value in src.items():
+        if key not in dst:
+            dst[key] = value
+            changed = True
+        elif isinstance(value, dict) and isinstance(dst.get(key), dict):
+            if _merge_missing_keys(value, dst[key]):
+                changed = True
+    return changed
+
+
 def ensure_styles_dir():
-    """Mirror the shipped Styles/ into the user output dir if it does not yet exist."""
+    """Mirror the shipped Styles/ into the user output dir and merge new prompt keys.
+
+    Existing user files are never overwritten, but files added by a newer release are
+    copied and newly introduced top-level/architecture keys in ``system_prompts.json``
+    are added to the existing user copy. Without this an upgraded install would keep the
+    old prompt fragments forever (variant B only mirrors on first run).
+    """
+    global _revision
+    pkg = _package_styles_dir()
     user = _user_styles_dir()
+    changed = False
     if not os.path.isdir(user) or not os.listdir(user):
         try:
-            shutil.copytree(_package_styles_dir(), user)
+            shutil.copytree(pkg, user)
+            changed = True
         except (OSError, FileExistsError):
             pass
+    else:
+        try:
+            for name in os.listdir(pkg):
+                src = os.path.join(pkg, name)
+                dst = os.path.join(user, name)
+                if os.path.isfile(src) and not os.path.exists(dst):
+                    shutil.copy2(src, dst)
+                    changed = True
+        except OSError:
+            pass
+        src_sp = os.path.join(pkg, "system_prompts.json")
+        dst_sp = os.path.join(user, "system_prompts.json")
+        if os.path.isfile(src_sp) and os.path.isfile(dst_sp):
+            try:
+                with open(src_sp, "r", encoding="utf-8") as fh:
+                    src_data = json.load(fh)
+                with open(dst_sp, "r", encoding="utf-8") as fh:
+                    dst_data = json.load(fh)
+                if isinstance(src_data, dict) and isinstance(dst_data, dict) \
+                        and _merge_missing_keys(src_data, dst_data):
+                    with open(dst_sp, "w", encoding="utf-8") as fh:
+                        json.dump(dst_data, fh, ensure_ascii=False, indent=2)
+                    changed = True
+            except (OSError, json.JSONDecodeError):
+                pass
+    if changed:
+        _cache.clear()
+        _revision += 1
 
 
 def reset_styles():
     """Delete the user styles copy and drop the in-memory cache."""
+    global _revision
     user = _user_styles_dir()
     if os.path.isdir(user):
         try:
@@ -70,11 +125,19 @@ def reset_styles():
         except OSError:
             pass
     _cache.clear()
+    _revision += 1
 
 
 def reload_styles():
     """Force a fresh read from disk on the next access."""
+    global _revision
     _cache.clear()
+    _revision += 1
+
+
+def get_styles_revision() -> int:
+    """Monotonic revision of the active styles, for cache-key invalidation."""
+    return _revision
 
 
 def get_styles_dir() -> str:
@@ -146,6 +209,18 @@ def get_system_prompts() -> Dict:
     return get_defaults()
 
 
+def get_architecture_guidance() -> Dict:
+    """Architecture-specific guidance from the active ``system_prompts.json``.
+
+    The same file is used for the system-prompt addendum, so editing the documented
+    ``Styles/system_prompts.json`` updates both the prompt text and the runtime
+    ``default_negative`` / ``force_no_negative`` behavior.
+    """
+    sp = get_system_prompts()
+    guidance = sp.get("architecture_guidance")
+    return guidance if isinstance(guidance, dict) else {}
+
+
 def get_all_styles() -> List[Dict]:
     return _load_all().get("presets", [])
 
@@ -157,27 +232,49 @@ def get_style_by_id(style_id: str) -> Optional[Dict]:
 
 
 def get_style_labels() -> List[str]:
-    """Combobox entries: 'Category / Name' (or bare Name), plus a '— none —' default."""
+    """Combobox entries: 'Category > Name' (or bare Name), plus a '— none —' default.
+
+    ``Category > Name`` is the format used by the legacy 1.2.x presets and documented in
+    the README, so existing saved workflows keep resolving. The resolver also accepts the
+    newer ``Category / Name`` spelling.
+    """
     out = ["— none —"]
     for p in get_all_styles():
         cat = p.get("category") or ""
         name = p.get("name", "")
-        out.append(f"{cat} / {name}" if cat else name)
+        out.append(f"{cat} > {name}" if cat else name)
     return out
+
+
+def _bare_style_label(label: str) -> str:
+    """Strip a 'Category > Name' / 'Category / Name' prefix from a style label.
+
+    The category prefix is separated by ``"> "`` (legacy) or ``" / "`` (newer). Splitting on
+    the first separator keeps style names that themselves contain ``" / "`` intact.
+    """
+    s = (label or "").strip()
+    for sep in (" > ", " / "):
+        if sep in s:
+            return s.split(sep, 1)[1].strip()
+    return s
 
 
 def get_style_by_label(label: str) -> Optional[Dict]:
     if not label or label == "— none —":
         return None
-    bare = label.split("/ ", 1)[-1].strip() if "/ " in label else label.strip()
+    label = label.strip()
+    bare = _bare_style_label(label)
     for p in get_all_styles():
-        if p.get("name") == label or p.get("name") == bare:
+        if p.get("name") == label or p.get("name") == bare or p.get("id") == label:
             return p
     return None
 
 
 def resolve_style_token(token: str) -> Optional[Dict]:
-    """Resolve a blend/style token that may be an id or a 'Category / Name' label."""
+    """Resolve a blend/style token that may be an id or a ``Category > Name`` label.
+
+    The legacy ``Category / Name`` spelling is accepted as well.
+    """
     token = (token or "").strip()
     if not token or token == "— none —":
         return None
@@ -326,9 +423,19 @@ def build_system_prompt(preset: Optional[Dict] = None, *,
         if addendum:
             parts.append(addendum)
 
-    # 9) Reasoning hint keeps the model finishing with the JSON object.
-    rh = sp.get("reasoning_hint", "")
-    if rh and "ALWAYS finish your reply with the complete JSON object" not in parts[-1]:
-        parts.append(rh)
+    # 9) Reasoning hint + JSON finish instruction, each exactly once. Historical prompt
+    # files already ended with the finish sentence, so strip that clause from the hint when
+    # it is already present and only add the "keep reasoning short" part.
+    finish = "ALWAYS finish your reply with the complete JSON object"
+    joined = "\n\n".join(p for p in parts if p and p.strip())
+    rh = (sp.get("reasoning_hint", "") or "").strip()
+    if rh:
+        if finish in rh and finish in joined:
+            rh = rh.replace(" and " + finish, "").replace(finish, "").strip()
+        if rh and rh not in joined:
+            parts.append(rh)
+            joined = "\n\n".join(p for p in parts if p and p.strip())
+    if finish not in joined:
+        parts.append(finish + ".")
 
     return "\n\n".join(p for p in parts if p and p.strip())

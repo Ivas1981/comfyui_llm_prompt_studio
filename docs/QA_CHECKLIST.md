@@ -23,8 +23,8 @@ Tested against ComfyUI 0.19.3 (classic).
 - [ ] Backward compatible: defaults reproduce the old OpenAI `/chat/completions` behavior.
 
 ## Phase 3 — Style presets
-- [ ] First node run creates `llm_prompt_studio_presets.json` from `presets_default.json`.
-- [ ] 51 presets are listed in the `style_preset` combobox.
+- [ ] First node run mirrors `Styles/` into `llm_prompt_studio_styles/`.
+- [ ] 210 presets are listed in the `style_preset` combobox (`Category > Name`).
 - [ ] Selecting a preset appends its style tags to `positive`/`negative`; in no-negative mode the
       negative tags are skipped.
 - [ ] A preset with `disabled_in_no_negative_mode` is skipped automatically in no-negative mode.
@@ -32,8 +32,8 @@ Tested against ComfyUI 0.19.3 (classic).
 - [ ] "Reset Styles" restores the shipped Styles/; "Copy styles path" puts the folder path on the
       clipboard.
 - [ ] A broken `presets` JSON file falls back to defaults without crashing.
-- [ ] Selecting a preset overrides the system prompt only when the system-prompt widget is at its
-      default value.
+- [ ] The preset system prompt is used only when a preset is selected and
+      `use_preset_system_prompt` is on; with no preset the `system_prompt` widget is used.
 
 ## Phase 4 — Tests
 - [ ] `python -m pytest tests/ -v` is green (CI matrix py3.10 / 3.11).

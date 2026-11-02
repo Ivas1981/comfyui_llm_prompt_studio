@@ -285,11 +285,18 @@ export async function reloadPresets(node) {
         const opts = ["— none —", ...names];
         w.options = w.options || {};
         w.options.values = opts;
-        // Preserve a previously saved value. The combobox shows labels like
-        // "Category / Name"; a workflow saved with a bare name "Name" is no longer in
-        // `opts`, so fall back to the entry whose bare name (after "/ ") matches.
+        // Preserve a previously saved value. The combobox shows "Category > Name"; a
+        // workflow saved with the newer "Category / Name" or a bare name must still
+        // resolve to the same style.
+        const bare = (s) => {
+            const t = String(s || "").trim();
+            for (const sep of [" > ", " / "]) {
+                if (t.includes(sep)) return t.split(sep).slice(1).join(sep).trim();
+            }
+            return t;
+        };
         if (!opts.includes(w.value)) {
-            const match = opts.find(o => o.split("/ ").pop().trim() === w.value);
+            const match = opts.find(o => bare(o) === bare(w.value));
             w.value = match || "— none —";
         }
         app.graph.setDirtyCanvas(true, true);

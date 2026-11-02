@@ -147,15 +147,18 @@ def test_node_apply_parameters_and_return_types():
     assert out[2] == "euler"    # sampler from table
     assert out[3] == "AYS SDXL"  # distilled lightning + balanced -> AYS SDXL
 
-    # User-edited widgets win over the recommendation.
+    # Recommendation presets are authoritative: stale widget values (e.g. after a
+    # detected_family change) must not override the current family's recommendation.
+    from comfyui_llm_prompt_studio.nodes import _distilled_presets as dp
+    rec = dp.recommend("lcm", "balanced", "")
     out2 = sp.apply_parameters(
         preset="balanced", family_override="auto", steps=25, cfg=5.0,
         sampler_name="dpmpp_2m", scheduler="karras",
         detected_family="lcm", ckpt_name="")
-    assert out2[0] == 25
-    assert out2[1] == 5.0
-    assert out2[2] == "dpmpp_2m"
-    assert out2[3] == "karras"
+    assert out2[0] == rec["steps"]
+    assert out2[1] == rec["cfg"]
+    assert out2[2] == rec["sampler"]
+    assert out2[3] == rec["scheduler"]
 
     # Distilled balanced uses AYS SDXL (single full scheduler list).
     out3 = sp.apply_parameters(
